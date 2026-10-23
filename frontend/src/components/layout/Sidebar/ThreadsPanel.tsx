@@ -1,19 +1,15 @@
 import { useEffect, useMemo, useCallback, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
-import clsx from 'clsx';
+import { useMatch, useNavigate } from 'react-router-dom';
 import type { Chat } from '@/types/chat.types';
-import type { Workspace } from '@/types/workspace.types';
 import { useSidebarChatLists } from '@/hooks/queries/useSidebarChatLists';
 import { useUIStore } from '@/store/uiStore';
 import { useStreamStore } from '@/store/streamStore';
 import { useBlockedChatIds } from '@/hooks/useBlockedChatIds';
 import { useWorkingChatIds } from '@/hooks/useWorkingChatIds';
 import { useIsMobile } from '@/hooks/useIsMobile';
-import { useCurrentUserQuery } from '@/hooks/queries/useAuthQueries';
-import { useAuthStore } from '@/store/authStore';
-import { useLogout } from '@/hooks/useLogout';
-import { UserProfileMenu } from '@/components/layout/UserProfileMenu/UserProfileMenu';
-import { SidebarResizeHandle } from './SidebarResizeHandle';
+import { useChatQuery } from '@/hooks/queries/useChatQueries';
+import { useChannelQuery } from '@/hooks/queries/useChannelQueries';
+import { useWorkspacesList } from '@/hooks/queries/useWorkspaceQueries';
 import { SidebarActions } from './SidebarActions';
 import { SidebarChannels } from './SidebarChannels';
 import { SidebarChatList } from './SidebarChatList';
@@ -23,34 +19,21 @@ import { buildRecentChatSections } from './sidebarGrouping';
 import { useSidebarChatActions } from './useSidebarChatActions';
 import { useSidebarWorkspaceActions } from './useSidebarWorkspaceActions';
 import { countActiveSidebarFilters } from '@/store/sidebarFilters';
-import styles from './Sidebar.module.scss';
+import styles from './ThreadsPanel.module.scss';
 
-export interface SidebarProps {
-  workspaces: Workspace[];
-  selectedChatId: string | null;
-  selectedChannelId?: string | null;
-  selectedChatWorkspaceId?: string | null;
-  selectedChatParentId?: string | null;
-  onChatSelect: (chatId: string) => void;
-  onDeleteChat?: (chatId: string) => void;
-}
-
-export function Sidebar({
-  workspaces,
-  selectedChatId,
-  selectedChannelId = null,
-  selectedChatWorkspaceId,
-  selectedChatParentId,
-  onChatSelect,
-  onDeleteChat,
-}: SidebarProps) {
+// The sidebar's thread browser: primary actions, channels and the chat list.
+// Selection comes from the route; the open chat/channel records are read from
+// the same query cache the page uses, so this adds no requests.
+export function ThreadsPanel({ hidden = false }: { hidden?: boolean }) {
   const navigate = useNavigate();
-  const sidebarOpen = useUIStore((state) => state.sidebarOpen);
   const isMobile = useIsMobile();
-  const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
-  const { data: currentUser } = useCurrentUserQuery({ enabled: isAuthenticated });
-  const userDisplayName = currentUser?.username || currentUser?.email || '';
-  const logoutMutation = useLogout();
+  const selectedChatId = useMatch('/chat/:chatId')?.params.chatId ?? null;
+  const selectedChannelId = useMatch('/channels/:channelId')?.params.channelId ?? null;
+  const workspaces = useWorkspacesList();
+  const { data: selectedChat } = useChatQuery(selectedChatId ?? undefined);
+  const { data: selectedChannel } = useChannelQuery(selectedChannelId ?? undefined);
+  const selectedChatWorkspaceId = selectedChat?.workspace_id ?? selectedChannel?.workspace_id;
+  const selectedChatParentId = selectedChat?.parent_chat_id;
   // Chats whose stream finished successfully since last viewed — drives the "Done" badge
   const completedChatIds = useStreamStore((state) => state.completedChatIds);
   const splitChatIds = useUIStore((state) => state.splitChatIds);
@@ -80,8 +63,6 @@ export function Sidebar({
     isMobile,
     navigate,
     scrollContainerRef,
-    onChatSelect,
-    onDeleteChat,
   });
   const workspaceActions = useSidebarWorkspaceActions({
     selectedChatId,
@@ -171,7 +152,6 @@ export function Sidebar({
   const rowProps: ChatRowProps = {
     selectedChatId,
     splitChatIds,
-    hoveredChatId: chatActions.hoveredChatId,
     dropdownChatId: chatActions.dropdown?.chat.id ?? null,
     streamingChatIdSet,
     blockedChatIdSet,
@@ -182,57 +162,40 @@ export function Sidebar({
     canOpenChatInSplit: chatActions.canOpenChatInSplit,
     onDropdownClick: chatActions.handleDropdownClick,
     onWorkspaceBadgeClick: workspaceActions.handleWorkspaceContextMenu,
-    onMouseEnter: chatActions.handleChatMouseEnter,
-    onMouseLeave: chatActions.handleChatMouseLeave,
     expandedSubThreads: chatActions.expandedSubThreads,
     onToggleSubThreads: chatActions.handleToggleSubThreads,
   };
 
   return (
-    <>
-      <aside
-        aria-label="Chat history"
-        className={clsx(styles.sidebar, sidebarOpen && styles['sidebar--open'])}
-      >
-        <SidebarActions onNewChat={handleNewChat} onOpenSearch={handleOpenSearch} />
+    <div className={styles.panel} hidden={hidden}>
+      <SidebarActions onNewChat={handleNewChat} onOpenSearch={handleOpenSearch} />
 
-        <SidebarChannels
-          workspaces={workspaces}
-          workspaceId={selectedChatWorkspaceId ?? undefined}
-          filterWorkspaceId={filters.workspaceId}
-          selectedChannelId={selectedChannelId}
-        />
+      <SidebarChannels
+        workspaces={workspaces}
+        workspaceId={selectedChatWorkspaceId ?? undefined}
+        filterWorkspaceId={filters.workspaceId}
+        selectedChannelId={selectedChannelId}
+      />
 
-        <SidebarChatList
-          scrollContainerRef={scrollContainerRef}
-          isLoadingChats={isLoadingChats}
-          hasAnyContent={hasAnyContent}
-          visiblePinnedChats={visiblePinnedChats}
-          visibleRecentChats={visibleRecentChats}
-          hasVisibleContent={hasVisibleContent}
-          recentChatSections={recentChatSections}
-          rowProps={rowProps}
-          filters={filters}
-          onChangeFilters={(next) => useUIStore.getState().setSidebarFilters(next)}
-          workspaceBadgeById={workspaceBadgeById}
-          hasMore={hasMore}
-          isFetchingMore={isFetchingMore}
-          onLoadMore={loadMore}
-          onNewWorkspaceThread={workspaceActions.handleNewWorkspaceThread}
-        />
-
-        {/* Always render footer so settings/logout work even if the user query fails. */}
-        <div className={styles.footer}>
-          <UserProfileMenu
-            displayName={userDisplayName}
-            onOpenSettings={() => navigate('/settings')}
-            onSignOut={() => logoutMutation.mutate()}
-          />
-        </div>
-        {!isMobile && <SidebarResizeHandle />}
-      </aside>
+      <SidebarChatList
+        scrollContainerRef={scrollContainerRef}
+        isLoadingChats={isLoadingChats}
+        hasAnyContent={hasAnyContent}
+        visiblePinnedChats={visiblePinnedChats}
+        visibleRecentChats={visibleRecentChats}
+        hasVisibleContent={hasVisibleContent}
+        recentChatSections={recentChatSections}
+        rowProps={rowProps}
+        filters={filters}
+        onChangeFilters={(next) => useUIStore.getState().setSidebarFilters(next)}
+        workspaceBadgeById={workspaceBadgeById}
+        hasMore={hasMore}
+        isFetchingMore={isFetchingMore}
+        onLoadMore={loadMore}
+        onNewWorkspaceThread={workspaceActions.handleNewWorkspaceThread}
+      />
 
       <SidebarOverlays chat={chatActions} workspace={workspaceActions} workspaces={workspaces} />
-    </>
+    </div>
   );
 }

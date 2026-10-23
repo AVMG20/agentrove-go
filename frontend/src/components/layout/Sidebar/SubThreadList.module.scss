@@ -107,12 +107,7 @@
   align-items: center;
   font-variant-numeric: tabular-nums;
   color: var(--theme-text-quaternary);
-  opacity: 1;
-  transition: opacity var(--duration-base);
-
-  &--hidden {
-    opacity: 0;
-  }
+  transition: opacity var(--duration-fast);
 }
 
 .dropdown-btn {
@@ -124,19 +119,12 @@
   padding: var(--space-0-5);
   color: var(--theme-text-quaternary);
   opacity: 0;
-  transition: all var(--duration-base);
+  transition:
+    opacity var(--duration-fast),
+    color var(--duration-fast);
 
   @include responsive.hover {
     color: var(--theme-text-primary);
-  }
-
-  // Group-hover reveal: hovering anywhere on the row surfaces the button
-  .subthread-row:hover & {
-    opacity: 1;
-  }
-
-  &--visible {
-    opacity: 1;
   }
 }
 
@@ -178,5 +166,33 @@
 
   @include responsive.hover {
     color: var(--theme-text-tertiary);
+  }
+}
+
+// Hover, focus and the active row swap the timestamp for the options button.
+@mixin revealed {
+  .timestamp {
+    opacity: 0;
+  }
+
+  .dropdown-btn {
+    opacity: 1;
+  }
+}
+
+.subthread-row:global(.#{state.$state-active}),
+.subthread-row:focus-within {
+  @include revealed;
+}
+
+@include responsive.media('not-touch') {
+  .subthread-row:hover {
+    @include revealed;
+  }
+}
+
+@include responsive.media('touch') {
+  .subthread-row {
+    @include revealed;
   }
 }

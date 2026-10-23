@@ -1,6 +1,6 @@
 import { type ReactNode } from 'react';
 import { CheckCircle } from 'lucide-react';
-import { Layout } from '@/components/layout/Layout/Layout';
+import { AuthShell } from '@/components/auth/AuthShell/AuthShell';
 import { Button } from '@/components/ui/primitives/Button/Button';
 import styles from './AuthSuccessScreen.module.scss';
 
@@ -24,7 +24,7 @@ export function AuthSuccessScreen({
   footer,
 }: AuthSuccessScreenProps) {
   return (
-    <Layout isAuthPage={true}>
+    <AuthShell>
       <div className={styles.page}>
         <div className={styles.container}>
           <div className={styles.content}>
@@ -54,6 +54,6 @@ export function AuthSuccessScreen({
           </div>
         </div>
       </div>
-    </Layout>
+    </AuthShell>
   );
 }

@@ -1,7 +1,5 @@
-import { useCallback, useEffect, useMemo, useRef, type ReactNode } from 'react';
+import { useCallback, useEffect, useRef, type ReactNode } from 'react';
 import { Navigate, useNavigate, useParams } from 'react-router-dom';
-import { Sidebar } from '@/components/layout/Sidebar/Sidebar';
-import { useLayoutSidebar } from '@/components/layout/Layout/layoutState';
 import {
   WorkspaceSurface,
   WorkspaceTile,
@@ -93,21 +91,6 @@ export function ChannelPage() {
   useEffect(() => {
     if (isError) navigate('/', { replace: true });
   }, [isError, navigate]);
-
-  const sidebarContent = useMemo(
-    () => (
-      <Sidebar
-        workspaces={workspaces}
-        selectedChatId={null}
-        selectedChannelId={channelId ?? null}
-        selectedChatWorkspaceId={channel?.workspace_id}
-        onChatSelect={(chatId) => navigate(`/chat/${chatId}`)}
-      />
-    ),
-    [workspaces, channelId, channel?.workspace_id, navigate],
-  );
-
-  useLayoutSidebar(sidebarContent);
 
   if (!channelId) return <Navigate to="/" />;
   if (!channel) return <LoadingScreen />;

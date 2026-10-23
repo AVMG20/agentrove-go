@@ -7,7 +7,6 @@ import { SubThreadList } from './SubThreadList';
 export interface ChatRowProps {
   selectedChatId: string | null;
   splitChatIds: string[];
-  hoveredChatId: string | null;
   dropdownChatId: string | null;
   streamingChatIdSet: Set<string>;
   blockedChatIdSet: Set<string>;
@@ -18,8 +17,6 @@ export interface ChatRowProps {
   canOpenChatInSplit: (chatId: string) => boolean;
   onDropdownClick: (e: React.MouseEvent<HTMLButtonElement>, chat: Chat) => void;
   onWorkspaceBadgeClick: (e: React.MouseEvent<HTMLButtonElement>, workspaceId: string) => void;
-  onMouseEnter: (chatId: string) => void;
-  onMouseLeave: () => void;
   expandedSubThreads: Set<string>;
   onToggleSubThreads: (chatId: string) => void;
 }
@@ -35,7 +32,6 @@ export function SidebarChatRow({ chat, rowProps, hideWorkspace = false }: Sideba
   const {
     selectedChatId,
     splitChatIds,
-    hoveredChatId,
     dropdownChatId,
     streamingChatIdSet,
     blockedChatIdSet,
@@ -46,8 +42,6 @@ export function SidebarChatRow({ chat, rowProps, hideWorkspace = false }: Sideba
     canOpenChatInSplit,
     onDropdownClick,
     onWorkspaceBadgeClick,
-    onMouseEnter,
-    onMouseLeave,
     expandedSubThreads,
     onToggleSubThreads,
   } = rowProps;
@@ -59,7 +53,6 @@ export function SidebarChatRow({ chat, rowProps, hideWorkspace = false }: Sideba
         chat={chat}
         isSelected={chat.id === selectedChatId}
         isActive={chat.id === selectedChatId || splitChatIds.includes(chat.id)}
-        isHovered={hoveredChatId === chat.id}
         isDropdownOpen={dropdownChatId === chat.id}
         isChatStreaming={streamingChatIdSet.has(chat.id)}
         isChatBlocked={blockedChatIdSet.has(chat.id)}
@@ -70,8 +63,6 @@ export function SidebarChatRow({ chat, rowProps, hideWorkspace = false }: Sideba
         canOpenInSplit={canOpenChatInSplit(chat.id)}
         onDropdownClick={onDropdownClick}
         onWorkspaceBadgeClick={onWorkspaceBadgeClick}
-        onMouseEnter={onMouseEnter}
-        onMouseLeave={onMouseLeave}
         onToggleSubThreads={hasSubThreads ? onToggleSubThreads : undefined}
         isSubThreadsExpanded={hasSubThreads ? expandedSubThreads.has(chat.id) : undefined}
       />

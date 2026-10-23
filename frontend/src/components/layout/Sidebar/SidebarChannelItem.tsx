@@ -1,4 +1,4 @@
-import { useState, type MouseEvent } from 'react';
+import type { MouseEvent } from 'react';
 import { Hash } from 'lucide-react';
 import { AsciiSpinner } from '@/components/ui/AsciiSpinner/AsciiSpinner';
 import { ChatStatusDot } from '@/components/ui/ChatStatusDot/ChatStatusDot';
@@ -25,7 +25,6 @@ export function SidebarChannelItem({
   onSelect,
   onDropdownClick,
 }: SidebarChannelItemProps) {
-  const [isHovered, setIsHovered] = useState(false);
   const activity = useChannelActivity(channel);
   const status = chatStatusTone({
     blocked: activity.waiting_member_ids.length > 0,
@@ -52,9 +51,7 @@ export function SidebarChannelItem({
   return (
     <SidebarRow
       isActive={isActive}
-      isRevealed={isHovered || isActive || isDropdownOpen}
-      onMouseEnter={() => setIsHovered(true)}
-      onMouseLeave={() => setIsHovered(false)}
+      isRevealed={isDropdownOpen}
       leading={
         status ? (
           <FloatingTooltip content={CHAT_STATUS_LABEL[status]} className={styles['status-tooltip']}>

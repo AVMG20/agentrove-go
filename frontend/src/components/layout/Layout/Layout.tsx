@@ -1,12 +1,12 @@
-import { ReactNode, useCallback, useEffect, useMemo, useState } from 'react';
+import { type ReactNode, useEffect } from 'react';
 import clsx from 'clsx';
-import { Header, type HeaderProps } from '@/components/layout/Header/Header';
 import { TitleBar } from '@/components/layout/TitleBar/TitleBar';
+import { AppSidebar } from '@/components/layout/Sidebar/AppSidebar';
 import { Link } from '@/components/ui/primitives/Link/Link';
-import { LayoutContext, type LayoutContextValue } from './layoutState';
 import { useUIStore } from '@/store/uiStore';
 import { useSwipeGesture } from '@/hooks/useSwipeGesture';
-import { useIsMobile } from '@/hooks/useIsMobile';
+import { isMobileViewport, useIsMobile } from '@/hooks/useIsMobile';
+import { useMountEffect } from '@/hooks/useMountEffect';
 import styles from './Layout.module.scss';
 
 function useSidebarWidthVar() {
@@ -21,11 +21,9 @@ function useSidebarWidthVar() {
   }, []);
 }
 
-// Sidebar/title-bar/main transitions default to 0ms (see the SCSS fallbacks) so
-// route changes that mount or drop the sidebar snap into place. Only an explicit
-// open/close animates: the store subscription fires synchronously inside
-// setSidebarOpen, before React re-renders with the new open state.
-const SIDEBAR_TOGGLE_MS = 250;
+// The sidebar slides with a transition only on an explicit open/close; the
+// first paint and window resizes snap into place (duration defaults to 0ms).
+const SIDEBAR_TOGGLE_MS = 220;
 
 function useSidebarToggleTransition() {
   useEffect(() => {
@@ -48,92 +46,54 @@ function useSidebarToggleTransition() {
   }, []);
 }
 
-function MobileSidebarOverlay() {
-  const sidebarOpen = useUIStore((state) => state.sidebarOpen);
-
-  if (!sidebarOpen) return null;
-
-  return (
-    <div
-      className={styles.overlay}
-      onClick={() => useUIStore.getState().setSidebarOpen(false)}
-      aria-hidden="true"
-    />
-  );
-}
-
-export interface LayoutProps extends HeaderProps {
-  children: ReactNode;
-  className?: string;
-  contentClassName?: string;
-  showHeader?: boolean;
-}
-
-export function Layout({
-  children,
-  isAuthPage = false,
-  className,
-  contentClassName,
-  showHeader = true,
-}: LayoutProps) {
-  const [sidebarContent, setSidebarContent] = useState<ReactNode | null>(null);
+// The signed-in app shell: one persistent sidebar (threads or settings
+// sections, depending on the route) beside a title bar and the routed page.
+// It mounts once, so navigating only swaps the outlet and the sidebar body.
+export function Layout({ children }: { children: ReactNode }) {
   const sidebarOpen = useUIStore((state) => state.sidebarOpen);
   const isMobile = useIsMobile();
-  // Desktop-only gating lives in CSS (media query on main--pushed) so the push
-  // can never disagree with the scrim/titlebar when JS isMobile state goes stale
-  const shouldPushContent = !!sidebarContent && sidebarOpen;
 
   useSidebarWidthVar();
   useSidebarToggleTransition();
 
+  // The open state is persisted for the docked desktop sidebar; on a phone the
+  // drawer should never greet you open over the page.
+  useMountEffect(() => {
+    if (isMobileViewport()) useUIStore.getState().setSidebarOpen(false);
+  });
+
   useSwipeGesture({
     onSwipeRight: () => useUIStore.getState().setSidebarOpen(true),
     onSwipeLeft: () => sidebarOpen && useUIStore.getState().setSidebarOpen(false),
-    enabled: isMobile && !!sidebarContent,
+    enabled: isMobile,
   });
 
-  const setSidebar = useCallback((content: ReactNode | null) => {
-    setSidebarContent(content);
-  }, []);
-
-  const contextValue = useMemo<LayoutContextValue>(
-    () => ({
-      sidebar: sidebarContent,
-      setSidebar,
-    }),
-    [setSidebar, sidebarContent],
-  );
-
   return (
-    <LayoutContext.Provider value={contextValue}>
-      <div className={clsx(styles.layout, className)}>
-        <Link
-          href="#main-content"
-          variant="unstyled"
-          className={clsx('sr-only', styles['skip-link'])}
-        >
-          Skip to main content
-        </Link>
+    <div className={styles.layout}>
+      <Link
+        href="#main-content"
+        variant="unstyled"
+        className={clsx('sr-only', styles['skip-link'])}
+      >
+        Skip to main content
+      </Link>
+
+      {sidebarOpen && (
+        <div
+          className={styles.scrim}
+          onClick={() => useUIStore.getState().setSidebarOpen(false)}
+          aria-hidden="true"
+        />
+      )}
+
+      <AppSidebar />
+
+      <div className={styles.column}>
         <TitleBar />
-        {showHeader && <Header isAuthPage={isAuthPage} />}
-
-        <div className={styles.body}>
-          {sidebarContent && <MobileSidebarOverlay />}
-
-          {sidebarContent ? <div className={styles['sidebar-slot']}>{sidebarContent}</div> : null}
-
-          <main
-            id="main-content"
-            className={clsx(
-              styles.main,
-              shouldPushContent && styles['main--pushed'],
-              contentClassName,
-            )}
-          >
-            {children}
-          </main>
-        </div>
+        <main id="main-content" className={styles.main}>
+          {children}
+        </main>
       </div>
-    </LayoutContext.Provider>
+    </div>
   );
 }

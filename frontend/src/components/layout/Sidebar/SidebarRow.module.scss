@@ -88,12 +88,7 @@
   align-items: center;
   font-variant-numeric: tabular-nums;
   color: var(--theme-text-quaternary);
-  opacity: 1;
-  transition: opacity var(--duration-base);
-
-  &--hidden {
-    opacity: 0;
-  }
+  transition: opacity var(--duration-fast);
 }
 
 .dropdown-btn {
@@ -105,19 +100,71 @@
   padding: var(--space-0-5);
   color: var(--theme-text-quaternary);
   opacity: 0;
-  transition: all var(--duration-base);
+  transition:
+    opacity var(--duration-fast),
+    color var(--duration-fast);
 
   @include responsive.hover {
     color: var(--theme-text-primary);
   }
+}
 
-  // Group-hover reveal: hovering anywhere on the row surfaces the button
-  .row:hover & {
+// Row actions: hover, keyboard focus, the active row and an open menu swap the
+// timestamp for the options button. Children opt into the same swap with
+// data-reveal="hover" (shown only then) or data-reveal="rest" (hidden then).
+// Pure CSS, so hovering never re-renders the list.
+.row [data-reveal='hover'] {
+  display: none;
+}
+
+@mixin revealed {
+  .timestamp {
+    opacity: 0;
+  }
+
+  .dropdown-btn {
+    opacity: 1;
+  }
+}
+
+.row--revealed {
+  @include revealed;
+}
+
+.row:focus-within {
+  @include revealed;
+}
+
+@include responsive.media('not-touch') {
+  .row:hover {
+    @include revealed;
+
+    [data-reveal='hover'] {
+      display: flex;
+    }
+
+    [data-reveal='rest'] {
+      display: none;
+    }
+  }
+}
+
+// Touch has no hover: keep the controls a tap away.
+@include responsive.media('touch') {
+  .timestamp {
+    display: none;
+  }
+
+  .dropdown-btn {
     opacity: 1;
   }
 
-  &--visible {
-    opacity: 1;
+  .row [data-reveal='hover'] {
+    display: flex;
+  }
+
+  .row [data-reveal='rest'] {
+    display: none;
   }
 }
 

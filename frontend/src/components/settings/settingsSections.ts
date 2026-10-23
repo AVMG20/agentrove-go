@@ -1,45 +1,50 @@
 import type { LucideIcon } from 'lucide-react';
 import {
-  Settings2,
-  Zap,
-  UserCircle,
+  AppWindow,
+  Clock,
+  FolderOpen,
+  GitBranch,
   Key,
   ScrollText,
-  Clock,
-  GitBranch,
-  FolderOpen,
-  AppWindow,
+  Settings2,
+  UserCircle,
+  Zap,
 } from 'lucide-react';
 
-export type TabKey =
+// Each section is a route: /settings/<id>.
+export type SettingsSectionId =
   | 'general'
   | 'workspaces'
   | 'skills'
   | 'personas'
-  | 'stream_actions'
+  | 'stream-actions'
   | 'automations'
   | 'artifacts'
-  | 'env_vars'
+  | 'env-vars'
   | 'instructions';
 
-export interface SettingsNavItem {
-  id: TabKey;
+export interface SettingsSection {
+  id: SettingsSectionId;
   label: string;
   icon: LucideIcon;
 }
 
-export const SETTINGS_NAV: SettingsNavItem[] = [
+export const SETTINGS_SECTIONS: SettingsSection[] = [
   { id: 'general', label: 'General', icon: Settings2 },
   { id: 'workspaces', label: 'Workspaces', icon: FolderOpen },
   { id: 'skills', label: 'Skills', icon: Zap },
   { id: 'personas', label: 'Personas', icon: UserCircle },
-  { id: 'stream_actions', label: 'Stream Actions', icon: GitBranch },
+  { id: 'stream-actions', label: 'Stream Actions', icon: GitBranch },
   { id: 'automations', label: 'Automations', icon: Clock },
   { id: 'artifacts', label: 'Artifacts', icon: AppWindow },
-  { id: 'env_vars', label: 'Env Variables', icon: Key },
+  { id: 'env-vars', label: 'Env Variables', icon: Key },
   { id: 'instructions', label: 'Instructions', icon: ScrollText },
 ];
 
-export const TAB_LABELS: Record<TabKey, string> = Object.fromEntries(
-  SETTINGS_NAV.map((item) => [item.id, item.label]),
-) as Record<TabKey, string>;
+export const DEFAULT_SETTINGS_SECTION: SettingsSectionId = 'general';
+
+export function findSettingsSection(id: string | undefined): SettingsSection | undefined {
+  return SETTINGS_SECTIONS.find((section) => section.id === id);
+}
+
+export const settingsPath = (id: SettingsSectionId = DEFAULT_SETTINGS_SECTION) => `/settings/${id}`;

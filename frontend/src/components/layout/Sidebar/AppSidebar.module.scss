@@ -1,0 +1,107 @@
+@use '@/styles/globals/typography' as type;
+@use '@/styles/globals/animations' as anim;
+@use '@/styles/globals/controls' as controls;
+@use '@/styles/globals/responsive' as responsive;
+@use '@/styles/globals/zlayer' as z;
+
+.sidebar {
+  position: relative;
+  display: flex;
+  height: 100%;
+  width: var(--sidebar-width);
+  flex-shrink: 0;
+  flex-direction: column;
+  border-right: 1px solid var(--theme-border);
+  background-color: var(--theme-surface-secondary);
+  transition-duration: var(--sidebar-transition-duration, 0ms);
+  transition-timing-function: var(--easing-in-out);
+
+  // Desktop: docked in the flow; closing slides it out and the page takes the room.
+  @include responsive.media('desktop') {
+    margin-left: calc(var(--sidebar-width) * -1);
+    transition-property: margin-left;
+
+    &--open {
+      margin-left: 0;
+    }
+  }
+
+  // Mobile: a drawer over the page (the shell adds a scrim behind it).
+  @include responsive.media('mobile') {
+    @include z.z('drawer');
+    position: fixed;
+    inset: 0 auto 0 0;
+    width: min(var(--sidebar-width), 85vw);
+    transform: translateX(-100%);
+    transition-property: transform;
+    box-shadow: var(--shadow-strong);
+
+    // none, not translateX(0): a transform would become the containing block
+    // for the row menus' position: fixed.
+    &--open {
+      transform: none;
+    }
+  }
+}
+
+.header {
+  display: flex;
+  height: calc(var(--space-10) + var(--safe-area-top));
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding: var(--safe-area-top) var(--space-2) 0 var(--space-3);
+}
+
+.brand {
+  @include controls.focus-ring;
+  @include anim.transition-colors;
+  @include type.type-noselect;
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: var(--space-2);
+  border-radius: var(--radius-md);
+  padding: var(--space-1) var(--space-2);
+  margin-left: calc(var(--space-2) * -1);
+  color: var(--theme-text-primary);
+
+  @include responsive.hover {
+    background-color: var(--theme-surface-hover);
+  }
+}
+
+.brand-name {
+  @include type.type-body(600);
+  @include type.type-overflow;
+}
+
+.logo {
+  height: var(--space-4);
+  width: var(--space-4);
+  flex-shrink: 0;
+
+  &--on-light {
+    display: block;
+
+    :global([data-theme='dark']) & {
+      display: none;
+    }
+  }
+
+  &--on-dark {
+    display: none;
+
+    :global([data-theme='dark']) & {
+      display: block;
+    }
+  }
+}
+
+.footer {
+  flex-shrink: 0;
+  border-top: 1px solid var(--theme-border);
+  padding: var(--space-2) var(--space-3);
+  padding-bottom: calc(var(--space-2) + var(--safe-area-bottom, 0px));
+}

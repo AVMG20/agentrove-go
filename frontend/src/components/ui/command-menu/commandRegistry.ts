@@ -18,6 +18,7 @@ import {
   Settings,
 } from 'lucide-react';
 import { useUIStore } from '@/store/uiStore';
+import { settingsPath } from '@/components/settings/settingsSections';
 import { useChatStore } from '@/store/chatStore';
 import { sandboxService } from '@/services/sandboxService';
 import { queryKeys } from '@/hooks/queries/queryKeys';
@@ -336,7 +337,7 @@ export function executeCommand(
     ui.setPendingMenuMode('themes');
     ui.setCommandMenuOpen(true);
   } else if (cmd.id === 'open-settings') {
-    navigate('/settings');
+    navigate(settingsPath());
   } else if (cmd.id === 'switch-branch') {
     if (!gitTarget.sandboxId) {
       toast.error('No sandbox connected');

@@ -1,0 +1,67 @@
+@use '@/styles/globals/colors' as colors;
+@use '@/styles/globals/typography' as type;
+@use '@/styles/globals/animations' as anim;
+@use '@/styles/globals/responsive' as responsive;
+@use '@/styles/globals/zlayer' as z;
+
+.shell {
+  display: flex;
+  height: 100vh;
+  height: 100dvh;
+  flex-direction: column;
+  background-color: var(--theme-surface-secondary);
+}
+
+.header {
+  @include z.z('titlebar');
+  display: flex;
+  height: calc(var(--space-10) + var(--safe-area-top));
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: space-between;
+  padding-inline: var(--space-4);
+  padding-top: var(--safe-area-top);
+}
+
+.main {
+  min-height: 0;
+  flex: 1;
+  overflow-y: auto;
+}
+
+.icon {
+  height: var(--space-3-5);
+  width: var(--space-3-5);
+}
+
+.tooltip {
+  display: flex;
+}
+
+.theme-toggle {
+  @include anim.transition-colors;
+  border-radius: var(--radius-full);
+  padding: var(--space-1-5);
+  color: var(--theme-text-tertiary);
+
+  @include responsive.hover {
+    background-color: var(--theme-surface-hover);
+    color: var(--theme-text-primary);
+  }
+}
+
+.back {
+  @include type.type-default;
+  @include anim.transition-colors;
+  display: flex;
+  align-items: center;
+  gap: var(--space-1-5);
+  border-radius: var(--radius-lg);
+  padding: var(--space-1-5) var(--space-2);
+  color: var(--theme-text-tertiary);
+
+  @include responsive.hover {
+    background-color: var(--theme-surface-hover);
+    color: var(--theme-text-primary);
+  }
+}

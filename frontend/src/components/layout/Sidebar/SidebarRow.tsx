@@ -8,6 +8,7 @@ import styles from './SidebarRow.module.scss';
 interface SidebarRowProps {
   ref?: Ref<HTMLDivElement>;
   isActive: boolean;
+  // Keep the row actions visible (dropdown open); hover/focus reveal them via CSS.
   isRevealed: boolean;
   leading?: ReactNode;
   title: ReactNode;
@@ -15,8 +16,6 @@ interface SidebarRowProps {
   timestamp: string;
   dropdownLabel: string;
   onDropdownClick: (e: MouseEvent<HTMLButtonElement>) => void;
-  onMouseEnter: () => void;
-  onMouseLeave: () => void;
 }
 
 export function SidebarRow({
@@ -29,15 +28,15 @@ export function SidebarRow({
   timestamp,
   dropdownLabel,
   onDropdownClick,
-  onMouseEnter,
-  onMouseLeave,
 }: SidebarRowProps) {
   return (
     <div
       ref={ref}
-      className={clsx(styles.row, isActive && stateClasses.ACTIVE)}
-      onMouseEnter={onMouseEnter}
-      onMouseLeave={onMouseLeave}
+      className={clsx(
+        styles.row,
+        isActive && stateClasses.ACTIVE,
+        (isRevealed || isActive) && styles['row--revealed'],
+      )}
     >
       {/* Pad for timestamp/dropdown so long titles truncate before them. */}
       <div className={styles['title-col']}>
@@ -49,15 +48,13 @@ export function SidebarRow({
       </div>
 
       {/* Timestamp; hides on hover for the dropdown. Status is on the leading icon. */}
-      <span className={clsx(styles.timestamp, isRevealed && styles['timestamp--hidden'])}>
-        {timestamp}
-      </span>
+      <span className={styles.timestamp}>{timestamp}</span>
 
       <Button
         onClick={onDropdownClick}
         onMouseDown={(e) => e.stopPropagation()}
         variant="unstyled"
-        className={clsx(styles['dropdown-btn'], isRevealed && styles['dropdown-btn--visible'])}
+        className={styles['dropdown-btn']}
         aria-label={dropdownLabel}
       >
         <MoreHorizontal className={styles['dropdown-icon']} />

@@ -1,6 +1,6 @@
 import { memo, type ReactNode } from 'react';
 import clsx from 'clsx';
-import { Layout } from '@/components/layout/Layout/Layout';
+import { AuthShell } from '@/components/auth/AuthShell/AuthShell';
 import iconDark from '/assets/images/icon-dark.svg';
 import iconLight from '/assets/images/icon-white.svg';
 import styles from './AuthPageLayout.module.scss';
@@ -17,7 +17,7 @@ export const AuthPageLayout = memo(function AuthPageLayout({
   children,
 }: AuthPageLayoutProps) {
   return (
-    <Layout isAuthPage={true}>
+    <AuthShell>
       <div className={styles.page}>
         <div className={styles.container}>
           <div className={styles.content}>
@@ -42,6 +42,6 @@ export const AuthPageLayout = memo(function AuthPageLayout({
           </div>
         </div>
       </div>
-    </Layout>
+    </AuthShell>
   );
 });

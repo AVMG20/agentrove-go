@@ -1,5 +1,5 @@
-import { useState, useCallback, useEffect, useRef, Suspense } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { useState, useCallback, useEffect, useRef, Suspense, type ReactNode } from 'react';
+import { Navigate, useParams } from 'react-router-dom';
 import type { UserSettings, UserSettingsUpdate } from '@/types/user.types';
 import type { ApiFieldKey } from '@/types/settings.types';
 import { useDeleteAllChatsMutation } from '@/hooks/queries/useChatQueries';
@@ -11,15 +11,18 @@ import toast from 'react-hot-toast';
 import { GeneralSettingsTab } from '@/components/settings/tabs/GeneralSettingsTab/GeneralSettingsTab';
 import { SkillsSettingsTab } from '@/components/settings/tabs/SkillsSettingsTab/SkillsSettingsTab';
 import { SettingsProvider } from '@/contexts/SettingsContext';
-import { useCurrentUserQuery } from '@/hooks/queries/useAuthQueries';
-import { useAuthStore } from '@/store/authStore';
-import { useLogout } from '@/hooks/useLogout';
+import { ChatProvider } from '@/contexts/ChatContext';
+import { CommandMenu } from '@/components/ui/command-menu/CommandMenu';
+import { useCommandMenu } from '@/hooks/useCommandMenu';
 import { getGeneralSecretFields } from '@/utils/settings';
 import { lazyNamed } from '@/utils/lazyNamed';
-import { SettingsSidebarNav } from './SettingsSidebarNav';
-import { SettingsMobileNav } from './SettingsMobileNav';
-import { TAB_LABELS, type TabKey } from './settingsNavItems';
+import {
+  findSettingsSection,
+  settingsPath,
+  type SettingsSectionId,
+} from '@/components/settings/settingsSections';
 import styles from './SettingsPage.module.scss';
+
 const PersonasSettingsTab = lazyNamed(
   () => import('@/components/settings/tabs/PersonasSettingsTab/PersonasSettingsTab'),
   'PersonasSettingsTab',
@@ -58,20 +61,12 @@ const tabLoadingFallback = (
   </div>
 );
 
+// The main pane of /settings/:section. The section list lives in the app
+// sidebar (SettingsNav); this renders the selected section.
 export function SettingsPage() {
-  const navigate = useNavigate();
-  const location = useLocation();
-  const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
-  const { data: currentUser } = useCurrentUserQuery({ enabled: isAuthenticated });
-  const userDisplayName = currentUser?.username || currentUser?.email || '';
-  const logoutMutation = useLogout();
-  // Deep-link tab from location.state.
-  const [activeTab, setActiveTab] = useState<TabKey>(() => {
-    const requested = (location.state as { tab?: TabKey } | null)?.tab;
-    return requested && requested in TAB_LABELS ? requested : 'general';
-  });
+  const section = findSettingsSection(useParams().section);
+  useCommandMenu();
   const [isDeleteAllDialogOpen, setIsDeleteAllDialogOpen] = useState(false);
-  const [mobileNavOpen, setMobileNavOpen] = useState(false);
 
   const generalSecretFields = getGeneralSecretFields();
 
@@ -194,10 +189,7 @@ export function SettingsPage() {
 
   const errorMessage = getErrorMessage(fetchError) ?? null;
 
-  const handleTabChange = useCallback((tab: TabKey) => {
-    setActiveTab(tab);
-    setMobileNavOpen(false);
-  }, []);
+  if (!section) return <Navigate to={settingsPath()} replace />;
 
   if (fetchError && !settings) {
     return (
@@ -216,132 +208,54 @@ export function SettingsPage() {
     );
   }
 
-  return (
-    <div className={styles.settings}>
-      <SettingsSidebarNav
-        activeTab={activeTab}
-        onTabChange={handleTabChange}
-        onBack={() => navigate('/')}
-        userDisplayName={userDisplayName}
-        onOpenSettings={() => navigate('/settings')}
-        onSignOut={() => logoutMutation.mutate()}
+  const panels: Record<SettingsSectionId, () => ReactNode> = {
+    general: () => (
+      <GeneralSettingsTab
+        fields={generalSecretFields}
+        settings={localSettings}
+        revealedFields={revealedFields}
+        onPersistSecret={handlePersistSecret}
+        onToggleVisibility={toggleFieldVisibility}
+        onDeleteAllChats={handleDeleteAllChats}
+        onNotificationsEnabledChange={handleNotificationsEnabledChange}
+        onTitleModelChange={handleTitleModelChange}
       />
+    ),
+    workspaces: () => <WorkspacesSettingsTab />,
+    skills: () => <SkillsSettingsTab />,
+    personas: () => <PersonasSettingsTab />,
+    'stream-actions': () => <StreamActionsSettingsTab />,
+    automations: () => <AutomationsSettingsTab />,
+    artifacts: () => <ArtifactsSettingsTab />,
+    'env-vars': () => <EnvVarsSettingsTab />,
+    instructions: () => (
+      <InstructionsSettingsTab
+        instructions={localSettings.custom_instructions || ''}
+        onPersist={handlePersistInstructions}
+      />
+    ),
+  };
 
-      <div className={styles.main}>
-        <SettingsMobileNav
-          activeTab={activeTab}
-          onTabChange={handleTabChange}
-          onBack={() => navigate('/')}
-          mobileNavOpen={mobileNavOpen}
-          onToggleNav={() => setMobileNavOpen(!mobileNavOpen)}
-        />
-
-        <div className={styles.content}>
-          <div className={styles['content-inner']}>
-            {errorMessage && (
-              <div className={styles['error-box']}>
-                <p className={styles['error-box-text']}>{errorMessage}</p>
-              </div>
-            )}
-
-            <SettingsProvider
-              localSettings={localSettings}
-              setLocalSettings={
-                setLocalSettings as React.Dispatch<React.SetStateAction<UserSettings>>
-              }
-              persistSettings={persistSettings}
-              settings={settings}
-            >
-              <ErrorBoundary>
-                <div className={styles.panels}>
-                  {activeTab === 'general' && (
-                    <div role="tabpanel" id="general-panel" aria-labelledby="general-tab">
-                      <GeneralSettingsTab
-                        fields={generalSecretFields}
-                        settings={localSettings}
-                        revealedFields={revealedFields}
-                        onPersistSecret={handlePersistSecret}
-                        onToggleVisibility={toggleFieldVisibility}
-                        onDeleteAllChats={handleDeleteAllChats}
-                        onNotificationsEnabledChange={handleNotificationsEnabledChange}
-                        onTitleModelChange={handleTitleModelChange}
-                      />
-                    </div>
-                  )}
-
-                  {activeTab === 'workspaces' && (
-                    <div role="tabpanel" id="workspaces-panel" aria-labelledby="workspaces-tab">
-                      <Suspense fallback={tabLoadingFallback}>
-                        <WorkspacesSettingsTab />
-                      </Suspense>
-                    </div>
-                  )}
-
-                  {activeTab === 'skills' && (
-                    <div role="tabpanel" id="skills-panel" aria-labelledby="skills-tab">
-                      <SkillsSettingsTab />
-                    </div>
-                  )}
-
-                  {activeTab === 'personas' && (
-                    <div role="tabpanel" id="personas-panel" aria-labelledby="personas-tab">
-                      <Suspense fallback={tabLoadingFallback}>
-                        <PersonasSettingsTab />
-                      </Suspense>
-                    </div>
-                  )}
-
-                  {activeTab === 'stream_actions' && (
-                    <div
-                      role="tabpanel"
-                      id="stream_actions-panel"
-                      aria-labelledby="stream_actions-tab"
-                    >
-                      <Suspense fallback={tabLoadingFallback}>
-                        <StreamActionsSettingsTab />
-                      </Suspense>
-                    </div>
-                  )}
-
-                  {activeTab === 'automations' && (
-                    <div role="tabpanel" id="automations-panel" aria-labelledby="automations-tab">
-                      <Suspense fallback={tabLoadingFallback}>
-                        <AutomationsSettingsTab />
-                      </Suspense>
-                    </div>
-                  )}
-
-                  {activeTab === 'artifacts' && (
-                    <div role="tabpanel" id="artifacts-panel" aria-labelledby="artifacts-tab">
-                      <Suspense fallback={tabLoadingFallback}>
-                        <ArtifactsSettingsTab />
-                      </Suspense>
-                    </div>
-                  )}
-
-                  {activeTab === 'env_vars' && (
-                    <div role="tabpanel" id="env_vars-panel" aria-labelledby="env_vars-tab">
-                      <Suspense fallback={tabLoadingFallback}>
-                        <EnvVarsSettingsTab />
-                      </Suspense>
-                    </div>
-                  )}
-
-                  {activeTab === 'instructions' && (
-                    <div role="tabpanel" id="instructions-panel" aria-labelledby="instructions-tab">
-                      <Suspense fallback={tabLoadingFallback}>
-                        <InstructionsSettingsTab
-                          instructions={localSettings.custom_instructions || ''}
-                          onPersist={handlePersistInstructions}
-                        />
-                      </Suspense>
-                    </div>
-                  )}
-                </div>
-              </ErrorBoundary>
-            </SettingsProvider>
+  return (
+    <div className={styles.content}>
+      <div className={styles['content-inner']}>
+        {errorMessage && (
+          <div className={styles['error-box']}>
+            <p className={styles['error-box-text']}>{errorMessage}</p>
           </div>
-        </div>
+        )}
+
+        <SettingsProvider
+          localSettings={localSettings}
+          setLocalSettings={setLocalSettings as React.Dispatch<React.SetStateAction<UserSettings>>}
+          persistSettings={persistSettings}
+          settings={settings}
+        >
+          {/* Keyed so a crashed section recovers when you switch to another. */}
+          <ErrorBoundary key={section.id}>
+            <Suspense fallback={tabLoadingFallback}>{panels[section.id]()}</Suspense>
+          </ErrorBoundary>
+        </SettingsProvider>
       </div>
 
       <ConfirmDialog
@@ -353,6 +267,11 @@ export function SettingsPage() {
         confirmLabel="Delete All"
         cancelLabel="Cancel"
       />
+
+      {/* Search and the command palette work here too; no chat is in scope. */}
+      <ChatProvider>
+        <CommandMenu />
+      </ChatProvider>
     </div>
   );
 }

@@ -19,7 +19,6 @@ interface SidebarChatItemProps {
   chat: Chat;
   isSelected: boolean;
   isActive?: boolean;
-  isHovered: boolean;
   isDropdownOpen: boolean;
   isChatStreaming: boolean;
   isChatBlocked: boolean;
@@ -30,8 +29,6 @@ interface SidebarChatItemProps {
   canOpenInSplit?: boolean;
   onDropdownClick: (e: React.MouseEvent<HTMLButtonElement>, chat: Chat) => void;
   onWorkspaceBadgeClick: (e: React.MouseEvent<HTMLButtonElement>, workspaceId: string) => void;
-  onMouseEnter: (chatId: string) => void;
-  onMouseLeave: () => void;
   onToggleSubThreads?: (chatId: string) => void;
   isSubThreadsExpanded?: boolean;
 }
@@ -40,7 +37,6 @@ export const SidebarChatItem = memo(function SidebarChatItem({
   chat,
   isSelected,
   isActive = isSelected,
-  isHovered,
   isDropdownOpen,
   isChatStreaming,
   isChatBlocked,
@@ -51,8 +47,6 @@ export const SidebarChatItem = memo(function SidebarChatItem({
   canOpenInSplit = false,
   onDropdownClick,
   onWorkspaceBadgeClick,
-  onMouseEnter,
-  onMouseLeave,
   onToggleSubThreads,
   isSubThreadsExpanded,
 }: SidebarChatItemProps) {
@@ -101,17 +95,17 @@ export const SidebarChatItem = memo(function SidebarChatItem({
       )}
     </span>
   ) : null;
-  // On sub-threaded rows the caret takes the slot on hover/expand — overlay the
-  // status dot on it (running shows as an amber dot, since there's no spinner here)
-  // so the persistent status never vanishes while sub-threads are open.
-  const showCaret = hasSubThreads && (isHovered || isSubThreadsExpanded);
-  const leadingIcon = showCaret ? (
+  // On sub-threaded rows the caret takes the slot on hover (CSS, via data-reveal)
+  // or while expanded — overlay the status dot on it (running shows as an amber
+  // dot, since there's no spinner here) so the status never vanishes.
+  const caret = hasSubThreads ? (
     <Button
       onClick={() => onToggleSubThreads(chat.id)}
       aria-expanded={isSubThreadsExpanded}
       aria-label={`${isSubThreadsExpanded ? 'Collapse' : 'Expand'} ${chat.sub_thread_count} sub-threads`}
       variant="unstyled"
       className={styles['caret-btn']}
+      data-reveal={isSubThreadsExpanded ? undefined : 'hover'}
     >
       <span className={styles['caret-slot']}>
         <ChevronRight
@@ -126,7 +120,8 @@ export const SidebarChatItem = memo(function SidebarChatItem({
         )}
       </span>
     </Button>
-  ) : statusLabel ? (
+  ) : null;
+  const restingIcon = statusLabel ? (
     // Wordless dot/spinner carries status; the word lives in a tooltip
     <FloatingTooltip content={statusLabel} className={styles['status-tooltip']}>
       {statusSlot}
@@ -134,13 +129,23 @@ export const SidebarChatItem = memo(function SidebarChatItem({
   ) : (
     statusSlot
   );
+  const leadingIcon = !caret ? (
+    restingIcon
+  ) : isSubThreadsExpanded ? (
+    caret
+  ) : (
+    <>
+      {caret}
+      <span data-reveal="rest" className={styles['resting-slot']}>
+        {restingIcon}
+      </span>
+    </>
+  );
   return (
     <SidebarRow
       ref={rowRef}
       isActive={isActive}
-      isRevealed={isHovered || isActive || isDropdownOpen}
-      onMouseEnter={() => onMouseEnter(chat.id)}
-      onMouseLeave={onMouseLeave}
+      isRevealed={isDropdownOpen}
       // Single leading slot keeps titles flush (caret vs icon+status).
       leading={leadingIcon}
       title={
@@ -158,6 +163,13 @@ export const SidebarChatItem = memo(function SidebarChatItem({
             isEmphasized={isActive || isUnread}
             isCurrent={isSelected}
             isWorking={isChatStreaming}
+            trailing={
+              // Resting sub-thread hint; the caret replaces it on hover.
+              hasSubThreads &&
+              !isSubThreadsExpanded && (
+                <CornerDownRight data-reveal="rest" className={styles['subthread-hint']} />
+              )
+            }
             onClick={(e) => {
               if (e.shiftKey && onOpenInSplit && canOpenInSplit && !isActive) {
                 e.preventDefault();
@@ -166,12 +178,6 @@ export const SidebarChatItem = memo(function SidebarChatItem({
               }
               onSelect(chat.id);
             }}
-            trailing={
-              // Resting sub-thread hint; caret covers this on hover/expand.
-              hasSubThreads &&
-              !isHovered &&
-              !isSubThreadsExpanded && <CornerDownRight className={styles['subthread-hint']} />
-            }
           />
         </FloatingTooltip>
       }

@@ -1,84 +1,86 @@
 @use '@/styles/globals/typography' as type;
 @use '@/styles/globals/animations' as anim;
+@use '@/styles/globals/controls' as controls;
 @use '@/styles/globals/responsive' as responsive;
 
 .nav {
-  display: none;
-  width: var(--space-64);
-  flex-shrink: 0;
+  display: flex;
+  min-height: 0;
+  flex: 1;
   flex-direction: column;
-  border-right: 1px solid var(--theme-border);
-  background-color: var(--theme-surface-secondary);
-
-  @include responsive.media('md-up') {
-    display: flex;
-  }
+  overflow-y: auto;
+  padding: var(--space-2) var(--space-3) var(--space-3);
 }
 
-.header {
+.top {
+  padding-bottom: var(--space-2);
   border-bottom: 1px solid var(--theme-border);
-  padding: var(--space-4) var(--space-5);
 }
 
 .back {
-  @include type.type-default;
+  @include type.type-body;
   @include anim.transition-colors;
+  @include controls.focus-ring;
   display: flex;
+  width: 100%;
   align-items: center;
-  gap: var(--space-1-5);
-  color: var(--theme-text-tertiary);
+  gap: var(--space-2);
+  border-radius: var(--radius-md);
+  padding: var(--space-1-5) var(--space-2);
+  color: var(--theme-text-secondary);
 
   @include responsive.hover {
+    background-color: var(--theme-surface-hover);
     color: var(--theme-text-primary);
+
+    .back-icon {
+      transform: translateX(-2px);
+    }
   }
 }
 
 .back-icon {
-  height: var(--space-3);
-  width: var(--space-3);
+  height: var(--space-4);
+  width: var(--space-4);
+  flex-shrink: 0;
   transition: transform var(--duration-base);
-
-  // group-hover:-translate-x-0.5 — nudge the chevron when the Back button is hovered
-  .back:hover & {
-    transform: translateX(-2px);
-  }
 }
 
-.title {
-  @include type.type-large(600);
-  margin-top: var(--space-3);
-  color: var(--theme-text-primary);
+.heading {
+  @include type.type-meta(500);
+  padding: var(--space-4) var(--space-2) var(--space-1-5);
+  color: var(--theme-text-tertiary);
 }
 
 .list {
-  flex: 1;
-  overflow-y: auto;
-  padding: var(--space-3);
-
-  > * + * {
-    margin-top: 1px;
-  }
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
 }
 
 .item {
   @include type.type-body;
   @include anim.transition-colors;
+  @include controls.focus-ring;
   display: flex;
-  width: 100%;
   align-items: center;
-  gap: var(--space-2-5);
+  gap: var(--space-2);
   border-radius: var(--radius-md);
   padding: var(--space-1-5) var(--space-2);
   color: var(--theme-text-secondary);
+  text-decoration: none;
 
-  &:not([aria-selected='true']) {
+  &:not([aria-current='page']) {
     @include responsive.hover {
       background-color: var(--theme-surface-hover);
       color: var(--theme-text-primary);
     }
   }
 
-  &[aria-selected='true'] {
+  &[aria-current='page'] {
     background-color: var(--theme-surface-active);
     color: var(--theme-text-primary);
     font-weight: 500;
@@ -86,19 +88,12 @@
 }
 
 .item-icon {
-  @include anim.transition-colors;
   height: var(--space-4);
   width: var(--space-4);
   flex-shrink: 0;
   color: var(--theme-text-tertiary);
 
-  .item[aria-selected='true'] & {
+  .item[aria-current='page'] & {
     color: var(--theme-text-primary);
   }
-}
-
-.footer {
-  flex-shrink: 0;
-  border-top: 1px solid var(--theme-border);
-  padding: var(--space-2-5) var(--space-3);
 }

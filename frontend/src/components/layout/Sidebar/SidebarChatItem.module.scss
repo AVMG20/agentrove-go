@@ -80,6 +80,12 @@
   }
 }
 
+.resting-slot {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+}
+
 .subthread-hint {
   height: var(--space-3);
   width: var(--space-3);

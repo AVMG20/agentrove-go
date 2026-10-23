@@ -4,8 +4,6 @@ import { lazyNamed } from '@/utils/lazyNamed';
 import { useMountEffect } from '@/hooks/useMountEffect';
 import { useNavigate, useLocation } from 'react-router-dom';
 import toast from 'react-hot-toast';
-import { Sidebar } from '@/components/layout/Sidebar/Sidebar';
-import { useLayoutSidebar } from '@/components/layout/Layout/layoutState';
 import { Input as ChatInput } from '@/components/chat/message-input/Input';
 import { WorkspaceSelector } from '@/components/chat/workspace-selector/WorkspaceSelector';
 import { BranchWorktreeSelector } from '@/components/chat/worktree-selector/BranchWorktreeSelector';
@@ -252,16 +250,6 @@ export function LandingPage() {
     ),
     [selectedWorkspaceId, handleWorkspaceChange, isLoading, isAuthenticated],
   );
-
-  const sidebarContent = useMemo(() => {
-    if (!isAuthenticated) return null;
-
-    return (
-      <Sidebar workspaces={workspaces} selectedChatId={null} onChatSelect={handleChatSelect} />
-    );
-  }, [workspaces, handleChatSelect, isAuthenticated]);
-
-  useLayoutSidebar(sidebarContent);
 
   const renderView = useCallback(
     (tileId: TileId, isVisible: boolean): ReactNode => {

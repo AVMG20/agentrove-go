@@ -1,7 +1,5 @@
-import { useEffect, useMemo, useCallback, useRef, ReactNode } from 'react';
+import { useEffect, useCallback, useRef, ReactNode } from 'react';
 import { useParams, Navigate, useNavigate } from 'react-router-dom';
-import { Sidebar } from '@/components/layout/Sidebar/Sidebar';
-import { useLayoutSidebar } from '@/components/layout/Layout/layoutState';
 import { useUIStore } from '@/store/uiStore';
 import { useChatStore } from '@/store/chatStore';
 import { useCommandMenu } from '@/hooks/useCommandMenu';
@@ -162,33 +160,6 @@ export function ChatPage() {
       activeAgentTile: 'agent:primary',
     });
   }
-
-  const handleChatSelect = useCallback(
-    (selectedChatId: string) => {
-      navigate(`/chat/${selectedChatId}`);
-    },
-    [navigate],
-  );
-
-  const sidebarContent = useMemo(() => {
-    return (
-      <Sidebar
-        workspaces={workspaces}
-        selectedChatId={chatId || null}
-        selectedChatWorkspaceId={currentChat?.workspace_id}
-        selectedChatParentId={currentChat?.parent_chat_id}
-        onChatSelect={handleChatSelect}
-      />
-    );
-  }, [
-    workspaces,
-    chatId,
-    currentChat?.workspace_id,
-    currentChat?.parent_chat_id,
-    handleChatSelect,
-  ]);
-
-  useLayoutSidebar(sidebarContent);
 
   const renderView = useCallback(
     (tileId: TileId, isVisible: boolean): ReactNode => {

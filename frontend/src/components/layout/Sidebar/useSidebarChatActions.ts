@@ -21,8 +21,6 @@ interface UseSidebarChatActionsParams {
   isMobile: boolean;
   navigate: NavigateFunction;
   scrollContainerRef: RefObject<HTMLDivElement | null>;
-  onChatSelect: (chatId: string) => void;
-  onDeleteChat?: (chatId: string) => void;
 }
 
 export function useSidebarChatActions({
@@ -31,10 +29,7 @@ export function useSidebarChatActions({
   isMobile,
   navigate,
   scrollContainerRef,
-  onChatSelect,
-  onDeleteChat,
 }: UseSidebarChatActionsParams) {
-  const [hoveredChatId, setHoveredChatId] = useState<string | null>(null);
   const [chatToDelete, setChatToDelete] = useState<string | null>(null);
   const [chatToRename, setChatToRename] = useState<Chat | null>(null);
   const [dropdown, setDropdown] = useState<{
@@ -98,10 +93,11 @@ export function useSidebarChatActions({
     [toggleSubThreadExpand],
   );
 
+  const onChatSelect = useCallback((chatId: string) => navigate(`/chat/${chatId}`), [navigate]);
+
   const handleChatSelect = useCallback(
     (chatId: string) => {
       onChatSelect(chatId);
-      setHoveredChatId(null);
       if (isMobile) {
         useUIStore.getState().setSidebarOpen(false);
       }
@@ -125,7 +121,6 @@ export function useSidebarChatActions({
         return;
       }
       useUIStore.getState().openChatInSplit(chatId);
-      setHoveredChatId(null);
     },
     [canOpenChatInSplit, onChatSelect],
   );
@@ -143,14 +138,6 @@ export function useSidebarChatActions({
   const handleDeleteChat = useCallback((chatId: string) => {
     setChatToDelete(chatId);
     setDropdown(null);
-  }, []);
-
-  const handleChatMouseEnter = useCallback((chatId: string) => {
-    setHoveredChatId(chatId);
-  }, []);
-
-  const handleChatMouseLeave = useCallback(() => {
-    setHoveredChatId(null);
   }, []);
 
   const confirmDeleteChat = useCallback(async () => {
@@ -172,19 +159,16 @@ export function useSidebarChatActions({
       }
       // Release any pending File blobs held for this chat.
       useChatStore.getState().clearAttachedFilesForChat(chatToDelete);
-      onDeleteChat?.(chatToDelete);
     } catch {
       // toast already shown by mutateWithToast
     } finally {
       setChatToDelete(null);
     }
-  }, [chatToDelete, deleteChat, selectedChatId, selectedChatParentId, navigate, onDeleteChat]);
+  }, [chatToDelete, deleteChat, selectedChatId, selectedChatParentId, navigate]);
 
   const handleDropdownClick = useCallback((e: React.MouseEvent<HTMLButtonElement>, chat: Chat) => {
     e.stopPropagation();
     const rect = e.currentTarget.getBoundingClientRect();
-
-    setHoveredChatId(null);
 
     setDropdown((prev) => {
       if (prev?.chat.id === chat.id) {
@@ -248,7 +232,6 @@ export function useSidebarChatActions({
   );
 
   return {
-    hoveredChatId,
     dropdown,
     setDropdown,
     dropdownRef,
@@ -268,8 +251,6 @@ export function useSidebarChatActions({
     handleOpenInSplit,
     handleDropdownOpenInSplit,
     handleDeleteChat,
-    handleChatMouseEnter,
-    handleChatMouseLeave,
     confirmDeleteChat,
     handleDropdownClick,
     handleRenameClick,

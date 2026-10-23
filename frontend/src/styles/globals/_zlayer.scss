@@ -12,6 +12,8 @@ $layers: (
   'sidebar': 30,
   'titlebar': 40,
   // title bar — above content, below overlays
+  'drawer': 50,
+  // mobile sidebar drawer and its scrim — above the title bar
   'dropdown': 60,
   // dropdowns, popovers, anchored panels (matches legacy z-[60])
   'modal': 70,

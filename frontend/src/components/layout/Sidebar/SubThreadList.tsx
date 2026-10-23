@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useRef, useState } from 'react';
+import { memo, useEffect, useRef } from 'react';
 import { MoreHorizontal } from 'lucide-react';
 import { useSubThreadsQuery } from '@/hooks/queries/useChatQueries';
 import { useChatAgentKind } from '@/hooks/useChatAgentKind';
@@ -21,11 +21,8 @@ interface SubThreadRowProps {
   isStreaming: boolean;
   isBlocked: boolean;
   isCompleted: boolean;
-  isHovered: boolean;
   onSelect: (chatId: string) => void;
   onDropdownClick: (e: React.MouseEvent<HTMLButtonElement>, chat: Chat) => void;
-  onMouseEnter: (chatId: string) => void;
-  onMouseLeave: () => void;
 }
 
 const SubThreadRow = memo(function SubThreadRow({
@@ -34,11 +31,8 @@ const SubThreadRow = memo(function SubThreadRow({
   isStreaming,
   isBlocked,
   isCompleted,
-  isHovered,
   onSelect,
   onDropdownClick,
-  onMouseEnter,
-  onMouseLeave,
 }: SubThreadRowProps) {
   const agentKind = useChatAgentKind(thread.id, thread.session_agent_kind);
   // Same status language as top-level rows: red dot = needs you, braille spinner =
@@ -57,12 +51,7 @@ const SubThreadRow = memo(function SubThreadRow({
     if (isActive) rowRef.current?.scrollIntoView({ block: 'nearest' });
   }, [isActive]);
   return (
-    <div
-      ref={rowRef}
-      className={clsx(styles['subthread-row'], isActive && stateClasses.ACTIVE)}
-      onMouseEnter={() => onMouseEnter(thread.id)}
-      onMouseLeave={onMouseLeave}
-    >
+    <div ref={rowRef} className={clsx(styles['subthread-row'], isActive && stateClasses.ACTIVE)}>
       <div className={styles.connector} />
 
       <FloatingTooltip content={thread.title} className={styles['thread-tooltip']}>
@@ -94,20 +83,13 @@ const SubThreadRow = memo(function SubThreadRow({
 
       {/* Status now lives on the leading icon; the right slot shows the timestamp
           and hides on hover to reveal the dropdown. */}
-      <span
-        className={clsx(styles.timestamp, (isHovered || isActive) && styles['timestamp--hidden'])}
-      >
-        {getRelativeTime(thread.updated_at)}
-      </span>
+      <span className={styles.timestamp}>{getRelativeTime(thread.updated_at)}</span>
 
       <Button
         onClick={(e) => onDropdownClick(e, thread)}
         onMouseDown={(e) => e.stopPropagation()}
         variant="unstyled"
-        className={clsx(
-          styles['dropdown-btn'],
-          (isHovered || isActive) && styles['dropdown-btn--visible'],
-        )}
+        className={styles['dropdown-btn']}
         aria-label="Sub-thread options"
       >
         <MoreHorizontal className={styles['dropdown-icon']} />
@@ -138,10 +120,6 @@ export const SubThreadList = memo(function SubThreadList({
   completedChatIdSet,
 }: SubThreadListProps) {
   const { data: subThreads, isLoading, isError, refetch } = useSubThreadsQuery(parentChatId);
-  const [hoveredId, setHoveredId] = useState<string | null>(null);
-
-  const handleMouseEnter = useCallback((id: string) => setHoveredId(id), []);
-  const handleMouseLeave = useCallback(() => setHoveredId(null), []);
 
   if (isLoading || (!subThreads && !isError)) return null;
 
@@ -170,11 +148,8 @@ export const SubThreadList = memo(function SubThreadList({
           isStreaming={streamingChatIdSet.has(thread.id)}
           isBlocked={blockedChatIdSet.has(thread.id)}
           isCompleted={completedChatIdSet.has(thread.id)}
-          isHovered={hoveredId === thread.id}
           onSelect={onSelect}
           onDropdownClick={onDropdownClick}
-          onMouseEnter={handleMouseEnter}
-          onMouseLeave={handleMouseLeave}
         />
       ))}
     </div>

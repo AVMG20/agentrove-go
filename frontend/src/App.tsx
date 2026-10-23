@@ -1,4 +1,5 @@
-import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import { BrowserRouter, Navigate, Routes, Route } from 'react-router-dom';
+import { settingsPath } from '@/components/settings/settingsSections';
 import { useEffect, useState, Suspense } from 'react';
 import { lazyNamed } from '@/utils/lazyNamed';
 import { useMountEffect } from '@/hooks/useMountEffect';
@@ -124,8 +125,9 @@ function AppContent() {
               </AuthRoute>
             }
           />
+          <Route path="/settings" element={<Navigate to={settingsPath()} replace />} />
           <Route
-            path="/settings"
+            path="/settings/:section"
             element={
               <AuthRoute isAuthenticated={isSessionAuthenticated} requireAuth={true}>
                 <SettingsPage />
