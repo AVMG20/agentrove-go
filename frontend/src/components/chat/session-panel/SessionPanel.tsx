@@ -15,6 +15,7 @@ import {
   useGitFetchBaseMutation,
 } from '@/hooks/queries/useSandboxQueries';
 import { useBranchPullRequests } from '@/hooks/queries/useGitHubQueries';
+import { useBoxQuery } from '@/hooks/queries/useWorkspaceQueries';
 import { useBlockedChatIds } from '@/hooks/useBlockedChatIds';
 import { useIsChatWorking } from '@/hooks/useWorkingChatIds';
 import { useChatAgentKind } from '@/hooks/useChatAgentKind';
@@ -335,17 +336,23 @@ function ChangesCard({
   sandboxId,
   worktreeCwd,
   branch,
+  inBox,
 }: {
   chatId: string;
   sandboxId: string;
   worktreeCwd: string | undefined;
   branch: string;
+  inBox: boolean;
 }) {
   const { data: stats } = useGitDiffStatsQuery(sandboxId, worktreeCwd);
   const { mutate: fetchBase } = useGitFetchBaseMutation();
+  // Fetching runs git in the box; just looking at a chat shouldn't wake a
+  // stopped one, so wait until it runs anyway (the next turn).
+  const { data: box } = useBoxQuery();
+  const canFetch = !inBox || box?.state === 'running';
   useEffect(() => {
-    fetchBase({ sandboxId, cwd: worktreeCwd });
-  }, [fetchBase, sandboxId, worktreeCwd]);
+    if (canFetch) fetchBase({ sandboxId, cwd: worktreeCwd });
+  }, [fetchBase, sandboxId, worktreeCwd, canFetch]);
   const { openPR, mergedPR } = useBranchPullRequests(sandboxId, worktreeCwd, branch);
   if (!stats) return null;
   const hasUncommitted = stats.uncommitted.files_changed > 0;
@@ -451,6 +458,7 @@ export const SessionPanel = memo(function SessionPanel({
           sandboxId={chat.sandbox_id}
           worktreeCwd={worktreeCwd}
           branch={branch}
+          inBox={workspace?.sandbox_provider !== 'host'}
         />
       )}
     </aside>
