@@ -34,9 +34,21 @@ export interface UpdateWorkspaceRequest {
 export interface WorkspaceDiskUsage {
   workspace_id: string;
   files_bytes: number | null;
-  // What a Docker sandbox wrote outside the workspace: toolchains, caches.
-  sandbox_bytes: number | null;
-  total_bytes: number | null;
+}
+
+export type BoxState = 'running' | 'stopped' | 'none';
+
+// The user's one Docker box, which holds every Docker project.
+export interface BoxInfo {
+  // Docker is reachable; false on host-only setups.
+  available: boolean;
+  state: BoxState;
+  // A Claude turn is running, so it can't be stopped.
+  busy: boolean;
+  idle_for_seconds: number;
+  idle_ttl_seconds: number;
+  // What the box wrote outside home and projects (apt packages).
+  disk_bytes: number | null;
 }
 
 export interface WorkspaceResources {

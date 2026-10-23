@@ -1,6 +1,7 @@
 import { apiClient } from '@/lib/api';
 import { ensureResponse, serviceCall, buildQueryString } from '@/services/base/BaseService';
 import type {
+  BoxInfo,
   Workspace,
   WorkspaceDiskUsage,
   WorkspaceResources,
@@ -60,7 +61,27 @@ async function getDiskUsage(refresh = false): Promise<WorkspaceDiskUsage[]> {
   });
 }
 
+async function getBox(): Promise<BoxInfo> {
+  return serviceCall(async () => {
+    const response = await apiClient.get<BoxInfo>('/workspaces/box');
+    return ensureResponse(response, 'Failed to fetch box status');
+  });
+}
+
+// reset also discards the box's system layer (apt packages); home and
+// projects live on the host and are kept.
+async function stopBox(reset = false): Promise<BoxInfo> {
+  return serviceCall(async () => {
+    const response = await apiClient.post<BoxInfo>(
+      `/workspaces/box/stop${reset ? '?reset=true' : ''}`,
+    );
+    return ensureResponse(response, 'Failed to stop the box');
+  });
+}
+
 export const workspaceService = {
+  getBox,
+  stopBox,
   getDiskUsage,
   listWorkspaces,
   createWorkspace,

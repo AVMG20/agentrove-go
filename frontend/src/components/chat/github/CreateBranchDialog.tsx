@@ -30,7 +30,7 @@ export function CreateBranchDialog({ onClose }: CreateBranchDialogProps) {
       return;
     }
     if (!sandboxId) {
-      toast.error('No sandbox connected');
+      toast.error('No project selected');
       return;
     }
 

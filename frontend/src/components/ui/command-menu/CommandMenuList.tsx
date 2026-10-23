@@ -207,7 +207,7 @@ export function CommandMenuList({
           {filteredBranches.length === 0 && (
             <p className={styles.empty}>
               {!sandboxId
-                ? 'No sandbox connected'
+                ? 'No project selected'
                 : !branchesData
                   ? 'Loading branches…'
                   : !branchesData.is_git_repo

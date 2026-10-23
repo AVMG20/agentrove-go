@@ -1,0 +1,108 @@
+@use '@/styles/globals/colors' as colors;
+@use '@/styles/globals/typography' as type;
+@use '@/styles/globals/animations' as anim;
+@use '@/styles/globals/controls' as controls;
+@use '@/styles/globals/responsive' as responsive;
+@use '@/styles/globals/zlayer' as z;
+
+.status {
+  position: relative;
+  min-width: 0;
+}
+
+.trigger {
+  @include type.type-meta;
+  @include type.type-noselect;
+  @include controls.focus-ring;
+  @include anim.transition-colors;
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  align-items: center;
+  gap: var(--space-2);
+  border-radius: var(--radius-md);
+  padding: var(--space-1) var(--space-1-5);
+  text-align: left;
+  color: var(--theme-text-tertiary);
+
+  @include responsive.hover {
+    background-color: var(--theme-surface-hover);
+    color: var(--theme-text-secondary);
+  }
+}
+
+.dot {
+  height: var(--space-1-5);
+  width: var(--space-1-5);
+  flex-shrink: 0;
+  border-radius: var(--radius-full);
+
+  &--running {
+    background-color: var(--theme-success);
+  }
+
+  &--stopped {
+    background-color: var(--theme-text-quaternary);
+  }
+}
+
+.text {
+  @include type.type-overflow;
+  min-width: 0;
+}
+
+.detail {
+  color: var(--theme-text-quaternary);
+}
+
+.panel {
+  @include z.z('dropdown');
+  @include anim.fade-in(var(--duration-base), forwards);
+  position: absolute;
+  left: 0;
+  bottom: calc(100% + var(--space-1));
+  display: flex;
+  width: var(--space-72);
+  max-width: calc(100vw - var(--space-8));
+  flex-direction: column;
+  gap: var(--space-2);
+  border: 1px solid colors.theme-color('border', 0.6);
+  border-radius: var(--radius-xl);
+  background-color: var(--theme-surface-secondary);
+  box-shadow: var(--shadow-medium);
+  padding: var(--space-3);
+}
+
+.heading {
+  @include type.type-default(500);
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--theme-text-primary);
+}
+
+.state {
+  @include type.type-meta;
+  margin-left: auto;
+  color: var(--theme-text-tertiary);
+}
+
+.description {
+  @include type.type-meta;
+  color: var(--theme-text-secondary);
+
+  code {
+    font-family: var(--font-mono);
+  }
+}
+
+.meta {
+  @include type.type-meta;
+  color: var(--theme-text-tertiary);
+}
+
+.actions {
+  display: flex;
+  gap: var(--space-2);
+  padding-top: var(--space-1);
+}

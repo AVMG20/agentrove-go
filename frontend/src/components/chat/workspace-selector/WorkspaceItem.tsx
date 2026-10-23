@@ -30,7 +30,7 @@ function sourceLabel(sourceType: string | null | undefined) {
     case 'local':
       return 'Local folder';
     default:
-      return 'Empty workspace';
+      return 'Empty project';
   }
 }
 
@@ -83,9 +83,9 @@ export function WorkspaceItem({
         <div className={styles.content}>
           <div className={styles['name-row']}>
             <span className={styles.name}>{ws.name}</span>
-            <span className={styles.badge}>
-              {ws.sandbox_provider === 'host' ? 'Host' : 'Docker'}
-            </span>
+            {ws.sandbox_provider === 'host' && (
+              <span className={styles.badge}>This computer</span>
+            )}
             {isSelected && <Check className={styles['selected-icon']} aria-hidden="true" />}
           </div>
           <div className={styles['meta-row']}>

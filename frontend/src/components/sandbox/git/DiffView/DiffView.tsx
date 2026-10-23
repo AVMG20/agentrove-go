@@ -294,7 +294,7 @@ const DiffViewContent = memo(function DiffViewContent({
   }, [toggleAll, closeOverflowMenu]);
 
   if (!sandboxId) {
-    return <div className={styles['no-sandbox']}>No sandbox connected</div>;
+    return <div className={styles['no-sandbox']}>No project selected</div>;
   }
 
   const filesSidebar = showFiles ? (

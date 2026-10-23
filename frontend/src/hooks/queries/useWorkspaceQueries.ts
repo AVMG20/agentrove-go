@@ -1,8 +1,9 @@
-import { useMemo } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useEffect, useMemo, useRef } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { UseQueryOptions } from '@tanstack/react-query';
 import { workspaceService } from '@/services/workspaceService';
 import type {
+  BoxInfo,
   Workspace,
   WorkspaceResources,
   CreateWorkspaceRequest,
@@ -12,6 +13,7 @@ import type { PaginatedResponse } from '@/types/api.types';
 import type { Chat } from '@/types/chat.types';
 import type { Channel } from '@/types/channel.types';
 import { useChannelStore } from '@/store/channelStore';
+import { useStreamStore } from '@/store/streamStore';
 import { createMutation } from './createMutation';
 import { queryKeys } from './queryKeys';
 
@@ -46,6 +48,42 @@ export const useWorkspaceDiskUsageQuery = () => {
     staleTime: 5 * 60 * 1000,
   });
 };
+
+const BOX_POLL_MS = 45_000;
+
+// The user's box. Polled lightly while the tab is visible (interval refetches
+// pause in the background) and refreshed when a turn starts or ends, which is
+// when it wakes up or its idle clock restarts.
+export const useBoxQuery = () => {
+  const queryClient = useQueryClient();
+  const working = useStreamStore((state) => state.activeStreamMetadata.length > 0);
+  const wasWorking = useRef(working);
+  useEffect(() => {
+    if (wasWorking.current === working) return;
+    wasWorking.current = working;
+    // A beat later, so a waking box reports as running.
+    const timer = setTimeout(
+      () => void queryClient.invalidateQueries({ queryKey: queryKeys.box }),
+      2_000,
+    );
+    return () => clearTimeout(timer);
+  }, [working, queryClient]);
+
+  return useQuery<BoxInfo>({
+    queryKey: queryKeys.box,
+    queryFn: () => workspaceService.getBox(),
+    refetchInterval: (q) => (q.state.data?.available === false ? false : BOX_POLL_MS),
+    staleTime: 15_000,
+    retry: false,
+  });
+};
+
+export const useStopBoxMutation = createMutation<BoxInfo, Error, { reset?: boolean }>(
+  ({ reset }) => workspaceService.stopBox(reset),
+  (queryClient, box) => {
+    queryClient.setQueryData(queryKeys.box, box);
+  },
+);
 
 // Stable [] when data is missing — avoids new-ref churn for downstream deps.
 export const useWorkspacesList = (

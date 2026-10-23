@@ -30,6 +30,7 @@ import { getContextUsageDisplay } from '@/utils/contextUsage';
 import { stripMarkdownTitle } from '@/utils/format';
 import { chatStatusTone } from '@/utils/message';
 import { openExternalUrl } from '@/utils/openExternal';
+import { projectPath } from '@/utils/box';
 import styles from './SessionPanel.module.scss';
 
 // Dialogs and view toggles act on the focused pane; the panel describes the
@@ -104,23 +105,19 @@ function EnvironmentCard({
   children?: ReactNode;
 }) {
   const isDocker = workspace?.sandbox_provider === 'docker';
-  const path = chat.worktree_cwd ?? workspace?.workspace_path;
+  const path = workspace ? projectPath(workspace, chat.worktree_cwd) : undefined;
   return (
     <Card title="Environment">
-      <Row icon={<Monitor className={styles.glyph} />}>
-        This computer
-        {workspace && (
-          <span className={styles.secondary}>
-            {' · '}
-            {isDocker ? 'Docker' : 'Host'}
-          </span>
-        )}
-      </Row>
       {workspace && (
         <Row
-          icon={isDocker ? <Box className={styles.glyph} /> : <Folder className={styles.glyph} />}
-          hint={path}
+          icon={isDocker ? <Box className={styles.glyph} /> : <Monitor className={styles.glyph} />}
         >
+          {isDocker ? 'Your box' : 'This computer'}
+          <span className={styles.secondary}>{isDocker ? ' · Docker' : ' · Host'}</span>
+        </Row>
+      )}
+      {workspace && (
+        <Row icon={<Folder className={styles.glyph} />} hint={path}>
           {workspace.name}
           {path && <span className={styles.secondary}>{` · ${path}`}</span>}
         </Row>

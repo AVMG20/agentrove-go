@@ -313,7 +313,7 @@ export function TerminalTab({
   const overlayMessage = !isReady
     ? 'Initializing terminal...'
     : sessionState === 'connecting'
-      ? 'Connecting to sandbox terminal...'
+      ? 'Connecting to terminal…'
       : sessionState === 'error'
         ? (closeReason ?? 'Terminal connection interrupted')
         : sessionState === 'disconnected'

@@ -10,7 +10,8 @@ import {
   useWorkspaceDiskUsageQuery,
   useWorkspacesQuery,
 } from '@/hooks/queries/useWorkspaceQueries';
-import type { Workspace, WorkspaceDiskUsage } from '@/types/workspace.types';
+import type { Workspace } from '@/types/workspace.types';
+import { projectPath } from '@/utils/box';
 import { formatRelativeTime } from '@/utils/date';
 import { formatBytes } from '@/utils/format';
 import styles from './WorkspacesSettingsTab.module.scss';
@@ -19,16 +20,7 @@ const SOURCE_ICONS = { git: FolderGit2, local: HardDrive, empty: Box } as const;
 
 function describeSource(workspace: Workspace): string {
   if (workspace.source_type === 'git') return workspace.source_url ?? 'Git repository';
-  if (workspace.source_type === 'local') return workspace.workspace_path;
-  return 'Empty workspace';
-}
-
-function describeDiskUsage(usage: WorkspaceDiskUsage): string {
-  const parts = [
-    usage.files_bytes != null && `Files ${formatBytes(usage.files_bytes)}`,
-    usage.sandbox_bytes != null && `Sandbox ${formatBytes(usage.sandbox_bytes)}`,
-  ].filter(Boolean);
-  return `${parts.join(' · ')} — freed when the workspace is deleted`;
+  return projectPath(workspace);
 }
 
 export function WorkspacesSettingsTab() {
@@ -51,9 +43,9 @@ export function WorkspacesSettingsTab() {
       if (!workspace) return;
       try {
         await deleteWorkspace.mutateAsync(workspace.id);
-        toast.success('Workspace deleted');
+        toast.success('Project deleted');
       } catch (error) {
-        toast.error(error instanceof Error ? error.message : 'Failed to delete workspace');
+        toast.error(error instanceof Error ? error.message : 'Failed to delete project');
         throw error;
       }
     },
@@ -65,10 +57,10 @@ export function WorkspacesSettingsTab() {
       if (!renaming) return;
       try {
         await updateWorkspace.mutateAsync({ workspaceId: renaming.id, data: { name } });
-        toast.success('Workspace renamed');
+        toast.success('Project renamed');
         setRenaming(null);
       } catch (error) {
-        toast.error(error instanceof Error ? error.message : 'Failed to rename workspace');
+        toast.error(error instanceof Error ? error.message : 'Failed to rename project');
       }
     },
     [renaming, updateWorkspace],
@@ -77,17 +69,18 @@ export function WorkspacesSettingsTab() {
   return (
     <>
       <ListManagementTab<Workspace>
-        title="Workspaces"
-        description="Rename or delete workspaces, including ones without threads that don't show in the sidebar. Create new ones from the workspace picker in the composer."
+        title="Projects"
+        description="Rename or delete projects, including ones without threads that don't show in the sidebar. Create new ones from the project picker in the composer."
         items={workspaces}
         emptyIcon={Box}
-        emptyText="No workspaces yet"
-        deleteConfirmTitle="Delete workspace"
-        deleteConfirmMessage={(workspace) =>
-          `Delete "${workspace.name}"? Its ${workspace.chat_count} ${
-            workspace.chat_count === 1 ? 'thread' : 'threads'
-          }, sandbox and files are removed. This can't be undone.`
-        }
+        emptyText="No projects yet"
+        deleteConfirmTitle="Delete project"
+        deleteConfirmMessage={(workspace) => {
+          const threads = `${workspace.chat_count} ${workspace.chat_count === 1 ? 'thread' : 'threads'}`;
+          return workspace.source_type === 'local'
+            ? `Delete "${workspace.name}"? Its ${threads} are removed; the folder on this computer is kept. This can't be undone.`
+            : `Delete "${workspace.name}"? Its ${threads} and files are removed. This can't be undone.`;
+        }}
         getItemKey={(workspace) => workspace.id}
         onEdit={(index) => {
           const workspace = workspaces?.[index];
@@ -109,11 +102,14 @@ export function WorkspacesSettingsTab() {
                 <span>
                   {workspace.chat_count} {workspace.chat_count === 1 ? 'thread' : 'threads'}
                 </span>
-                <span>{workspace.sandbox_provider === 'docker' ? 'Docker' : 'Host'}</span>
-                {usage?.total_bytes != null && (
-                  <FloatingTooltip content={describeDiskUsage(usage)} className={styles.size}>
+                {workspace.sandbox_provider === 'host' && <span>This computer</span>}
+                {usage?.files_bytes != null && (
+                  <FloatingTooltip
+                    content="Project files, freed when the project is deleted"
+                    className={styles.size}
+                  >
                     <Database className={styles['size-icon']} aria-hidden="true" />
-                    {formatBytes(usage.total_bytes)}
+                    {formatBytes(usage.files_bytes)}
                   </FloatingTooltip>
                 )}
                 <span className={styles.muted}>
@@ -133,7 +129,7 @@ export function WorkspacesSettingsTab() {
         onSave={handleRename}
         currentTitle={renaming?.name ?? ''}
         isLoading={updateWorkspace.isPending}
-        title="Rename workspace"
+        title="Rename project"
       />
     </>
   );

@@ -163,7 +163,7 @@ export function useCommandMenu() {
   const handleSelectBranch = useCallback(
     (branch: string) => {
       if (!sandboxId) {
-        toast.error('No sandbox connected');
+        toast.error('No project selected');
         return;
       }
       if (branch === branchesData?.current_branch) {

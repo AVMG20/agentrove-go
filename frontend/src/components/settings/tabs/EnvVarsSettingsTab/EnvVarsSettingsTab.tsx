@@ -34,7 +34,7 @@ export function EnvVarsSettingsTab() {
     <>
       <ListManagementTab<CustomEnvVar>
         title="Environment Variables"
-        description="Configure environment variables that will be available in every sandbox. Use ANTHROPIC_BASE_URL + ANTHROPIC_AUTH_TOKEN (proxy), ANTHROPIC_API_KEY or CLAUDE_CODE_OAUTH_TOKEN to sign Claude in."
+        description="Configure environment variables that will be available in your box, terminals and every chat. Use ANTHROPIC_BASE_URL + ANTHROPIC_AUTH_TOKEN (proxy), ANTHROPIC_API_KEY or CLAUDE_CODE_OAUTH_TOKEN to sign Claude in."
         items={localSettings.custom_env_vars ?? []}
         emptyIcon={Key}
         emptyText="No custom environment variables configured yet"

@@ -263,7 +263,7 @@ function executeGitRemoteCommand(
   onSuccess?: () => void,
 ) {
   if (!target.sandboxId) {
-    toast.error('No sandbox connected');
+    toast.error('No project selected');
     return;
   }
   void fn(target.sandboxId, target.worktreeCwd)
@@ -340,7 +340,7 @@ export function executeCommand(
     navigate(settingsPath());
   } else if (cmd.id === 'switch-branch') {
     if (!gitTarget.sandboxId) {
-      toast.error('No sandbox connected');
+      toast.error('No project selected');
       return;
     }
     // Bail out only if we know the repo state and it's unavailable; if the cache is cold,

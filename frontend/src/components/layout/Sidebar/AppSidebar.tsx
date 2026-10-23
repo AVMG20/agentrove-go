@@ -7,6 +7,7 @@ import { useCurrentUserQuery } from '@/hooks/queries/useAuthQueries';
 import { useLogout } from '@/hooks/useLogout';
 import { ToggleButton } from '@/components/ui/ToggleButton/ToggleButton';
 import { UserProfileMenu } from '@/components/layout/UserProfileMenu/UserProfileMenu';
+import { BoxStatus } from '@/components/layout/BoxStatus/BoxStatus';
 import { settingsPath } from '@/components/settings/settingsSections';
 import iconDark from '/assets/images/icon-dark.svg';
 import iconLight from '/assets/images/icon-white.svg';
@@ -79,6 +80,7 @@ export function AppSidebar() {
 
       {/* Always rendered so settings/sign-out stay reachable if the user query fails. */}
       <div className={styles.footer}>
+        <BoxStatus />
         <UserProfileMenu
           displayName={currentUser?.username || currentUser?.email || ''}
           onOpenSettings={() => navigate(settingsPath())}
