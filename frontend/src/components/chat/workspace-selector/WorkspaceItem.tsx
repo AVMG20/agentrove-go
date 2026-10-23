@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react';
 import toast from 'react-hot-toast';
-import { GitBranch, Box, HardDrive, Loader2, ChevronDown, ChevronRight, Check } from 'lucide-react';
+import { GitBranch, Box, Loader2, ChevronDown, ChevronRight, Check } from 'lucide-react';
 import clsx from 'clsx';
 import { Button } from '@/components/ui/primitives/Button/Button';
 import { FloatingTooltip } from '@/components/ui/FloatingTooltip/FloatingTooltip';
@@ -16,8 +16,6 @@ function sourceIcon(sourceType: string | null | undefined) {
   switch (sourceType) {
     case 'git':
       return <GitBranch className={styles['source-icon']} aria-hidden="true" />;
-    case 'local':
-      return <HardDrive className={styles['source-icon']} aria-hidden="true" />;
     default:
       return <Box className={styles['source-icon']} aria-hidden="true" />;
   }
@@ -27,8 +25,6 @@ function sourceLabel(sourceType: string | null | undefined) {
   switch (sourceType) {
     case 'git':
       return 'Git repository';
-    case 'local':
-      return 'Local folder';
     default:
       return 'Empty project';
   }
@@ -83,7 +79,6 @@ export function WorkspaceItem({
         <div className={styles.content}>
           <div className={styles['name-row']}>
             <span className={styles.name}>{ws.name}</span>
-            {ws.sandbox_provider === 'host' && <span className={styles.badge}>This computer</span>}
             {isSelected && <Check className={styles['selected-icon']} aria-hidden="true" />}
           </div>
           <div className={styles['meta-row']}>

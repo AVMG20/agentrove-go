@@ -38,7 +38,7 @@ function renderNewProject(onCreated = vi.fn()) {
 }
 
 beforeEach(() => {
-  h.box = { available: true, host_available: false };
+  h.box = { available: true };
   h.token = null;
   h.mutateAsync.mockReset();
   h.mutateAsync.mockResolvedValue({ id: 'ws-new' });
@@ -78,35 +78,10 @@ describe('NewProject', () => {
     );
   });
 
-  it('runs projects on the host when the server has no Docker', async () => {
+  it('explains that projects need Docker when the server has none', () => {
     h.box = { available: false };
     renderNewProject();
-    fireEvent.click(screen.getByText('Empty project'));
-    fireEvent.click(screen.getByText('Create project'));
-    await waitFor(() =>
-      expect(h.mutateAsync).toHaveBeenCalledWith(
-        expect.objectContaining({ name: 'Untitled', sandbox_provider: 'host' }),
-      ),
-    );
-  });
-
-  it('offers local folders only where the server allows the host provider', async () => {
-    renderNewProject();
-    expect(screen.queryByText('Open a folder on this computer')).toBeNull();
-    cleanup();
-
-    h.box = { available: true, host_available: true };
-    renderNewProject();
-    fireEvent.click(screen.getByText('Open a folder on this computer'));
-    fireEvent.change(screen.getByLabelText('Folder path'), { target: { value: '~/code/app' } });
-    fireEvent.click(screen.getByText('Open folder'));
-    await waitFor(() =>
-      expect(h.mutateAsync).toHaveBeenCalledWith({
-        name: 'app',
-        source_type: 'local',
-        workspace_path: '~/code/app',
-        sandbox_provider: 'host',
-      }),
-    );
+    expect(screen.getByText("Docker isn't available on the server")).toBeTruthy();
+    expect(screen.queryByText('Empty project')).toBeNull();
   });
 });

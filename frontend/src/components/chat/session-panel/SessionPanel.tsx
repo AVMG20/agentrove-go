@@ -1,6 +1,6 @@
 import { memo, useEffect, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Box, CornerLeftUp, ExternalLink, Folder, GitBranch, Monitor, Plus } from 'lucide-react';
+import { Box, CornerLeftUp, ExternalLink, Folder, GitBranch, Plus } from 'lucide-react';
 import clsx from 'clsx';
 import { Button } from '@/components/ui/primitives/Button/Button';
 import { FloatingTooltip } from '@/components/ui/FloatingTooltip/FloatingTooltip';
@@ -105,18 +105,13 @@ function EnvironmentCard({
   branch: string | null;
   children?: ReactNode;
 }) {
-  const isDocker = workspace?.sandbox_provider === 'docker';
   const path = workspace ? projectPath(workspace, chat.worktree_cwd) : undefined;
   return (
     <Card title="Environment">
-      {workspace && (
-        <Row
-          icon={isDocker ? <Box className={styles.glyph} /> : <Monitor className={styles.glyph} />}
-        >
-          {isDocker ? 'Your box' : 'This computer'}
-          <span className={styles.secondary}>{isDocker ? ' · Docker' : ' · Host'}</span>
-        </Row>
-      )}
+      <Row icon={<Box className={styles.glyph} />}>
+        Your box
+        <span className={styles.secondary}> · Docker</span>
+      </Row>
       {workspace && (
         <Row icon={<Folder className={styles.glyph} />} hint={path}>
           {workspace.name}
@@ -336,20 +331,18 @@ function ChangesCard({
   sandboxId,
   worktreeCwd,
   branch,
-  inBox,
 }: {
   chatId: string;
   sandboxId: string;
   worktreeCwd: string | undefined;
   branch: string;
-  inBox: boolean;
 }) {
   const { data: stats } = useGitDiffStatsQuery(sandboxId, worktreeCwd);
   const { mutate: fetchBase } = useGitFetchBaseMutation();
   // Fetching runs git in the box; just looking at a chat shouldn't wake a
   // stopped one, so wait until it runs anyway (the next turn).
   const { data: box } = useBoxQuery();
-  const canFetch = !inBox || box?.state === 'running';
+  const canFetch = box?.state === 'running';
   useEffect(() => {
     if (canFetch) fetchBase({ sandboxId, cwd: worktreeCwd });
   }, [fetchBase, sandboxId, worktreeCwd, canFetch]);
@@ -458,7 +451,6 @@ export const SessionPanel = memo(function SessionPanel({
           sandboxId={chat.sandbox_id}
           worktreeCwd={worktreeCwd}
           branch={branch}
-          inBox={workspace?.sandbox_provider !== 'host'}
         />
       )}
     </aside>

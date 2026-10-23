@@ -9,13 +9,11 @@ function basename(path: string): string {
   return trimmed.slice(trimmed.lastIndexOf('/') + 1);
 }
 
-// Where the agent works: the project folder in the box (or on this computer
-// for host projects), plus the chat's worktree when it has one.
+// Where the agent works: the project folder in the box, plus the chat's
+// worktree when it has one. workspace_path is the server-side folder that is
+// mounted there.
 export function projectPath(workspace: Workspace, worktreeCwd?: string | null): string {
-  const root =
-    workspace.sandbox_provider === 'docker'
-      ? `${BOX_PROJECTS}/${basename(workspace.workspace_path)}`
-      : workspace.workspace_path;
+  const root = `${BOX_PROJECTS}/${basename(workspace.workspace_path)}`;
   return worktreeCwd ? `${root}/${worktreeCwd}` : root;
 }
 

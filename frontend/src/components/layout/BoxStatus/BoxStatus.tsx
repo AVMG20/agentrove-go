@@ -15,7 +15,6 @@ const RESET_MESSAGE =
   `Kept: your home folder (${BOX_HOME}) with its toolchains, settings and Claude login, and all projects.`;
 
 // "● Box running · idles in 12m" in the sidebar footer; click for stop/reset.
-// Hidden on host-only setups, where there is no box.
 export function BoxStatus() {
   const { data: box, dataUpdatedAt } = useBoxQuery();
   const stopBox = useStopBoxMutation();
@@ -24,7 +23,21 @@ export function BoxStatus() {
   const [confirmReset, setConfirmReset] = useState(false);
   const panelId = useId();
 
-  if (!box?.available) return null;
+  if (!box) return null;
+  // Every project runs in the box, so a server without Docker can't run any.
+  if (!box.available) {
+    return (
+      <div className={styles.status}>
+        <div className={clsx(styles.trigger, styles['trigger--static'])} role="status">
+          <span className={clsx(styles.dot, styles['dot--unavailable'])} aria-hidden="true" />
+          <span className={styles.text}>
+            Docker unavailable
+            <span className={styles.detail}> · projects can't run</span>
+          </span>
+        </div>
+      </div>
+    );
+  }
 
   const elapsed = Math.max(0, (now - dataUpdatedAt) / 1000);
   const { tone, label, detail } = summarizeBox(box, elapsed);

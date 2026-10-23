@@ -9,7 +9,6 @@ const box = (over: Partial<BoxInfo> = {}): BoxInfo => ({
   idle_for_seconds: 0,
   idle_ttl_seconds: 1800,
   disk_bytes: null,
-  host_available: false,
   ...over,
 });
 
@@ -18,7 +17,6 @@ const workspace = (over: Partial<Workspace> = {}): Workspace => ({
   name: 'app',
   user_id: 'u',
   sandbox_id: 's',
-  sandbox_provider: 'docker',
   workspace_path: '/data/workspaces/u/app-1a2b3c4d',
   created_at: '',
   updated_at: '',
@@ -60,16 +58,13 @@ describe('formatIdleDuration', () => {
 });
 
 describe('projectPath', () => {
-  it('maps a Docker project into the box', () => {
+  it('maps a project into the box', () => {
     expect(projectPath(workspace())).toBe('/home/user/projects/app-1a2b3c4d');
   });
 
-  it('keeps a host path and appends the worktree', () => {
-    expect(
-      projectPath(
-        workspace({ sandbox_provider: 'host', workspace_path: '/src/app' }),
-        '.worktrees/ab',
-      ),
-    ).toBe('/src/app/.worktrees/ab');
+  it('appends the chat worktree', () => {
+    expect(projectPath(workspace(), '.worktrees/ab')).toBe(
+      '/home/user/projects/app-1a2b3c4d/.worktrees/ab',
+    );
   });
 });

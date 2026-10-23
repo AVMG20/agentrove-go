@@ -31,6 +31,15 @@
   }
 }
 
+.trigger--static {
+  cursor: default;
+
+  @include responsive.hover {
+    background-color: transparent;
+    color: var(--theme-text-tertiary);
+  }
+}
+
 .dot {
   height: var(--space-1-5);
   width: var(--space-1-5);
@@ -43,6 +52,10 @@
 
   &--stopped {
     background-color: var(--theme-text-quaternary);
+  }
+
+  &--unavailable {
+    background-color: var(--theme-warning);
   }
 }
 

@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from 'react';
 import toast from 'react-hot-toast';
-import { ArrowLeft, FolderPlus, Github, HardDrive, Loader2, Search } from 'lucide-react';
+import { ArrowLeft, FolderPlus, Github, Loader2, Search, ServerOff } from 'lucide-react';
 import clsx from 'clsx';
 import { Button } from '@/components/ui/primitives/Button/Button';
 import { Input } from '@/components/ui/primitives/Input/Input';
@@ -15,7 +15,7 @@ import { CreateWorkspaceGitHubRepoItem } from './CreateWorkspaceGitHubRepoItem';
 import { CreateWorkspaceRepoListSkeleton } from './CreateWorkspaceRepoListSkeleton';
 import styles from './NewProject.module.scss';
 
-type Mode = 'choose' | 'git' | 'empty' | 'local';
+type Mode = 'choose' | 'git' | 'empty';
 
 function FormHeader({
   title,
@@ -46,8 +46,7 @@ function FormHeader({
   );
 }
 
-// Creates a project: clone a GitHub repo or start empty, both in the user's
-// box. A folder on this computer is a quiet extra where the server allows it.
+// Creates a project in the user's box: clone a GitHub repo or start empty.
 // onCreated selects the new project and closes the picker.
 export function NewProject({
   onCreated,
@@ -60,15 +59,10 @@ export function NewProject({
   const { data: box } = useBoxQuery();
   const createWorkspace = useCreateWorkspaceMutation();
   const hasGitHubToken = Boolean(settings?.github_personal_access_token);
-  // Projects live in the box; without Docker the server runs them on the host.
-  const provider = box?.available === false ? 'host' : 'docker';
-  // Off in production, where the server runs as root.
-  const hostAvailable = box?.host_available === true;
 
   const [mode, setMode] = useState<Mode>('choose');
   const [name, setName] = useState('');
   const [gitUrl, setGitUrl] = useState('');
-  const [localPath, setLocalPath] = useState('');
   const [pasteUrl, setPasteUrl] = useState(false);
   const [repoQuery, setRepoQuery] = useState('');
   const [cloning, setCloning] = useState<string | null>(null);
@@ -84,7 +78,6 @@ export function NewProject({
     setMode(next);
     setName('');
     setGitUrl('');
-    setLocalPath('');
     setRepoQuery('');
     setPasteUrl(false);
   };
@@ -104,7 +97,7 @@ export function NewProject({
   const cloneRepo = (url: string, repoName: string, label = repoName) => {
     setCloning(label);
     void create(
-      { name: repoName, source_type: 'git', git_url: url, sandbox_provider: provider },
+      { name: repoName, source_type: 'git', git_url: url, sandbox_provider: 'docker' },
       'Repository cloned',
     );
   };
@@ -122,29 +115,28 @@ export function NewProject({
 
   const createEmpty = () => {
     void create(
-      { name: name.trim() || 'Untitled', source_type: 'empty', sandbox_provider: provider },
+      { name: name.trim() || 'Untitled', source_type: 'empty', sandbox_provider: 'docker' },
       'Project created',
     );
   };
 
-  const openLocal = () => {
-    const path = localPath.trim();
-    if (!path) {
-      toast.error('Enter a folder path');
-      return;
-    }
-    void create(
-      {
-        name: name.trim() || projectNameFrom(path) || 'project',
-        source_type: 'local',
-        workspace_path: path,
-        sandbox_provider: 'host',
-      },
-      'Folder opened',
-    );
-  };
-
   const isPending = createWorkspace.isPending;
+
+  // Projects only run in the box, so without Docker there's nothing to create.
+  if (box?.available === false) {
+    return (
+      <div className={styles.unavailable} role="status">
+        <ServerOff className={styles['unavailable-icon']} aria-hidden="true" />
+        <div>
+          <p className={styles['unavailable-title']}>Docker isn't available on the server</p>
+          <p className={styles.helper}>
+            Projects run in your box, a Docker container on the server. Ask whoever runs this server
+            to start Docker, then try again.
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   if (mode === 'choose') {
     return (
@@ -173,17 +165,6 @@ export function NewProject({
             <span className={styles['option-description']}>Start from scratch</span>
           </Button>
         </div>
-        {hostAvailable && (
-          <Button
-            variant="unstyled"
-            type="button"
-            onClick={() => setMode('local')}
-            className={styles['local-link']}
-          >
-            <HardDrive className={styles['local-icon']} aria-hidden="true" />
-            Open a folder on this computer
-          </Button>
-        )}
       </div>
     );
   }
@@ -209,37 +190,6 @@ export function NewProject({
         <div className={styles.actions}>
           <Button type="button" size="sm" onClick={createEmpty} isLoading={isPending}>
             Create project
-          </Button>
-        </div>
-      </div>
-    );
-  }
-
-  if (mode === 'local') {
-    return (
-      <div className={styles.form}>
-        <FormHeader title="Folder on this computer" onBack={() => reset('choose')} />
-        <Input
-          variant="unstyled"
-          name="local-folder-path"
-          aria-label="Folder path"
-          autoComplete="off"
-          spellCheck={false}
-          value={localPath}
-          onChange={(e) => setLocalPath(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' && !isPending) openLocal();
-          }}
-          placeholder="~/code/my-app"
-          autoFocus
-          className={clsx(styles['text-input'], styles['text-input--mono'])}
-        />
-        <p className={styles.helper}>
-          Runs on this computer (host), not in your box. The folder stays where it is.
-        </p>
-        <div className={styles.actions}>
-          <Button type="button" size="sm" onClick={openLocal} isLoading={isPending}>
-            Open folder
           </Button>
         </div>
       </div>

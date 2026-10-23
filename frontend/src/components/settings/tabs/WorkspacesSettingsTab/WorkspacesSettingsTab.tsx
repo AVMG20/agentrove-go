@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useState } from 'react';
-import { Box, Database, FolderGit2, HardDrive } from 'lucide-react';
+import { Box, Database, FolderGit2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { ListManagementTab } from '@/components/ui/ListManagementTab/ListManagementTab';
 import { RenameModal } from '@/components/ui/RenameModal/RenameModal';
@@ -16,7 +16,7 @@ import { formatRelativeTime } from '@/utils/date';
 import { formatBytes } from '@/utils/format';
 import styles from './WorkspacesSettingsTab.module.scss';
 
-const SOURCE_ICONS = { git: FolderGit2, local: HardDrive, empty: Box } as const;
+const SOURCE_ICONS = { git: FolderGit2, empty: Box } as const;
 
 function describeSource(workspace: Workspace): string {
   if (workspace.source_type === 'git') return workspace.source_url ?? 'Git repository';
@@ -77,9 +77,7 @@ export function WorkspacesSettingsTab() {
         deleteConfirmTitle="Delete project"
         deleteConfirmMessage={(workspace) => {
           const threads = `${workspace.chat_count} ${workspace.chat_count === 1 ? 'thread' : 'threads'}`;
-          return workspace.source_type === 'local'
-            ? `Delete "${workspace.name}"? Its ${threads} are removed; the folder on this computer is kept. This can't be undone.`
-            : `Delete "${workspace.name}"? Its ${threads} and files are removed. This can't be undone.`;
+          return `Delete "${workspace.name}"? Its ${threads} and files are removed. This can't be undone.`;
         }}
         getItemKey={(workspace) => workspace.id}
         onEdit={(index) => {
@@ -102,7 +100,6 @@ export function WorkspacesSettingsTab() {
                 <span>
                   {workspace.chat_count} {workspace.chat_count === 1 ? 'thread' : 'threads'}
                 </span>
-                {workspace.sandbox_provider === 'host' && <span>This computer</span>}
                 {usage?.files_bytes != null && (
                   <FloatingTooltip
                     content="Project files, freed when the project is deleted"

@@ -58,15 +58,6 @@
   color: var(--theme-text-secondary);
 }
 
-.badge {
-  @include type.type-meta;
-  flex-shrink: 0;
-  border-radius: var(--radius-full);
-  background-color: var(--theme-surface-tertiary);
-  padding: var(--space-0-5) var(--space-1-5);
-  color: var(--theme-text-tertiary);
-}
-
 .meta-row {
   @include type.type-meta;
   display: flex;

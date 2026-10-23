@@ -53,8 +53,6 @@ export interface StreamAction {
   thinking_mode: string;
 }
 
-export type SandboxProviderType = 'docker' | 'host';
-
 export interface UserSettings {
   id: string;
   user_id: string;
