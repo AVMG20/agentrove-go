@@ -9,10 +9,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"maps"
 	"mime"
 	"os"
 	"path"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -522,7 +524,8 @@ func (m *Module) sessionConfig(sb *sandbox.Sandbox, req *turnRequest) claude.Con
 		Env:            m.sessionEnv(req),
 		Binary:         m.a.Cfg.ClaudeBinary,
 	}
-	if st, err := m.a.Store.GetUserSettings(context.Background(), req.userID); err == nil && st.AutoCompactWindow > 0 {
+	st, err := m.a.Store.GetUserSettings(context.Background(), req.userID)
+	if err == nil && st.AutoCompactWindow > 0 {
 		cfg.Settings["autoCompactWindow"] = st.AutoCompactWindow
 	}
 	if sb.Kind == sandbox.KindDocker {
@@ -537,15 +540,69 @@ func (m *Module) sessionConfig(sb *sandbox.Sandbox, req *turnRequest) claude.Con
 			cfg.SystemPrompt += boxPrompt
 		}
 	}
+	var allow []string
 	if m.MCPConfig != nil {
 		cfg.MCPServers = m.MCPConfig(req.userID, req.chat.ID, sb.Kind, req.member != nil)
 		if len(cfg.MCPServers) > 0 {
 			// Publishing a (private) artifact never needs a permission prompt.
-			cfg.Settings["permissions"] = map[string]any{"allow": artifactTools}
+			allow = append(allow, artifactTools...)
 		}
+	}
+	if sb.Kind == sandbox.KindDocker && m.a.Cfg.BrowserEnabled && (err != nil || st.BrowserToolsEnabled) {
+		// MCPConfig's map is cached and shared: copy before adding to it.
+		servers := maps.Clone(cfg.MCPServers)
+		if servers == nil {
+			servers = map[string]any{}
+		}
+		servers[browserServer] = browserMCPConfig(m.a.Cfg.BrowserIdleTTL)
+		cfg.MCPServers = servers
+		allow = append(allow, browserTools...)
+		if !req.fullReplace {
+			cfg.SystemPrompt += browserPrompt
+		}
+	}
+	if len(allow) > 0 {
+		cfg.Settings["permissions"] = map[string]any{"allow": allow}
 	}
 	return cfg
 }
+
+// browserServer is the MCP server name of the box's browser tools.
+const browserServer = "browser"
+
+// browserMCPConfig runs Playwright MCP against the box's shared browser
+// through agentrove-browser-mcp (sandbox/docker), which starts the browser
+// and playwright-mcp only once a tool is called.
+func browserMCPConfig(idle time.Duration) map[string]any {
+	return map[string]any{
+		"type":    "stdio",
+		"command": "agentrove-browser-mcp",
+		"args":    []string{},
+		"env":     map[string]string{"AGENTROVE_BROWSER_IDLE_SECONDS": strconv.Itoa(int(idle.Seconds()))},
+	}
+}
+
+// browserTools are pre-allowed like the artifact tools: they act on a
+// browser inside the box. browser_run_code_unsafe is left out on purpose: it
+// runs arbitrary JavaScript in the box's Node process, so it is as powerful as
+// Bash and gets the same permission prompt. The list follows the tools of the
+// pinned @playwright/mcp (--caps vision); a renamed tool just prompts.
+var browserTools = func() []string {
+	names := []string{"navigate", "navigate_back", "click", "hover", "drag", "drop", "type", "press_key",
+		"fill_form", "select_option", "file_upload", "handle_dialog", "snapshot", "find", "take_screenshot",
+		"evaluate", "console_messages", "network_requests", "network_request", "tabs", "wait_for", "resize",
+		"emulate_media", "close", "mouse_move_xy", "mouse_click_xy", "mouse_drag_xy", "mouse_down", "mouse_up",
+		"mouse_wheel"}
+	out := make([]string, len(names))
+	for i, n := range names {
+		out[i] = "mcp__" + browserServer + "__browser_" + n
+	}
+	return out
+}()
+
+const browserPrompt = "<browser>A headless Chromium runs in this box; use the mcp__browser__* tools to test web apps " +
+	"(it starts on first use). Dev servers you run in the box are reachable from it at http://localhost:<port>. " +
+	"The user can watch and use the same browser in the Browser tab.</browser>\n"
 
 var artifactTools = []string{"mcp__agentrove__create_artifact", "mcp__agentrove__update_artifact",
 	"mcp__agentrove__edit_artifact", "mcp__agentrove__restore_artifact", "mcp__agentrove__get_artifact",

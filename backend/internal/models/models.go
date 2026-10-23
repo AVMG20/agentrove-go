@@ -66,6 +66,7 @@ type UserSettings struct {
 	NotificationsEnabled      bool                    `json:"notifications_enabled"`
 	TitleModelID              string                  `json:"title_model_id"`
 	AutoCompactWindow         int                     `json:"auto_compact_window"`
+	BrowserToolsEnabled       bool                    `json:"browser_tools_enabled"`
 	CreatedAt                 db.Time                 `json:"created_at"`
 	UpdatedAt                 db.Time                 `json:"updated_at"`
 }

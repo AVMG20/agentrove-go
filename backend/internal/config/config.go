@@ -83,6 +83,12 @@ type Config struct {
 	// file/git request) before its container is stopped. 0 disables.
 	SandboxIdleTTL time.Duration
 
+	// BrowserEnabled gives agents in Docker boxes the box's shared headless
+	// browser (Playwright MCP) and serves the live viewer. The browser stops
+	// after BrowserIdleTTL without a CDP client (agent or viewer).
+	BrowserEnabled bool
+	BrowserIdleTTL time.Duration
+
 	ClaudeBinary string
 	LogLevel     string
 }
@@ -133,6 +139,8 @@ func Load() (*Config, error) {
 		DockerNodeMaxOldMB:     envInt("DOCKER_NODE_MAX_OLD_SPACE_MB", 8192),
 		ChatProcessIdleTTL:     time.Duration(envInt("CHAT_PROCESS_IDLE_TTL_SECONDS", 600)) * time.Second,
 		SandboxIdleTTL:         time.Duration(envInt("SANDBOX_IDLE_TTL_SECONDS", 900)) * time.Second,
+		BrowserEnabled:         envBool("SANDBOX_BROWSER_ENABLED", true),
+		BrowserIdleTTL:         time.Duration(envInt("SANDBOX_BROWSER_IDLE_SECONDS", 600)) * time.Second,
 		ClaudeBinary:           env("CLAUDE_BINARY", "claude"),
 		LogLevel:               env("LOG_LEVEL", "INFO"),
 	}

@@ -41,6 +41,12 @@
   }
 }
 
+.tab-browser {
+  margin-left: auto;
+  border-right: none;
+  border-left: 1px solid colors.theme-color('border', 0.3);
+}
+
 .tab-close {
   border-radius: var(--radius-sm);
   padding: var(--space-0-5);

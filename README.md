@@ -9,6 +9,7 @@ A Go rewrite of the Agentrove backend, as a web app only. It is Claude-only, nee
 - **One box per user, stopped when idle.** All of a user's projects run in one Docker container (`/home/user/projects/<project>`) with a persistent home, so toolchains installed once serve every project. A box with no running turn or open terminal for `SANDBOX_IDLE_TTL_SECONDS` (default 15m) is stopped. The next request that needs it (a message, terminal or git mutation) starts it again, rebuilt from the current image if that changed.
 - **Reads don't wake containers.** Workspaces live on a host dir that is bind-mounted into the sandbox. File browsing, diffs, git status and search read the host copy directly, so they work while the container is stopped.
 - **Claude login per user.** The login is stored under `STORAGE_PATH/agent-homes/<user>/claude` and mounted into every sandbox of that user. Title, commit-message and PR generation use the same login.
+- **A browser in every box.** Agents get Playwright MCP tools (navigate, click, type, hover, dropdowns, dialogs, scrolling, snapshots, screenshots, console and network) for one shared headless Chromium in the box, which reaches the dev servers they start on `localhost`. The terminal panel's Browser tab shows the same browser live and lets you use it (tabs, URL bar, window size, reset). Chromium starts on first use and stops after `SANDBOX_BROWSER_IDLE_SECONDS` (default 10m) with no agent or viewer attached; turn the agent tools off per user in Settings, or for everyone with `SANDBOX_BROWSER_ENABLED=false`.
 - **MCP over HTTP.** The agentrove MCP server (chats, channels, automations, artifacts) is served by the API at `/api/v1/mcp`. Each session gets it automatically, so there is no stdio sidecar.
 
 ## Run with Docker
@@ -53,7 +54,8 @@ backend/
     claude             CLI session driver, stream translation, permissions, one-shot generation
     chat               chat API, turn runtime, SSE feeds, queue, attachments
     sandbox            docker/host providers, idle reaper, leases
-    sandboxapi         files, git, search, terminal websocket
+    sandboxapi         files, git, search, terminal and browser websockets
+    browserview        live viewer of the box browser (CDP over docker exec)
     workspace          workspace lifecycle
     gitops             worktrees, checkpoints, host-side git
     channel            multi-agent channels
@@ -62,7 +64,8 @@ backend/
     mcpserver          agentrove MCP tools over HTTP
     auth settings github skills usage
     db                 SQLite + embedded migrations
-sandbox/docker         Claude-only sandbox image
+  cmd/agentrove-browser-mcp  lazy Playwright MCP proxy, built into the box image
+sandbox/docker         Claude-only sandbox image (with agentrove-browser)
 frontend/              React app
 ```
 
@@ -76,7 +79,7 @@ cd frontend && bun run typecheck && bun run lint && bunx vitest run
 ## Not ported
 
 - The Tauri desktop and iOS apps, and the desktop app's "cloud" mode.
-- The browser-use MCP.
+- The browser-use MCP (replaced by Playwright MCP on a browser in the box).
 - The non-Claude agents (Codex, Copilot, Cursor, OpenCode, Grok, Antigravity).
 
 Existing Python databases are not migrated; start with a fresh storage dir.

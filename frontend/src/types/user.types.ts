@@ -64,6 +64,7 @@ export interface UserSettings {
   notifications_enabled: boolean;
   title_model_id: string;
   auto_compact_window: number;
+  browser_tools_enabled: boolean;
   created_at: string;
   updated_at: string;
 }

@@ -1,6 +1,7 @@
 // Package sandboxapi serves /api/v1/sandbox/{sandbox_id}/... (files, git,
-// search, zip download) and the terminal WebSocket. Read-only operations run
-// on the host against the workspace dir; mutations run inside the sandbox.
+// search, zip download, the browser viewer's WebSocket) and the terminal
+// WebSocket. Read-only operations run on the host against the workspace
+// dir; mutations run inside the sandbox.
 package sandboxapi
 
 import (
@@ -22,8 +23,9 @@ import (
 )
 
 type Module struct {
-	a     *app.App
-	terms *terminals
+	a       *app.App
+	terms   *terminals
+	viewers viewerCount
 }
 
 func New(a *app.App) *Module {
@@ -60,6 +62,7 @@ func (m *Module) Routes(mux *http.ServeMux) {
 	mux.HandleFunc("POST "+p+"/git/create-branch", req(m.gitCreateBranch))
 	mux.HandleFunc("GET "+p+"/git/remote-url", req(m.gitRemoteURL))
 	mux.HandleFunc("GET "+p+"/search", req(m.search))
+	mux.HandleFunc("GET "+p+"/browser/ws", m.browserWS)
 
 	mux.HandleFunc("GET "+m.a.Cfg.APIPrefix+"/ws/{sandbox_id}/terminal", m.terminalWS)
 }

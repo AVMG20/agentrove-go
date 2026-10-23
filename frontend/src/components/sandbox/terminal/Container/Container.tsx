@@ -1,10 +1,18 @@
-import { useState, useCallback, useEffect, useRef } from 'react';
+import { Suspense, useState, useCallback, useEffect, useRef } from 'react';
 import clsx from 'clsx';
-import { Plus, X } from 'lucide-react';
+import { Globe, Plus, X } from 'lucide-react';
 import { Button } from '@/components/ui/primitives/Button/Button';
 import { TerminalTab } from '@/components/sandbox/terminal/TerminalTab/TerminalTab';
+import { viewLoadingFallback } from '@/components/ui/shared/ViewLoadingFallback/ViewLoadingFallback';
+import { lazyNamed } from '@/utils/lazyNamed';
 import { terminalStorageKey } from '@/utils/terminal';
 import styles from './Container.module.scss';
+
+// Loaded on first open: most sessions never look at the browser.
+const BrowserTab = lazyNamed(
+  () => import('@/components/sandbox/browser/BrowserTab/BrowserTab'),
+  'BrowserTab',
+);
 
 export interface ContainerProps {
   sandboxId?: string;
@@ -23,10 +31,11 @@ interface TerminalInstance {
 function readStoredTerminals(
   storageKey: string | null,
   defaultTerminalId: string,
-): { terminals: TerminalInstance[]; activeTerminalId: string } {
+): { terminals: TerminalInstance[]; activeTerminalId: string; browserActive: boolean } {
   const defaults = {
     terminals: [{ id: defaultTerminalId, label: 'Terminal 1' }],
     activeTerminalId: defaultTerminalId,
+    browserActive: false,
   };
   if (!storageKey) return defaults;
   const stored = localStorage.getItem(storageKey);
@@ -35,6 +44,7 @@ function readStoredTerminals(
     const parsed = JSON.parse(stored) as {
       terminals?: TerminalInstance[];
       activeTerminalId?: string;
+      browserActive?: boolean;
     };
     const valid = parsed.terminals?.filter((terminal) => terminal.id && terminal.label) ?? [];
     if (valid.length === 0) return defaults;
@@ -44,6 +54,7 @@ function readStoredTerminals(
         parsed.activeTerminalId && valid.some((terminal) => terminal.id === parsed.activeTerminalId)
           ? parsed.activeTerminalId
           : (valid[0]?.id ?? defaultTerminalId),
+      browserActive: parsed.browserActive === true,
     };
   } catch {
     // corrupt storage, use defaults
@@ -67,6 +78,13 @@ export function Container({
     () => readStoredTerminals(storageKey, defaultTerminalId).activeTerminalId,
   );
   const [closingTerminalIds, setClosingTerminalIds] = useState<Set<string>>(() => new Set());
+  const [browserActive, setBrowserActive] = useState(
+    () => readStoredTerminals(storageKey, defaultTerminalId).browserActive,
+  );
+  // Mounted once opened, then kept (hidden) so switching back is instant;
+  // it only holds a connection while visible.
+  const [browserMounted, setBrowserMounted] = useState(browserActive);
+  const showBrowser = browserActive && Boolean(sandboxId);
 
   // Restore during render on identity change — effects run too late (would persist old state).
   const restoreKey = `${storageKey}|${defaultTerminalId}`;
@@ -76,14 +94,24 @@ export function Container({
     const restored = readStoredTerminals(storageKey, defaultTerminalId);
     setTerminals(restored.terminals);
     setActiveTerminalId(restored.activeTerminalId);
+    setBrowserActive(restored.browserActive);
+    if (restored.browserActive) setBrowserMounted(true);
   }
 
   useEffect(() => {
     if (!storageKey) {
       return;
     }
-    localStorage.setItem(storageKey, JSON.stringify({ terminals, activeTerminalId }));
-  }, [storageKey, terminals, activeTerminalId]);
+    localStorage.setItem(
+      storageKey,
+      JSON.stringify({ terminals, activeTerminalId, browserActive }),
+    );
+  }, [storageKey, terminals, activeTerminalId, browserActive]);
+
+  const openBrowser = useCallback(() => {
+    setBrowserActive(true);
+    setBrowserMounted(true);
+  }, []);
 
   const addTerminal = useCallback(() => {
     setTerminals((prev) => {
@@ -100,6 +128,7 @@ export function Container({
       };
 
       setActiveTerminalId(newTerminal.id);
+      setBrowserActive(false);
       return [...prev, newTerminal];
     });
   }, [panelKey]);
@@ -149,9 +178,12 @@ export function Container({
             variant="unstyled"
             key={terminal.id}
             className={styles.tab}
-            onClick={() => setActiveTerminalId(terminal.id)}
+            onClick={() => {
+              setActiveTerminalId(terminal.id);
+              setBrowserActive(false);
+            }}
             role="tab"
-            aria-selected={activeTerminalId === terminal.id}
+            aria-selected={!showBrowser && activeTerminalId === terminal.id}
           >
             <span>{terminal.label}</span>
             {terminals.length > 1 && (
@@ -177,6 +209,18 @@ export function Container({
         >
           <Plus className={styles['tab-add-icon']} />
         </Button>
+        {sandboxId && (
+          <Button
+            variant="unstyled"
+            className={clsx(styles.tab, styles['tab-browser'])}
+            onClick={openBrowser}
+            role="tab"
+            aria-selected={showBrowser}
+          >
+            <Globe className={styles['tab-add-icon']} />
+            <span>Browser</span>
+          </Button>
+        )}
       </div>
 
       <div className={styles.panels}>
@@ -185,11 +229,11 @@ export function Container({
             key={terminal.id}
             className={clsx(
               styles.panel,
-              activeTerminalId !== terminal.id && styles['panel--hidden'],
+              (showBrowser || activeTerminalId !== terminal.id) && styles['panel--hidden'],
             )}
           >
             <TerminalTab
-              isVisible={isVisible && activeTerminalId === terminal.id}
+              isVisible={isVisible && !showBrowser && activeTerminalId === terminal.id}
               sandboxId={sandboxId}
               terminalId={terminal.id}
               cwd={worktreeCwd}
@@ -198,6 +242,13 @@ export function Container({
             />
           </div>
         ))}
+        {browserMounted && sandboxId && (
+          <div className={clsx(styles.panel, !showBrowser && styles['panel--hidden'])}>
+            <Suspense fallback={viewLoadingFallback}>
+              <BrowserTab isVisible={isVisible && showBrowser} sandboxId={sandboxId} />
+            </Suspense>
+          </div>
+        )}
       </div>
     </div>
   );

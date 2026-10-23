@@ -200,6 +200,13 @@ func (m *Module) patch(w http.ResponseWriter, r *http.Request) error {
 		}
 		set("auto_compact_window", v)
 	}
+	if raw, ok := body["browser_tools_enabled"]; ok {
+		var v bool
+		if err := json.Unmarshal(raw, &v); err != nil {
+			return httpx.Unprocessable("browser_tools_enabled must be a boolean")
+		}
+		set("browser_tools_enabled", v)
+	}
 
 	// Creates the row on first use.
 	if _, err := m.a.Store.GetUserSettings(r.Context(), u.ID); err != nil {

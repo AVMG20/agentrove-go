@@ -28,6 +28,7 @@ interface GeneralSettingsTabProps {
   onNotificationsEnabledChange: (enabled: boolean) => void;
   onTitleModelChange: (modelId: string) => void;
   onAutoCompactWindowChange: (tokens: number) => void;
+  onBrowserToolsEnabledChange: (enabled: boolean) => void;
 }
 
 function SectionCard({
@@ -158,6 +159,7 @@ export function GeneralSettingsTab({
   onNotificationsEnabledChange,
   onTitleModelChange,
   onAutoCompactWindowChange,
+  onBrowserToolsEnabledChange,
 }: GeneralSettingsTabProps) {
   const isSuperuser = useCurrentUserQuery().data?.is_superuser ?? false;
 
@@ -230,6 +232,21 @@ export function GeneralSettingsTab({
                 ))}
               </Select>
             </div>
+          </div>
+          <div className={styles['pref-row-notif']}>
+            <div className={styles['pref-text']}>
+              <h3 className={styles['setting-title']}>Browser tools</h3>
+              <p className={styles['field-desc']}>
+                Let agents drive the headless browser in your box to test web apps. It starts on
+                first use and stops when idle; you can watch it in the terminal panel&apos;s Browser
+                tab.
+              </p>
+            </div>
+            <Switch
+              checked={settings.browser_tools_enabled}
+              onCheckedChange={onBrowserToolsEnabledChange}
+              aria-label="Browser tools"
+            />
           </div>
         </div>
       </SectionCard>

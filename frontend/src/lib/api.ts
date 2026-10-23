@@ -303,5 +303,7 @@ class APIClient {
 
 const API_BASE_URL: string = resolveHttpBaseUrl(import.meta.env.VITE_API_BASE_URL || '/api/v1');
 export const WS_BASE_URL: string = resolveWsBaseUrl(import.meta.env.VITE_WS_URL || '/api/v1/ws');
+// The API prefix as a ws(s) URL, for sockets under regular API routes.
+export const API_WS_URL: string = resolveWsBaseUrl(import.meta.env.VITE_API_BASE_URL || '/api/v1');
 
 export const apiClient = new APIClient(API_BASE_URL, localAuth);

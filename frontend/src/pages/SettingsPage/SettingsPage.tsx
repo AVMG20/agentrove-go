@@ -91,6 +91,7 @@ export function SettingsPage() {
         'notifications_enabled',
         'title_model_id',
         'auto_compact_window',
+        'browser_tools_enabled',
       ];
 
       for (const field of fields) {
@@ -177,6 +178,12 @@ export function SettingsPage() {
     );
   };
 
+  const handleBrowserToolsEnabledChange = (enabled: boolean) => {
+    void persistSettings((prev) => ({ ...prev, browser_tools_enabled: enabled })).catch(
+      () => undefined,
+    );
+  };
+
   const confirmDeleteAllChats = async () => {
     try {
       await deleteAllChats.mutateAsync();
@@ -227,6 +234,7 @@ export function SettingsPage() {
         onNotificationsEnabledChange={handleNotificationsEnabledChange}
         onTitleModelChange={handleTitleModelChange}
         onAutoCompactWindowChange={handleAutoCompactWindowChange}
+        onBrowserToolsEnabledChange={handleBrowserToolsEnabledChange}
       />
     ),
     projects: () => <WorkspacesSettingsTab />,

@@ -1,0 +1,236 @@
+@use '@/styles/globals/colors' as colors;
+@use '@/styles/globals/typography' as type;
+@use '@/styles/globals/animations' as anim;
+@use '@/styles/globals/responsive' as responsive;
+
+.browser-tab {
+  position: relative;
+  display: flex;
+  height: 100%;
+  flex-direction: column;
+  background-color: var(--theme-surface-secondary);
+}
+
+.tabstrip {
+  display: flex;
+  height: var(--space-8);
+  flex-shrink: 0;
+  align-items: center;
+  overflow-x: auto;
+  border-bottom: 1px solid colors.theme-color('border', 0.3);
+  scrollbar-width: none;
+}
+
+.tab {
+  @include anim.transition-colors;
+  @include type.type-meta;
+  display: flex;
+  height: 100%;
+  max-width: var(--space-48);
+  flex-shrink: 0;
+  align-items: center;
+  gap: var(--space-1-5);
+  border-right: 1px solid colors.theme-color('border', 0.3);
+  padding-inline: var(--space-3);
+  color: var(--theme-text-quaternary);
+
+  &[aria-selected='true'] {
+    background-color: var(--theme-surface);
+    color: var(--theme-text-primary);
+  }
+
+  &:not([aria-selected='true']) {
+    @include responsive.hover {
+      color: var(--theme-text-secondary);
+    }
+  }
+}
+
+.tab-label {
+  @include type.type-overflow;
+}
+
+.tab-close {
+  flex-shrink: 0;
+  border-radius: var(--radius-sm);
+  padding: var(--space-0-5);
+  color: var(--theme-text-quaternary);
+
+  @include responsive.hover {
+    color: var(--theme-text-primary);
+  }
+}
+
+.tab-close-icon {
+  height: var(--space-2-5);
+  width: var(--space-2-5);
+}
+
+.toolbar {
+  display: flex;
+  height: var(--space-9);
+  flex-shrink: 0;
+  align-items: center;
+  gap: var(--space-1);
+  border-bottom: 1px solid colors.theme-color('border', 0.5);
+  padding-inline: var(--space-2);
+}
+
+.icon-button {
+  @include anim.transition-colors;
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  border-radius: var(--radius-md);
+  padding: var(--space-1);
+  color: var(--theme-text-tertiary);
+
+  @include responsive.hover {
+    color: var(--theme-text-primary);
+  }
+
+  &:disabled {
+    opacity: 0.4;
+    pointer-events: none;
+  }
+}
+
+.icon {
+  height: var(--space-3-5);
+  width: var(--space-3-5);
+}
+
+.url {
+  @include type.type-mono-meta;
+  min-width: 0;
+  flex: 1;
+  border: 1px solid colors.theme-color('border', 0.5);
+  border-radius: var(--radius-md);
+  background-color: var(--theme-surface);
+  padding: var(--space-1) var(--space-2);
+  color: var(--theme-text-primary);
+  outline: none;
+
+  &:focus {
+    border-color: colors.theme-color('border', 1);
+  }
+
+  &:disabled {
+    opacity: 0.5;
+  }
+}
+
+.viewport {
+  @include type.type-meta;
+  max-width: var(--space-36);
+  flex-shrink: 1;
+  border: 1px solid colors.theme-color('border', 0.5);
+  border-radius: var(--radius-md);
+  background-color: var(--theme-surface);
+  padding: var(--space-1);
+  color: var(--theme-text-secondary);
+
+  @include responsive.media('mobile') {
+    display: none;
+  }
+}
+
+.agent {
+  @include type.type-meta(500);
+  @include anim.pulse;
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: var(--space-1);
+  color: var(--theme-text-secondary);
+}
+
+.stage {
+  position: relative;
+  min-height: 0;
+  flex: 1;
+  overflow: hidden;
+  outline: none;
+
+  &:focus-visible {
+    box-shadow: inset 0 0 0 1px colors.theme-color('border', 1);
+  }
+}
+
+.canvas {
+  position: absolute;
+  inset: 0;
+  display: block;
+  height: 100%;
+  width: 100%;
+  touch-action: none;
+}
+
+.overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-3);
+
+  &--opaque {
+    background-color: var(--theme-surface-secondary);
+  }
+}
+
+.overlay-message {
+  @include type.type-default;
+  max-width: 80%;
+  text-align: center;
+  color: var(--theme-text-tertiary);
+}
+
+.notice {
+  @include type.type-meta;
+  position: absolute;
+  top: var(--space-2);
+  left: 50%;
+  transform: translateX(-50%);
+  max-width: 90%;
+  border-radius: var(--radius-md);
+  background-color: var(--theme-surface);
+  padding: var(--space-1-5) var(--space-3);
+  color: var(--theme-text-secondary);
+  box-shadow: 0 1px 4px colors.theme-color('border', 0.6);
+}
+
+.dialog-backdrop {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: var(--space-8);
+  background-color: colors.theme-color('surface-secondary', 0.4);
+}
+
+.dialog {
+  display: flex;
+  width: min(24rem, 90%);
+  flex-direction: column;
+  gap: var(--space-3);
+  border: 1px solid colors.theme-color('border', 0.5);
+  border-radius: var(--radius-lg);
+  background-color: var(--theme-surface);
+  padding: var(--space-4);
+}
+
+.dialog-message {
+  @include type.type-default;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  color: var(--theme-text-primary);
+}
+
+.dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
+}
