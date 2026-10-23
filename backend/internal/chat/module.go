@@ -470,7 +470,7 @@ func (m *Module) sessionConfig(sb *sandbox.Sandbox, req *turnRequest) claude.Con
 	if sb.Kind == sandbox.KindDocker {
 		cfg.Binary = "claude"
 		if !req.fullReplace {
-			cfg.SystemPrompt += boxPrompt(cfg.Cwd)
+			cfg.SystemPrompt += boxPrompt
 		}
 	}
 	if m.MCPConfig != nil {
@@ -479,19 +479,9 @@ func (m *Module) sessionConfig(sb *sandbox.Sandbox, req *turnRequest) claude.Con
 	return cfg
 }
 
-// boxPrompt tells Claude about the user's box so it installs what it needs
-// and delivers work as a PR without asking for setup details.
-func boxPrompt(cwd string) string {
-	return "\n<environment>\nYou work in the user's personal Linux box (Ubuntu 24.04, passwordless sudo). " +
-		"This project is at " + cwd + "; the user's other projects sit next to it in " + sandbox.ContainerProjects + ".\n" +
-		"- HOME (" + sandbox.ContainerHome + ") is persistent and shared by all projects: install toolchains there " +
-		"(e.g. rustup for Rust, sdkman for Java/Gradle, nvm, go) and they stay. apt packages work too (run `sudo apt-get update` first) but are reset when the box image is updated.\n" +
-		"- Preinstalled: git, gh, Node 22, Python 3 with uv, build-essential. Install other toolchains when a project needs them.\n" +
-		"- git and gh are authenticated with the user's GitHub token when one is set (GITHUB_TOKEN). If it is missing, " +
-		"ask the user to add a GitHub token in Settings. To deliver work: commit on a new branch, push, and open a PR with `gh pr create`.\n" +
-		"- Commits use the git identity in ~/.gitconfig (default: Claude <noreply@anthropic.com>); don't ask the user for one.\n" +
-		"- The box stops after a period of inactivity, which also stops background servers.\n</environment>\n"
-}
+// boxPrompt covers what Claude can't discover itself about the user's box.
+const boxPrompt = "\n<environment>Personal Ubuntu box with passwordless sudo (run `sudo apt-get update` before apt installs). " +
+	"HOME persists across projects and restarts; apt packages don't. The box stops when idle, ending background processes.</environment>\n"
 
 var imageMIME = map[string]string{".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".gif": "image/gif", ".webp": "image/webp"}
 
