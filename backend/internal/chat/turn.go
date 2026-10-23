@@ -630,6 +630,9 @@ func (t *turn) denyPending(msg string) {
 // finish persists the terminal snapshot and emits the terminal event, unless
 // a queued message takes over the stream.
 func (t *turn) finish(status, errText string) {
+	if strings.Contains(errText, "Not logged in") {
+		errText += "\n\nClaude has no credentials in this sandbox. Add ANTHROPIC_BASE_URL + ANTHROPIC_AUTH_TOKEN (proxy), ANTHROPIC_API_KEY or CLAUDE_CODE_OAUTH_TOKEN under Settings → Environment Variables, or run `claude` in the workspace terminal to log in."
+	}
 	t.denyPending("The turn ended.")
 	t.emitPromptSuggestions()
 	t.mu.Lock()

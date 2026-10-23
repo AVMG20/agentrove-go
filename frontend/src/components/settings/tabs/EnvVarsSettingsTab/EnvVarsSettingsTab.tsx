@@ -5,6 +5,7 @@ import { useSettingsContext } from '@/hooks/useSettingsContext';
 import { useCrudForm } from '@/hooks/useCrudForm';
 import { createDefaultEnvVarForm, validateEnvVarForm } from '@/utils/settings';
 import { lazyNamed } from '@/utils/lazyNamed';
+import { suggestEnvVarName } from '@/utils/envVarNames';
 import type { CustomEnvVar } from '@/types/user.types';
 import styles from './EnvVarsSettingsTab.module.scss';
 
@@ -33,7 +34,7 @@ export function EnvVarsSettingsTab() {
     <>
       <ListManagementTab<CustomEnvVar>
         title="Environment Variables"
-        description="Configure environment variables that will be available in every sandbox. Perfect for API keys like OPENAI_API_KEY, GEMINI_API_KEY, etc."
+        description="Configure environment variables that will be available in every sandbox. Use ANTHROPIC_BASE_URL + ANTHROPIC_AUTH_TOKEN (proxy), ANTHROPIC_API_KEY or CLAUDE_CODE_OAUTH_TOKEN to sign Claude in."
         items={localSettings.custom_env_vars ?? []}
         emptyIcon={Key}
         emptyText="No custom environment variables configured yet"
@@ -47,14 +48,22 @@ export function EnvVarsSettingsTab() {
         onAdd={envVarCrud.handleAdd}
         onEdit={envVarCrud.handleEdit}
         onDelete={envVarCrud.handleDelete}
-        renderItem={(envVar) => (
-          <>
-            <div className={styles['item-header']}>
-              <h3 className={styles['item-key']}>{envVar.key}</h3>
-            </div>
-            <p className={styles['item-value']}>{maskValue(envVar.value)}</p>
-          </>
-        )}
+        renderItem={(envVar) => {
+          const suggestion = suggestEnvVarName(envVar.key);
+          return (
+            <>
+              <div className={styles['item-header']}>
+                <h3 className={styles['item-key']}>{envVar.key}</h3>
+              </div>
+              <p className={styles['item-value']}>{maskValue(envVar.value)}</p>
+              {suggestion && (
+                <p className={styles['item-warning']}>
+                  Claude ignores this name. Did you mean {suggestion}?
+                </p>
+              )}
+            </>
+          );
+        }}
         logContext="EnvVarsSettingsTab"
       />
       {envVarCrud.isDialogOpen && (

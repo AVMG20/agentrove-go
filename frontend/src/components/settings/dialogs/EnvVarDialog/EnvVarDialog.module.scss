@@ -41,6 +41,23 @@
   color: var(--theme-text-quaternary);
 }
 
+
+.warning {
+  @include type.type-meta;
+  margin-top: var(--space-1);
+  color: var(--theme-warning-text);
+}
+
+.suggestion {
+  @include type.type-mono;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--theme-text-primary);
+  text-decoration: underline;
+  cursor: pointer;
+}
+
 // Passed down to SecretInput to size + monospace the secret value field.
 .secret-value {
   width: 100%;

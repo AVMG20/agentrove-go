@@ -20,3 +20,9 @@
   word-break: break-all;
   color: var(--theme-text-quaternary);
 }
+
+.item-warning {
+  @include type.type-meta;
+  margin-top: var(--space-1);
+  color: var(--theme-warning-text);
+}

@@ -6,6 +6,7 @@ import { useState } from 'react';
 import { BaseModal } from '@/components/ui/shared/BaseModal/BaseModal';
 import { DialogFooter } from '@/components/ui/shared/DialogFooter/DialogFooter';
 import { DialogError } from '@/components/ui/shared/DialogError/DialogError';
+import { suggestEnvVarName } from '@/utils/envVarNames';
 import styles from './EnvVarDialog.module.scss';
 
 interface EnvVarDialogProps {
@@ -28,6 +29,7 @@ export function EnvVarDialog({
   onEnvVarChange,
 }: EnvVarDialogProps) {
   const [isValueVisible, setIsValueVisible] = useState(false);
+  const suggestion = suggestEnvVarName(envVar.key);
 
   return (
     <BaseModal isOpen={isOpen} onClose={onClose} size="lg" className={styles.dialog}>
@@ -50,7 +52,21 @@ export function EnvVarDialog({
               placeholder="OPENAI_API_KEY"
               className={styles['key-input']}
             />
-            <p className={styles.hint}>Uppercase letters, numbers, and underscores only</p>
+            {suggestion ? (
+              <p className={styles.warning}>
+                Claude won&apos;t read this name. Did you mean{' '}
+                <button
+                  type="button"
+                  className={styles['suggestion']}
+                  onClick={() => onEnvVarChange('key', suggestion)}
+                >
+                  {suggestion}
+                </button>
+                ?
+              </p>
+            ) : (
+              <p className={styles.hint}>Uppercase letters, numbers, and underscores only</p>
+            )}
           </div>
 
           <div>
