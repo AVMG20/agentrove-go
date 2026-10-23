@@ -1,10 +1,47 @@
 @use '@/styles/globals/typography' as type;
 
-// Passed to Dropdown's itemClassName — mode label + description stacked.
+// Passed to Dropdown's itemClassName.
 .item-column {
+  display: flex;
+}
+
+// All five modes fit without scrolling.
+.mode-list {
+  max-height: none;
+}
+
+.mode-row {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2-5);
+  padding-block: var(--space-0-5);
+}
+
+.mode-icon {
+  flex-shrink: 0;
+  width: 1rem;
+  height: 1rem;
+  margin-top: 0.1rem;
+  color: var(--theme-text-tertiary);
+
+  &--auto {
+    color: var(--theme-accent);
+  }
+
+  &--bypassPermissions {
+    color: var(--theme-warning);
+  }
+
+  &--plan {
+    color: var(--theme-info);
+  }
+}
+
+.mode-text {
   display: flex;
   flex-direction: column;
   gap: var(--space-0-5);
+  white-space: normal;
 }
 
 .mode-label {
@@ -30,14 +67,15 @@
 }
 
 // Modes that change how Claude acts carry a colour cue on the trigger: plan
-// (read-only, info blue) and bypass (no prompts, amber). Doubled class so it
-// wins over the dropdown's own trigger colours.
+// (read-only, info blue) and auto (AI reviewer, accent). Full access is the
+// sandboxed default, so it stays neutral. Doubled class so it wins over the
+// dropdown's own trigger colours.
 .mode-trigger.mode-trigger--plan,
 .mode-trigger.mode-trigger--plan svg {
   color: var(--theme-info);
 }
 
-.mode-trigger.mode-trigger--bypassPermissions,
-.mode-trigger.mode-trigger--bypassPermissions svg {
-  color: var(--theme-warning);
+.mode-trigger.mode-trigger--auto,
+.mode-trigger.mode-trigger--auto svg {
+  color: var(--theme-accent);
 }

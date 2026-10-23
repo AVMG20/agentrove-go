@@ -1,6 +1,5 @@
 import { memo } from 'react';
 import clsx from 'clsx';
-import { Shield } from 'lucide-react';
 import { Dropdown, type DropdownPosition } from '@/components/ui/primitives/Dropdown/Dropdown';
 import { useIsSplitMode } from '@/hooks/useIsSplitMode';
 import {
@@ -17,13 +16,17 @@ import {
 import styles from './PermissionModeSelector.module.scss';
 
 function renderPermissionItem(mode: PermissionModeOption, isSelected: boolean) {
+  const Icon = mode.icon;
   return (
-    <>
-      <span className={clsx(styles['mode-label'], isSelected && styles['mode-label--selected'])}>
-        {mode.label}
+    <span className={styles['mode-row']}>
+      <Icon className={clsx(styles['mode-icon'], styles[`mode-icon--${mode.value}`])} aria-hidden />
+      <span className={styles['mode-text']}>
+        <span className={clsx(styles['mode-label'], isSelected && styles['mode-label--selected'])}>
+          {mode.label}
+        </span>
+        <span className={styles['mode-description']}>{mode.description}</span>
       </span>
-      <span className={styles['mode-description']}>{mode.description}</span>
-    </>
+    </span>
   );
 }
 
@@ -58,8 +61,9 @@ export const PermissionModeDropdown = memo(function PermissionModeDropdown({
       getItemKey={(mode) => mode.value}
       getItemLabel={(mode) => mode.label}
       onSelect={(mode) => onChange(mode.value)}
-      leftIcon={Shield}
-      width="13rem"
+      leftIcon={selectedMode.icon}
+      width="21rem"
+      itemsClassName={styles['mode-list']}
       itemClassName={styles['item-column']}
       dropdownPosition={dropdownPosition}
       disabled={disabled}

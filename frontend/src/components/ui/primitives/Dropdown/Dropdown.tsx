@@ -40,6 +40,8 @@ export interface DropdownProps<T> {
   // CSS width for the panel (e.g. '10rem'), not a class name
   width?: string;
   itemClassName?: string;
+  // Extra class for the scrolling item list (e.g. to lift its max-height).
+  itemsClassName?: string;
   dropdownPosition?: DropdownPosition;
   disabled?: boolean;
   compactOnMobile?: boolean;
@@ -133,6 +135,7 @@ const Dropdown = memo(function Dropdown<T>({
   leftIcon: LeftIcon,
   width = '10rem',
   itemClassName,
+  itemsClassName,
   dropdownPosition = 'bottom',
   disabled = false,
   compactOnMobile = false,
@@ -298,7 +301,7 @@ const Dropdown = memo(function Dropdown<T>({
               )}
             </div>
           )}
-          <div className={styles.items}>
+          <div className={clsx(styles.items, itemsClassName)}>
             {displayItems.map((entry, index) => {
               if (entry.type === 'divider') {
                 return <div key={`divider-${index}`} role="separator" className={styles.divider} />;

@@ -46,7 +46,7 @@ func mode(m string) *string { return &m }
 func PermissionOptions(toolName string) []PermissionOption {
 	if toolName == "ExitPlanMode" {
 		return []PermissionOption{
-			{Kind: "allow_always", Name: "Yes, and bypass permissions", OptionID: "bypassPermissions", PermissionMode: mode("bypassPermissions")},
+			{Kind: "allow_always", Name: "Yes, and allow everything (full access)", OptionID: "bypassPermissions", PermissionMode: mode("bypassPermissions")},
 			{Kind: "allow_always", Name: "Yes, and auto-accept edits", OptionID: "acceptEdits", PermissionMode: mode("acceptEdits")},
 			{Kind: "allow_once", Name: "Yes, and manually approve edits", OptionID: "default", PermissionMode: mode("default")},
 			{Kind: "reject_once", Name: "No, keep planning", OptionID: "plan", PermissionMode: mode("plan")},

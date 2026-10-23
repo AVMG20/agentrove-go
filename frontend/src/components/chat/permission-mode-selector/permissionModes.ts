@@ -1,23 +1,43 @@
+import { ClipboardList, Lock, PencilLine, ShieldAlert, Sparkles, type LucideIcon } from 'lucide-react';
 import { DEFAULT_PERMISSION_MODE, type PermissionMode } from '@/store/chatSettingsStore';
 
 export interface PermissionModeOption {
   value: PermissionMode;
   label: string;
   description: string;
+  icon: LucideIcon;
 }
 
 export const PERMISSION_MODES: PermissionModeOption[] = [
-  { value: 'default', label: 'Default', description: 'Ask before edits and shell actions' },
+  {
+    value: 'default',
+    label: 'Supervised',
+    description: 'Ask before commands and file changes.',
+    icon: Lock,
+  },
   {
     value: 'acceptEdits',
-    label: 'Accept Edits',
-    description: 'Auto-accept edits during the session',
+    label: 'Auto-accept edits',
+    description: 'Auto-approve edits, ask before other actions.',
+    icon: PencilLine,
   },
-  { value: 'plan', label: 'Plan', description: 'Review steps before running' },
+  {
+    value: 'auto',
+    label: 'Auto',
+    description: 'An AI reviewer can approve or deny actions.',
+    icon: Sparkles,
+  },
   {
     value: 'bypassPermissions',
-    label: 'Bypass Permissions',
-    description: 'Skip all permission checks',
+    label: 'Full access',
+    description: 'Allow commands, edits and MCP tools without prompts.',
+    icon: ShieldAlert,
+  },
+  {
+    value: 'plan',
+    label: 'Plan',
+    description: 'Read-only: propose a plan before changing anything.',
+    icon: ClipboardList,
   },
 ];
 
