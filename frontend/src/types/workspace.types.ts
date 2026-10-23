@@ -49,6 +49,8 @@ export interface BoxInfo {
   idle_ttl_seconds: number;
   // What the box wrote outside home and projects (apt packages).
   disk_bytes: number | null;
+  // Projects can run on the server's own computer (off in production).
+  host_available: boolean;
 }
 
 export interface WorkspaceResources {

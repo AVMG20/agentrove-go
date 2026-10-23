@@ -17,26 +17,6 @@ import styles from './NewProject.module.scss';
 
 type Mode = 'choose' | 'git' | 'empty' | 'local';
 
-// Production servers run as root and turn the host provider off; once the
-// server says so, stop offering local folders.
-const HOST_UNAVAILABLE_KEY = 'agentrove:host-unavailable';
-
-function readHostUnavailable(): boolean {
-  try {
-    return localStorage.getItem(HOST_UNAVAILABLE_KEY) === '1';
-  } catch {
-    return false;
-  }
-}
-
-function rememberHostUnavailable() {
-  try {
-    localStorage.setItem(HOST_UNAVAILABLE_KEY, '1');
-  } catch {
-    // Only costs a repeat of the error next time.
-  }
-}
-
 function FormHeader({
   title,
   onBack,
@@ -67,7 +47,7 @@ function FormHeader({
 }
 
 // Creates a project: clone a GitHub repo or start empty, both in the user's
-// box. A folder on this computer is a quiet extra for self-hosted setups.
+// box. A folder on this computer is a quiet extra where the server allows it.
 // onCreated selects the new project and closes the picker.
 export function NewProject({
   onCreated,
@@ -82,6 +62,8 @@ export function NewProject({
   const hasGitHubToken = Boolean(settings?.github_personal_access_token);
   // Projects live in the box; without Docker the server runs them on the host.
   const provider = box?.available === false ? 'host' : 'docker';
+  // Off in production, where the server runs as root.
+  const hostAvailable = box?.host_available === true;
 
   const [mode, setMode] = useState<Mode>('choose');
   const [name, setName] = useState('');
@@ -90,7 +72,6 @@ export function NewProject({
   const [pasteUrl, setPasteUrl] = useState(false);
   const [repoQuery, setRepoQuery] = useState('');
   const [cloning, setCloning] = useState<string | null>(null);
-  const [hostUnavailable, setHostUnavailable] = useState(readHostUnavailable);
   const debouncedRepoQuery = useDebouncedValue(repoQuery, 300);
   const browseRepos = hasGitHubToken && !pasteUrl;
 
@@ -114,15 +95,7 @@ export function NewProject({
       onCreated(workspace.id);
       toast.success(label);
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Failed to create project';
-      if (request.sandbox_provider === 'host' && /not available/i.test(message)) {
-        rememberHostUnavailable();
-        setHostUnavailable(true);
-        reset('choose');
-        toast.error('This server can’t open folders on its own computer');
-        return;
-      }
-      toast.error(message);
+      toast.error(error instanceof Error ? error.message : 'Failed to create project');
     } finally {
       setCloning(null);
     }
@@ -200,7 +173,7 @@ export function NewProject({
             <span className={styles['option-description']}>Start from scratch</span>
           </Button>
         </div>
-        {!hostUnavailable && (
+        {hostAvailable && (
           <Button
             variant="unstyled"
             type="button"

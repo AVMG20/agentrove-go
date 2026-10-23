@@ -38,8 +38,7 @@ function renderNewProject(onCreated = vi.fn()) {
 }
 
 beforeEach(() => {
-  localStorage.clear();
-  h.box = { available: true };
+  h.box = { available: true, host_available: false };
   h.token = null;
   h.mutateAsync.mockReset();
   h.mutateAsync.mockResolvedValue({ id: 'ws-new' });
@@ -91,16 +90,23 @@ describe('NewProject', () => {
     );
   });
 
-  it('stops offering local folders once the server rejects the host provider', async () => {
-    h.mutateAsync.mockRejectedValue(new Error('Sandbox provider "host" is not available'));
+  it('offers local folders only where the server allows the host provider', async () => {
+    renderNewProject();
+    expect(screen.queryByText('Open a folder on this computer')).toBeNull();
+    cleanup();
+
+    h.box = { available: true, host_available: true };
     renderNewProject();
     fireEvent.click(screen.getByText('Open a folder on this computer'));
     fireEvent.change(screen.getByLabelText('Folder path'), { target: { value: '~/code/app' } });
     fireEvent.click(screen.getByText('Open folder'));
-    await waitFor(() => expect(screen.getByText('Empty project')).toBeTruthy());
-    expect(h.mutateAsync).toHaveBeenCalledWith(
-      expect.objectContaining({ name: 'app', source_type: 'local', sandbox_provider: 'host' }),
+    await waitFor(() =>
+      expect(h.mutateAsync).toHaveBeenCalledWith({
+        name: 'app',
+        source_type: 'local',
+        workspace_path: '~/code/app',
+        sandbox_provider: 'host',
+      }),
     );
-    expect(screen.queryByText('Open a folder on this computer')).toBeNull();
   });
 });

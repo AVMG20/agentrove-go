@@ -9,6 +9,7 @@ const box = (over: Partial<BoxInfo> = {}): BoxInfo => ({
   idle_for_seconds: 0,
   idle_ttl_seconds: 1800,
   disk_bytes: null,
+  host_available: false,
   ...over,
 });
 
