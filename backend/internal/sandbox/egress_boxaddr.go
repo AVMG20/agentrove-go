@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"net/netip"
+	"os"
 	"sync"
 	"time"
 )
@@ -110,11 +111,12 @@ func (m *Manager) BoxAddrCheckable() bool {
 // FromUserBox reports whether r comes straight from userID's box. Boxes
 // reach the API directly (no proxy), so the TCP peer is the box itself;
 // X-Forwarded-For is never consulted. It is always true when pinning is
-// off or can't work: AgentTokensBoxOnly unset, no Docker provider, or the
-// API not running as a container on that daemon (dev on the host).
+// off or can't work: AgentTokensBoxOnly unset, no Docker provider, no
+// AGENTROVE_INTERNAL_URL (boxes then call the public BASE_URL, through the
+// proxy), or the API not running as a container on that daemon.
 func (m *Manager) FromUserBox(r *http.Request, userID string) bool {
 	d, ok := m.providers[KindDocker].(*DockerProvider)
-	if !ok || !m.cfg.AgentTokensBoxOnly || d.selfContainer() == "" {
+	if !ok || !m.cfg.AgentTokensBoxOnly || os.Getenv("AGENTROVE_INTERNAL_URL") == "" || d.selfContainer() == "" {
 		return true
 	}
 	ap, err := netip.ParseAddrPort(r.RemoteAddr)

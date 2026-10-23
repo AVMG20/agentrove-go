@@ -576,6 +576,7 @@ func TestFromUserBox(t *testing.T) {
 	boxIP := f.ips[name]["boxid"]
 	t.Cleanup(func() { boxAddrCache.Delete(boxAddrKey{d, netUser}) })
 	d.cfg.AgentTokensBoxOnly = true
+	t.Setenv("AGENTROVE_INTERNAL_URL", "http://api:8080")
 	m := &Manager{cfg: d.cfg, providers: map[string]Provider{KindDocker: d}}
 	req := func(peer string) *http.Request {
 		r := httptest.NewRequest(http.MethodPost, "/api/v1/mcp", nil)
@@ -600,6 +601,12 @@ func TestFromUserBox(t *testing.T) {
 		t.Error("pinning off should accept any peer")
 	}
 	d.cfg.AgentTokensBoxOnly = true
+	// No internal URL: boxes go through the public proxy, so no pinning.
+	t.Setenv("AGENTROVE_INTERNAL_URL", "")
+	if !m.FromUserBox(req("203.0.113.7:41000"), netUser) {
+		t.Error("without AGENTROVE_INTERNAL_URL any peer should pass")
+	}
+	t.Setenv("AGENTROVE_INTERNAL_URL", "http://api:8080")
 	h, _ := newNetProvider(true, "", "nope")
 	h.cfg.AgentTokensBoxOnly = true
 	hm := &Manager{cfg: h.cfg, providers: map[string]Provider{KindDocker: h}}
