@@ -98,6 +98,8 @@ export interface Chat {
   last_model_id: string | null;
   last_thinking_mode: string | null;
   last_persona_name: string | null;
+  // Set when an automation started this chat.
+  automation_id?: string | null;
 }
 
 // Work that keeps running past its tool call: a background shell, or a subagent.

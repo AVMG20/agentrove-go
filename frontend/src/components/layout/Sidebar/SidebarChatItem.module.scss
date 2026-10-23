@@ -36,6 +36,10 @@
   color: var(--theme-text-tertiary);
 }
 
+.automation-icon {
+  color: var(--theme-warning);
+}
+
 // Corner overlay when the dot sits on top of a provider icon/caret
 .status-corner {
   position: absolute;

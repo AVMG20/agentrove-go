@@ -1,5 +1,5 @@
 import { memo, useEffect, useRef } from 'react';
-import { ChevronRight, CornerDownRight } from 'lucide-react';
+import { ChevronRight, CornerDownRight, Zap } from 'lucide-react';
 import { AsciiSpinner } from '@/components/ui/AsciiSpinner/AsciiSpinner';
 import { ChatStatusDot } from '@/components/ui/ChatStatusDot/ChatStatusDot';
 import { chatStatusTone, CHAT_STATUS_LABEL, type ChatStatusTone } from '@/utils/message';
@@ -60,6 +60,13 @@ export const SidebarChatItem = memo(function SidebarChatItem({
   // The open chat is being read — no unread signal for it
   const isUnread = !isActive && chat.unread;
   const agentKind = useChatAgentKind(chat.id, chat.session_agent_kind);
+  const isAutomationRun = !!chat.automation_id;
+  // A bolt marks automation runs in the provider icon's place.
+  const anchorIcon = isAutomationRun ? (
+    <Zap aria-hidden className={clsx(styles['provider-icon'], styles['automation-icon'])} />
+  ) : agentKind ? (
+    <ClaudeIcon aria-hidden className={styles['provider-icon']} />
+  ) : null;
   // Persistent status on the leading icon (visible even on hover), mirroring the
   // sidebar precedence. Running shows the spinner; the other three show a dot.
   const status = chatStatusTone({
@@ -74,22 +81,18 @@ export const SidebarChatItem = memo(function SidebarChatItem({
   const statusTone: ChatStatusTone | null = showSpinner ? null : status;
   const statusLabel = status ? CHAT_STATUS_LABEL[status] : null;
   // Mirrors the leading-slot render below — the workspace line indents to stay flush with the title
-  const hasLeadingSlot = hasSubThreads || agentKind != null || status != null;
+  const hasLeadingSlot = hasSubThreads || anchorIcon != null || status != null;
   const statusSlot = hasLeadingSlot ? (
     // Running swaps to a spinner; blocked/done/unread show a colored dot on the
     // icon corner (or centered when there's no provider icon to anchor it).
     <span className={styles['status-slot']}>
-      {showSpinner ? (
-        <AsciiSpinner className={styles['item-spinner']} />
-      ) : agentKind ? (
-        <ClaudeIcon aria-hidden className={styles['provider-icon']} />
-      ) : null}
+      {showSpinner ? <AsciiSpinner className={styles['item-spinner']} /> : anchorIcon}
       {statusTone && (
         <ChatStatusDot
           tone={statusTone}
-          // Corner-overlay only when there's a provider icon to anchor to;
-          // otherwise the dot centers in the reserved box.
-          className={clsx(agentKind && styles['status-corner'])}
+          // Corner-overlay only when there's an icon to anchor to; otherwise
+          // the dot centers in the reserved box.
+          className={clsx(anchorIcon && styles['status-corner'])}
           ringClassName={styles['status-ring']}
         />
       )}
@@ -121,9 +124,12 @@ export const SidebarChatItem = memo(function SidebarChatItem({
       </span>
     </Button>
   ) : null;
-  const restingIcon = statusLabel ? (
+  const restingTooltip = [statusLabel, isAutomationRun && 'Started by an automation']
+    .filter(Boolean)
+    .join(' · ');
+  const restingIcon = restingTooltip ? (
     // Wordless dot/spinner carries status; the word lives in a tooltip
-    <FloatingTooltip content={statusLabel} className={styles['status-tooltip']}>
+    <FloatingTooltip content={restingTooltip} className={styles['status-tooltip']}>
       {statusSlot}
     </FloatingTooltip>
   ) : (

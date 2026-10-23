@@ -3,6 +3,8 @@ import { useMatch, useNavigate } from 'react-router-dom';
 import { AsciiSpinner } from '@/components/ui/AsciiSpinner/AsciiSpinner';
 import { ChatStatusDot } from '@/components/ui/ChatStatusDot/ChatStatusDot';
 import type { ChatStatusTone } from '@/utils/message';
+import { Zap } from 'lucide-react';
+import clsx from 'clsx';
 import { ClaudeIcon } from '@/components/ui/icons/ClaudeIcon';
 import { useUIStore } from '@/store/uiStore';
 import { useStreamStore } from '@/store/streamStore';
@@ -45,6 +47,14 @@ function ChatTab({ chatId, isActive, isCurrent, status, onSelect, onClose }: Cha
   // Streaming uses AsciiSpinner; blocked/completed map straight to ChatStatusDot.
   const statusDotTone: ChatStatusTone | null = status && status !== 'streaming' ? status : null;
   const agentKind = useChatAgentKind(chatId, chatQuery.data?.session_agent_kind);
+  const isAutomationRun = !!chatQuery.data?.automation_id;
+  const tooltip = [
+    title,
+    status && STATUS_LABELS[status],
+    isAutomationRun && 'Started by an automation',
+  ]
+    .filter(Boolean)
+    .join(' · ');
 
   return (
     <TitleBarTab
@@ -53,6 +63,11 @@ function ChatTab({ chatId, isActive, isCurrent, status, onSelect, onClose }: Cha
           <AsciiSpinner className={styles['tab-spinner']} />
         ) : statusDotTone ? (
           <ChatStatusDot tone={statusDotTone} className={styles['tab-status-dot']} />
+        ) : isAutomationRun ? (
+          <Zap
+            aria-hidden
+            className={clsx(styles['tab-provider-icon'], styles['tab-automation-icon'])}
+          />
         ) : (
           agentKind && <ClaudeIcon aria-hidden className={styles['tab-provider-icon']} />
         )
@@ -60,7 +75,7 @@ function ChatTab({ chatId, isActive, isCurrent, status, onSelect, onClose }: Cha
       title={title}
       isActive={isActive}
       actions={{
-        tooltip: status ? `${title} · ${STATUS_LABELS[status]}` : title,
+        tooltip,
         isCurrent,
         onSelect: () => onSelect(chatId),
         onClose: () => onClose(chatId),
