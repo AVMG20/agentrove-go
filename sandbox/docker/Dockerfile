@@ -25,11 +25,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && ln -sf "$(command -v fdfind)" /usr/local/bin/fd \
     && rm -rf /var/lib/apt/lists/*
 
-# ubuntu:24.04 ships an "ubuntu" user at uid 1000; the sandbox user must own that uid.
+# ubuntu:24.04 ships an "ubuntu" user at uid 1000; the sandbox user must own
+# that uid. HOME already exists (apt tooling ran with HOME=/home/user), so chown it.
 RUN (userdel -r ubuntu 2>/dev/null || true) \
     && useradd -m -s /bin/bash -u 1000 user \
     && echo "user ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/user \
-    && chmod 0440 /etc/sudoers.d/user
+    && chmod 0440 /etc/sudoers.d/user \
+    && chown -R user:user /home/user
 
 COPY --chmod=755 sandbox/docker/entrypoint.sh /usr/local/bin/entrypoint.sh
 
