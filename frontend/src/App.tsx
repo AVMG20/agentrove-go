@@ -19,6 +19,7 @@ import { toasterConfig } from '@/config/toaster';
 import { AuthRoute } from '@/components/routes/AuthRoute/AuthRoute';
 import { AppShellRoute } from '@/components/routes/AppShellRoute/AppShellRoute';
 import { authStorage } from '@/utils/storage';
+import { watchRemoteSignOut } from '@/utils/authSession';
 import { useNotificationPermissionPrompt } from '@/hooks/useNotificationPermissionPrompt';
 import { PALETTES } from '@/styles/palettes';
 import { ErrorBoundary } from '@/components/ui/ErrorBoundary/ErrorBoundary';
@@ -114,6 +115,7 @@ export default function App() {
   useMountEffect(() => {
     useAuthStore.getState().setAuthenticated(!!authStorage.getToken());
     setAuthHydrated(true);
+    return watchRemoteSignOut();
   });
 
   useEffect(() => {

@@ -5,6 +5,7 @@ const h = vi.hoisted(() => ({
   getToken: vi.fn<() => string | null>(() => 'access'),
   getRefreshToken: vi.fn<() => string | null>(() => null),
   setTokens: vi.fn(async () => {}),
+  syncFromStorage: vi.fn(),
   onSessionExpired: vi.fn(),
 }));
 
@@ -13,6 +14,7 @@ vi.mock('@/utils/storage', () => ({
     getToken: h.getToken,
     getRefreshToken: h.getRefreshToken,
     setTokens: h.setTokens,
+    syncFromStorage: h.syncFromStorage,
   },
 }));
 vi.mock('@/utils/authSession', () => ({ invalidateSessionAndRedirect: h.onSessionExpired }));
@@ -102,6 +104,24 @@ describe('APIClient 401 handling', () => {
     await expect(apiClient.get('/thing')).resolves.toEqual({ ok: true });
     expect(h.setTokens).toHaveBeenCalledWith('a2', 'r2');
     expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
+
+  it("refreshes with the token another tab rotated, not this tab's stale cache", async () => {
+    // A bfcached/frozen tab never saw the storage event: syncing is what reveals the new token.
+    h.getRefreshToken.mockReturnValue('stale-refresh');
+    h.syncFromStorage.mockImplementationOnce(() => h.getRefreshToken.mockReturnValue('rotated'));
+    fetchMock
+      .mockResolvedValueOnce(json({ message: 'unauth' }, 401))
+      .mockResolvedValueOnce(
+        json({ access_token: 'a2', refresh_token: 'r2', token_type: 'bearer' }),
+      )
+      .mockResolvedValueOnce(json({ ok: true }));
+
+    await expect(apiClient.get('/thing')).resolves.toEqual({ ok: true });
+
+    const refreshCall = fetchMock.mock.calls[1];
+    expect(JSON.parse(refreshCall[1].body)).toEqual({ refresh_token: 'rotated' });
+    expect(h.onSessionExpired).not.toHaveBeenCalled();
   });
 
   it('tears down the session on a 401 with no refresh token', async () => {

@@ -2,6 +2,7 @@ import clsx from 'clsx';
 import { Globe } from 'lucide-react';
 import { FloatingTooltip } from '@/components/ui/FloatingTooltip/FloatingTooltip';
 import { Link } from '@/components/ui/primitives/Link/Link';
+import { toSafeHttpUrl } from '@/utils/openExternal';
 import styles from './SourceChip.module.scss';
 
 interface SourceChipProps {
@@ -10,6 +11,8 @@ interface SourceChipProps {
 }
 
 export function SourceChip({ source, index }: SourceChipProps) {
+  // Search results are web-controlled: a javascript: url must not become a live href.
+  const href = toSafeHttpUrl(source.url) ?? undefined;
   let domain = '';
   let faviconUrl: string | null = null;
 
@@ -24,7 +27,7 @@ export function SourceChip({ source, index }: SourceChipProps) {
   return (
     <FloatingTooltip content={source.title} className={styles.tooltip}>
       <Link
-        href={source.url}
+        href={href}
         variant="unstyled"
         target="_blank"
         rel="noopener noreferrer"

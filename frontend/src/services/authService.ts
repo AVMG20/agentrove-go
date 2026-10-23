@@ -3,6 +3,7 @@ import { ensureResponse, serviceCall, withAuth } from '@/services/base/BaseServi
 import { ValidationError } from '@/services/base/ServiceError';
 import type { AuthConfig, AuthResponse, User } from '@/types/user.types';
 import { authStorage } from '@/utils/storage';
+import { logger } from '@/utils/logger';
 import {
   validateRequired,
   isValidEmail,
@@ -108,6 +109,10 @@ async function logout(): Promise<void> {
     if (currentRefreshToken) {
       await apiClient.post('/auth/jwt/logout', { refresh_token: currentRefreshToken });
     }
+  } catch (error) {
+    // Revocation is best effort. Failing here (offline, 401 on an expired access token)
+    // would leave the tokens cleared but the UI still signed in, with no way to retry.
+    logger.warn('Server-side logout failed; signing out locally', 'authService', error);
   } finally {
     authStorage.clearAuth();
   }

@@ -71,6 +71,73 @@ describe('authStorage', () => {
     expect(authStorage.getToken()).toBe('fresh');
   });
 
+  it('adopts tokens rotated by another tab when the storage event was missed', async () => {
+    const { authStorage } = await load();
+    await authStorage.setTokens('old-access', 'old-refresh');
+    // Another tab rotated while this page was frozen/bfcached: no event delivered.
+    localStorage.setItem('auth_token', 'new-access');
+    localStorage.setItem('refresh_token', 'new-refresh');
+
+    expect(authStorage.getRefreshToken()).toBe('old-refresh');
+    authStorage.syncFromStorage();
+
+    expect(authStorage.getRefreshToken()).toBe('new-refresh');
+    expect(authStorage.getToken()).toBe('new-access');
+  });
+
+  it('keeps in-memory tokens when storage holds none (e.g. unwritable storage)', async () => {
+    const { authStorage } = await load();
+    await authStorage.setTokens('tok', 'refresh');
+    localStorage.clear();
+
+    authStorage.syncFromStorage();
+
+    expect(authStorage.getToken()).toBe('tok');
+    expect(authStorage.getRefreshToken()).toBe('refresh');
+  });
+
+  it('notifies listeners once another tab has removed both tokens', async () => {
+    const { authStorage } = await load();
+    await authStorage.setTokens('tok', 'refresh');
+    const listener = vi.fn();
+    const unsubscribe = authStorage.onRemoteSignOut(listener);
+
+    window.dispatchEvent(new StorageEvent('storage', { key: 'auth_token', newValue: null }));
+    expect(listener).not.toHaveBeenCalled();
+    window.dispatchEvent(new StorageEvent('storage', { key: 'refresh_token', newValue: null }));
+    expect(listener).toHaveBeenCalledTimes(1);
+
+    unsubscribe();
+  });
+
+  it('does not notify on a token rotation or while already signed out', async () => {
+    const { authStorage } = await load();
+    const listener = vi.fn();
+    authStorage.onRemoteSignOut(listener);
+
+    // Signed out already: cache is empty, so a stray null event is not a sign-out.
+    window.dispatchEvent(new StorageEvent('storage', { key: 'refresh_token', newValue: null }));
+    expect(listener).not.toHaveBeenCalled();
+
+    await authStorage.setTokens('tok', 'refresh');
+    window.dispatchEvent(
+      new StorageEvent('storage', { key: 'refresh_token', newValue: 'rotated' }),
+    );
+    expect(listener).not.toHaveBeenCalled();
+  });
+
+  it('treats localStorage.clear() in another tab as a sign-out', async () => {
+    const { authStorage } = await load();
+    await authStorage.setTokens('tok', 'refresh');
+    const listener = vi.fn();
+    authStorage.onRemoteSignOut(listener);
+
+    window.dispatchEvent(new StorageEvent('storage', { key: null }));
+
+    expect(listener).toHaveBeenCalledTimes(1);
+    expect(authStorage.getToken()).toBeNull();
+  });
+
   it('drops cached tokens when another tab logs out', async () => {
     const { authStorage } = await load();
     await authStorage.setTokens('tok', 'refresh');

@@ -1,9 +1,12 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-const { clearAuth } = vi.hoisted(() => ({ clearAuth: vi.fn() }));
+const { clearAuth, onRemoteSignOut } = vi.hoisted(() => ({
+  clearAuth: vi.fn(),
+  onRemoteSignOut: vi.fn<(listener: () => void) => () => void>(() => () => {}),
+}));
 
-vi.mock('@/utils/storage', () => ({ authStorage: { clearAuth } }));
+vi.mock('@/utils/storage', () => ({ authStorage: { clearAuth, onRemoteSignOut } }));
 
 // Fresh module per test so the module-level `redirectInProgress` latch resets.
 async function load() {
@@ -58,5 +61,19 @@ describe('invalidateSessionAndRedirect', () => {
     expect(replace).toHaveBeenCalledTimes(1);
     // clearAuth still runs on every call.
     expect(clearAuth).toHaveBeenCalledTimes(3);
+  });
+});
+
+describe('watchRemoteSignOut', () => {
+  it('invalidates the session and redirects when another tab signs out', async () => {
+    const replace = stubLocation('/chat/abc');
+    const { watchRemoteSignOut } = await load();
+
+    watchRemoteSignOut();
+    const listener = onRemoteSignOut.mock.calls[0][0] as () => void;
+    listener();
+
+    expect(clearAuth).toHaveBeenCalledTimes(1);
+    expect(replace).toHaveBeenCalledWith('/login');
   });
 });

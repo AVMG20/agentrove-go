@@ -111,6 +111,8 @@ const createQueueStore = <AddArgs extends unknown[]>(api: QueueApi<AddArgs>) =>
           await api.updateQueuedMessage(chatId, messageId, trimmedContent);
         } catch (error) {
           console.error('Failed to sync message update:', error);
+          // The optimistic edit never reached the server, which will still send the old text.
+          await get().fetchQueue(chatId);
         }
       }
     },
@@ -136,6 +138,8 @@ const createQueueStore = <AddArgs extends unknown[]>(api: QueueApi<AddArgs>) =>
           await api.deleteQueuedMessage(chatId, messageId);
         } catch (error) {
           console.error('Failed to sync message delete:', error);
+          // The server still holds the item and will send it — bring it back into view.
+          await get().fetchQueue(chatId);
         }
       }
     },

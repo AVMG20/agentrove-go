@@ -62,6 +62,7 @@ const safeRemoveItem = (key: string): void => {
 let cachedToken: string | null = null;
 let cachedRefreshToken: string | null = null;
 let tokenCacheInitialized = false;
+const signOutListeners = new Set<() => void>();
 
 function initTokenCacheFromLocalStorage(): void {
   if (tokenCacheInitialized) return;
@@ -94,16 +95,42 @@ export const authStorage = {
     safeRemoveItem(AUTH_TOKEN_KEY);
     safeRemoveItem(REFRESH_TOKEN_KEY);
   },
+  // Storage events never reach a frozen, discarded or bfcached page, so its cache can
+  // hold a refresh token another tab already rotated away. Call before using it.
+  // Adopts only a present refresh token: a null here must not wipe tokens held in memory
+  // when storage is unwritable (a real remote sign-out arrives via the storage event).
+  syncFromStorage: (): void => {
+    initTokenCacheFromLocalStorage();
+    const storedRefresh = safeGetItem(REFRESH_TOKEN_KEY);
+    if (!storedRefresh || storedRefresh === cachedRefreshToken) return;
+    cachedRefreshToken = storedRefresh;
+    cachedToken = safeGetItem(AUTH_TOKEN_KEY) ?? cachedToken;
+  },
+  // Fires when another tab signs out (tokens removed). Not fired for this tab's own clearAuth.
+  onRemoteSignOut: (listener: () => void): (() => void) => {
+    signOutListeners.add(listener);
+    return () => signOutListeners.delete(listener);
+  },
 };
 
 // Cross-tab: another tab rotating tokens must update this tab's memory cache
 // or the next refresh replays a rotated-away token after the grace window.
 if (typeof window !== 'undefined') {
   window.addEventListener('storage', (event) => {
-    if (event.key === AUTH_TOKEN_KEY) {
+    // key === null is localStorage.clear() in another tab.
+    const wasSignedIn = cachedToken !== null || cachedRefreshToken !== null;
+    if (event.key === null) {
+      cachedToken = null;
+      cachedRefreshToken = null;
+    } else if (event.key === AUTH_TOKEN_KEY) {
       cachedToken = event.newValue;
     } else if (event.key === REFRESH_TOKEN_KEY) {
       cachedRefreshToken = event.newValue;
+    } else {
+      return;
+    }
+    if (wasSignedIn && cachedToken === null && cachedRefreshToken === null) {
+      signOutListeners.forEach((listener) => listener());
     }
   });
 }
