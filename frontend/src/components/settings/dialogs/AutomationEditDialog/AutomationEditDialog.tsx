@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useId } from 'react';
 import { Clock, Brain, Shield, GitFork, Github } from 'lucide-react';
 import type { Persona } from '@/types/user.types';
 import type { AutomationForm, AutomationTriggerType } from '@/types/automation.types';
@@ -73,6 +73,7 @@ export function AutomationEditDialog({
   onSubmit,
   onChange,
 }: AutomationEditDialogProps) {
+  const titleId = useId();
   const { data: models = [] } = useModelsQuery();
   const workspaces = useWorkspacesList();
 
@@ -136,7 +137,13 @@ export function AutomationEditDialog({
     triggerValid;
 
   return (
-    <BaseModal isOpen={isOpen} onClose={onClose} size="2xl" className={styles.dialog}>
+    <BaseModal
+      isOpen={isOpen}
+      onClose={onClose}
+      size="2xl"
+      className={styles.dialog}
+      ariaLabelledBy={titleId}
+    >
       <div className={styles.body}>
         <div className={styles.header}>
           <div className={styles['icon-box']}>
@@ -146,7 +153,9 @@ export function AutomationEditDialog({
               <Clock className={styles['header-icon']} />
             )}
           </div>
-          <h3 className={styles.title}>{isEditing ? 'Edit automation' : 'Add automation'}</h3>
+          <h3 id={titleId} className={styles.title}>
+            {isEditing ? 'Edit automation' : 'Add automation'}
+          </h3>
         </div>
 
         <DialogError error={error} className={styles.error} />

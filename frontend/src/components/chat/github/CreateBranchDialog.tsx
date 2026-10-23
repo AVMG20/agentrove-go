@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useId } from 'react';
 import { GitBranch } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { BaseModal } from '@/components/ui/shared/BaseModal/BaseModal';
@@ -14,6 +14,7 @@ interface CreateBranchDialogProps {
 }
 
 export function CreateBranchDialog({ onClose }: CreateBranchDialogProps) {
+  const titleId = useId();
   const currentChat = useActiveChat();
   const sandboxId = currentChat?.sandbox_id ?? '';
   const worktreeCwd = currentChat?.worktree_cwd ?? undefined;
@@ -53,13 +54,21 @@ export function CreateBranchDialog({ onClose }: CreateBranchDialogProps) {
   };
 
   return (
-    <BaseModal isOpen={true} onClose={onClose} size="sm" zIndex="modalHighest">
+    <BaseModal
+      isOpen={true}
+      onClose={onClose}
+      size="sm"
+      zIndex="modalHighest"
+      ariaLabelledBy={titleId}
+    >
       <div className={styles.body}>
         <div className={styles.header}>
           <div className={styles['icon-box']}>
             <GitBranch className={styles['header-icon']} />
           </div>
-          <h2 className={styles.title}>Create branch</h2>
+          <h2 id={titleId} className={styles.title}>
+            Create branch
+          </h2>
         </div>
 
         <div className={styles.fields}>

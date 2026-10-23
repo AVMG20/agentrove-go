@@ -5,6 +5,7 @@ import { applyCreatedChat, patchChatInCache } from '@/hooks/queries/useChatQueri
 import { useUIStore } from '@/store/uiStore';
 import { useStreamStore } from '@/store/streamStore';
 import { useBackgroundTasksStore } from '@/store/backgroundTasksStore';
+import { useMessageQueueStore } from '@/store/messageQueueStore';
 import { queryKeys } from '@/hooks/queries/queryKeys';
 import { subscribeChatEventsFeed } from '@/utils/chatEventsFeed';
 import { resyncActiveStreams } from '@/utils/activeStreams';
@@ -82,6 +83,12 @@ export function useChatEvents(options?: { enabled?: boolean }) {
           messageId: parsed.message_id,
           startTime: Date.now(),
         });
+        // A queued message started on an idle chat arrives as a plain stream_started,
+        // not queue_processing — resync so its pending item drops out.
+        const queueStore = useMessageQueueStore.getState();
+        if (queueStore.getQueue(parsed.chat_id).length > 0) {
+          void queueStore.fetchQueue(parsed.chat_id);
+        }
       }
     };
 

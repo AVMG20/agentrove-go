@@ -5,14 +5,18 @@ import styles from './ModalHeader.module.scss';
 
 export interface ModalHeaderProps {
   title: string;
+  // Set as the title's id so BaseModal's `ariaLabelledBy` can name the dialog.
+  titleId?: string;
   onClose: () => void;
   actions?: ReactNode;
 }
 
-export function ModalHeader({ title, onClose, actions }: ModalHeaderProps) {
+export function ModalHeader({ title, titleId, onClose, actions }: ModalHeaderProps) {
   return (
     <div className={styles['modal-header']}>
-      <h3 className={styles.title}>{title}</h3>
+      <h3 id={titleId} className={styles.title}>
+        {title}
+      </h3>
       <div className={styles.actions}>
         {actions}
         <Button

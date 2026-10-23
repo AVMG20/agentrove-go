@@ -2,7 +2,7 @@ import type { CustomEnvVar } from '@/types/user.types';
 import { Input } from '@/components/ui/primitives/Input/Input';
 import { Label } from '@/components/ui/primitives/Label/Label';
 import { SecretInput } from '@/components/settings/inputs/SecretInput/SecretInput';
-import { useState } from 'react';
+import { useState, useId } from 'react';
 import { BaseModal } from '@/components/ui/shared/BaseModal/BaseModal';
 import { DialogFooter } from '@/components/ui/shared/DialogFooter/DialogFooter';
 import { DialogError } from '@/components/ui/shared/DialogError/DialogError';
@@ -28,13 +28,20 @@ export function EnvVarDialog({
   onSubmit,
   onEnvVarChange,
 }: EnvVarDialogProps) {
+  const titleId = useId();
   const [isValueVisible, setIsValueVisible] = useState(false);
   const suggestion = suggestEnvVarName(envVar.key);
 
   return (
-    <BaseModal isOpen={isOpen} onClose={onClose} size="lg" className={styles.dialog}>
+    <BaseModal
+      isOpen={isOpen}
+      onClose={onClose}
+      size="lg"
+      className={styles.dialog}
+      ariaLabelledBy={titleId}
+    >
       <div className={styles.body}>
-        <h3 className={styles.title}>
+        <h3 id={titleId} className={styles.title}>
           {isEditing ? 'Edit Environment Variable' : 'Add Environment Variable'}
         </h3>
 

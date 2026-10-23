@@ -24,7 +24,7 @@ export interface TerminalTabProps {
   onClosed?: () => void;
 }
 
-type SessionState = 'idle' | 'connecting' | 'ready' | 'error' | 'disconnected';
+type SessionState = 'idle' | 'connecting' | 'reconnecting' | 'ready' | 'error' | 'disconnected';
 
 const encoder = new TextEncoder();
 
@@ -32,6 +32,11 @@ const encoder = new TextEncoder();
 const WS_CLOSE_AUTH_FAILED = 4001;
 const WS_CLOSE_SANDBOX_NOT_FOUND = 4004;
 const WS_CLOSE_INVALID_CWD = 4005;
+
+// Unexpected drops (backend restart, network blip) retry on their own with
+// exponential backoff (1s, 2s, 4s) before falling back to the Reconnect button.
+const MAX_AUTO_RECONNECTS = 3;
+const RECONNECT_BASE_DELAY_MS = 1000;
 
 export function TerminalTab({
   isVisible,
@@ -56,6 +61,8 @@ export function TerminalTab({
   const isClosingRef = useRef(false);
   const isVisibleRef = useRef(isVisible);
   const shouldCloseRef = useRef(shouldClose);
+  // Auto-reconnects since the last healthy session; reset once the PTY answers.
+  const autoReconnectsRef = useRef(0);
 
   const resetWsRefs = useCallback(() => {
     wsRef.current = null;
@@ -117,6 +124,7 @@ export function TerminalTab({
 
     let cancelled = false;
     let teardown: (() => void) | null = null;
+    let retryTimer: ReturnType<typeof setTimeout> | null = null;
 
     const connect = (token: string) => {
       const ws = new WebSocket(wsUrl);
@@ -162,6 +170,7 @@ export function TerminalTab({
               }
             : undefined,
         );
+        autoReconnectsRef.current = 0;
         setSessionState((prev) => (prev === 'connecting' ? 'ready' : prev));
       };
 
@@ -197,12 +206,16 @@ export function TerminalTab({
           // an earlier connection torn down mid-handshake may have consumed
           // the previous repaint.
           ws.send(JSON.stringify({ type: 'refresh' }));
+          autoReconnectsRef.current = 0;
           setSessionState('ready');
         }
       };
 
+      // A socket error is always followed by a close event, which owns the
+      // state transition. Setting 'error' here used to make handleClose skip
+      // the 'disconnected' state, leaving a dead terminal with no Reconnect.
       const handleError = () => {
-        setSessionState('error');
+        logger.error('Terminal socket error', 'TerminalTab');
       };
 
       const handleClose = (event: CloseEvent) => {
@@ -225,8 +238,16 @@ export function TerminalTab({
           return;
         }
         // Any other close while this effect is live (backend restart, network
-        // drop) is unexpected — offer a reconnect instead of a frozen terminal.
-        setSessionState((prev) => (prev === 'error' ? prev : 'disconnected'));
+        // drop) is unexpected — retry with backoff, then offer a manual
+        // reconnect instead of a frozen terminal.
+        if (autoReconnectsRef.current < MAX_AUTO_RECONNECTS) {
+          const delay = RECONNECT_BASE_DELAY_MS * 2 ** autoReconnectsRef.current;
+          autoReconnectsRef.current += 1;
+          setSessionState('reconnecting');
+          retryTimer = setTimeout(() => setConnectAttempt((attempt) => attempt + 1), delay);
+          return;
+        }
+        setSessionState('disconnected');
       };
 
       const handleBeforeUnload = () => {
@@ -279,6 +300,7 @@ export function TerminalTab({
 
     return () => {
       cancelled = true;
+      if (retryTimer) clearTimeout(retryTimer);
       teardown?.();
       setSessionState('idle');
     };
@@ -314,11 +336,20 @@ export function TerminalTab({
     ? 'Initializing terminal...'
     : sessionState === 'connecting'
       ? 'Connecting to terminal…'
-      : sessionState === 'error'
-        ? (closeReason ?? 'Terminal connection interrupted')
-        : sessionState === 'disconnected'
-          ? 'Terminal disconnected'
-          : null;
+      : sessionState === 'reconnecting'
+        ? 'Connection lost — reconnecting…'
+        : sessionState === 'error'
+          ? (closeReason ?? 'Terminal connection interrupted')
+          : sessionState === 'disconnected'
+            ? 'Terminal disconnected'
+            : null;
+  // Every terminal state that isn't retrying on its own gets a manual way out.
+  const canReconnect = sessionState === 'error' || sessionState === 'disconnected';
+
+  const handleReconnect = () => {
+    autoReconnectsRef.current = 0;
+    setConnectAttempt((attempt) => attempt + 1);
+  };
 
   return (
     <div className={styles['terminal-tab']}>
@@ -340,12 +371,8 @@ export function TerminalTab({
       {isVisible && overlayMessage && (
         <div className={styles['terminal-overlay']}>
           <div className={styles['terminal-overlay-message']}>{overlayMessage}</div>
-          {sessionState === 'disconnected' && (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setConnectAttempt((attempt) => attempt + 1)}
-            >
+          {canReconnect && (
+            <Button variant="outline" size="sm" onClick={handleReconnect}>
               Reconnect
             </Button>
           )}

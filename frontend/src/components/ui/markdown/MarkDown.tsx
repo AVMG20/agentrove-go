@@ -1,13 +1,11 @@
 import ReactMarkdown, { defaultUrlTransform } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import remarkMath from 'remark-math';
-import rehypeKatex from 'rehype-katex';
-import 'katex/dist/katex.min.css';
 import { useMemo, memo } from 'react';
 import type { Options } from 'react-markdown';
 import clsx from 'clsx';
 import { MARKDOWN_COMPONENTS } from './markdownComponents';
 import { MATH_PATTERN, rehypeMentionPills, splitMarkdownBlocks } from './markdownParsing';
+import { useMathPlugins } from './mathPlugins';
 import styles from './MarkDown.module.scss';
 
 function markdownUrlTransform(url: string, key: string): string {
@@ -62,15 +60,17 @@ export const MarkDown = memo(function MarkDown({
 
   // Only include the math plugins when the content actually contains math, so
   // stray `$` characters in ordinary text aren't parsed as TeX.
+  // KaTeX is lazy-loaded on first math; until then the TeX shows as plain text.
   const needsMath = useMemo(() => MATH_PATTERN.test(content), [content]);
+  const math = useMathPlugins(needsMath);
 
   const remarkPlugins = useMemo<NonNullable<Options['remarkPlugins']>>(
-    () => (needsMath ? [remarkGfm, [remarkMath, { singleDollarTextMath: false }]] : [remarkGfm]),
-    [needsMath],
+    () => (math ? [remarkGfm, [math.remarkMath, { singleDollarTextMath: false }]] : [remarkGfm]),
+    [math],
   );
   const rehypePlugins = useMemo(
-    () => [...(highlightMentions ? [rehypeMentionPills] : []), ...(needsMath ? [rehypeKatex] : [])],
-    [needsMath, highlightMentions],
+    () => [...(highlightMentions ? [rehypeMentionPills] : []), ...(math ? [math.rehypeKatex] : [])],
+    [math, highlightMentions],
   );
 
   return (

@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState, type RefObject } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type RefObject, useId } from 'react';
 import clsx from 'clsx';
 import { ChevronDown, Hash, Plus, Trash2 } from 'lucide-react';
 import toast from 'react-hot-toast';
@@ -307,6 +307,7 @@ export function CreateChannelDialog({
   onClose,
   onCreated,
 }: CreateChannelDialogProps) {
+  const titleId = useId();
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
   const { data: models = [] } = useModelsQuery({ enabled: isAuthenticated });
   const { data: settings } = useSettingsQuery({ enabled: isAuthenticated });
@@ -387,6 +388,7 @@ export function CreateChannelDialog({
       size="md"
       zIndex="modalHighest"
       className={styles.dialog}
+      ariaLabelledBy={titleId}
     >
       <div ref={bodyRef} className={clsx(styles.body, bodyOverflows && styles['body--scroll'])}>
         <div ref={bodyContentRef} className={styles['body-content']}>
@@ -395,7 +397,9 @@ export function CreateChannelDialog({
               <Hash className={styles['header-icon']} />
             </div>
             <div className={styles['header-text']}>
-              <h2 className={styles.title}>New channel</h2>
+              <h2 id={titleId} className={styles.title}>
+                New channel
+              </h2>
               <p className={styles.subtitle}>
                 A shared thread where several agents reply together.
               </p>

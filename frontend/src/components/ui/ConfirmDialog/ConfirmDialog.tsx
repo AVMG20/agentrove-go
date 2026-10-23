@@ -1,3 +1,4 @@
+import { useId } from 'react';
 import { AlertTriangle } from 'lucide-react';
 import { BaseModal } from '@/components/ui/shared/BaseModal/BaseModal';
 import { Button } from '@/components/ui/primitives/Button/Button';
@@ -22,17 +23,26 @@ export function ConfirmDialog({
   confirmLabel = 'Confirm',
   cancelLabel = 'Cancel',
 }: ConfirmDialogProps) {
+  const titleId = useId();
   if (!isOpen) return null;
 
   return (
-    <BaseModal isOpen={isOpen} onClose={onClose} size="sm" zIndex="modalHighest">
+    <BaseModal
+      isOpen={isOpen}
+      onClose={onClose}
+      size="sm"
+      zIndex="modalHighest"
+      ariaLabelledBy={titleId}
+    >
       <div className={styles.body}>
         <div className={styles.row}>
           <div className={styles['icon-badge']}>
             <AlertTriangle className={styles.icon} />
           </div>
           <div className={styles.text}>
-            <h2 className={styles.title}>{title}</h2>
+            <h2 id={titleId} className={styles.title}>
+              {title}
+            </h2>
             <p className={styles.message}>{message}</p>
           </div>
         </div>

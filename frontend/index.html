@@ -19,19 +19,34 @@
   <body>
     <script>
       (function initTheme() {
+        // Mirrors App.tsx's theme effect so the first paint already matches. The store is
+        // zustand-persisted under 'ui-storage' as { state: { theme, ... }, version }.
+        // Custom palettes: { [name]: [base, surface] }, inlined by vite.config.ts.
+        const palettes = /* palette-boot */ {};
         try {
-          const persisted = localStorage.getItem('app-storage');
-          let theme = 'dark';
-          if (persisted) {
-            const parsed = JSON.parse(persisted);
-            theme = parsed?.state?.theme === 'light' ? 'light' : 'dark';
-          } else if (window.matchMedia?.('(prefers-color-scheme: dark)')) {
-            theme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+          const persisted = localStorage.getItem('ui-storage');
+          const stored = persisted ? JSON.parse(persisted)?.state?.theme : undefined;
+          const theme = typeof stored === 'string' ? stored : 'dark';
+          const palette = Object.prototype.hasOwnProperty.call(palettes, theme)
+            ? palettes[theme]
+            : null;
+          let resolved = theme === 'light' ? 'light' : 'dark';
+          if (palette) {
+            resolved = palette[0];
+          } else if (theme === 'system') {
+            resolved =
+              window.matchMedia?.('(prefers-color-scheme: dark)')?.matches === false
+                ? 'light'
+                : 'dark';
           }
-          document.documentElement.setAttribute('data-theme', theme);
+          document.documentElement.setAttribute('data-theme', resolved);
+          document.documentElement.setAttribute('data-palette', theme);
           const meta = document.querySelector('meta[name="theme-color"]');
           if (meta) {
-            meta.setAttribute('content', theme === 'dark' ? '#0a0a0b' : '#ffffff');
+            meta.setAttribute(
+              'content',
+              palette ? palette[1] : resolved === 'dark' ? '#0a0a0b' : '#ffffff',
+            );
           }
         } catch (error) {
           console.warn('Theme init failed', error);
