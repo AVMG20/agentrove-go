@@ -43,6 +43,7 @@ func newTestModule(t *testing.T) (*Module, *db.DB) {
 		st: &store{db: d}, sessions: newSessions(),
 		turns: map[string]*turn{}, attached: map[string]*turn{}, starting: map[string]bool{},
 		bgTasks: map[string][]backgroundTask{}, bgOwner: map[string]string{}, pending: map[string][]claude.Message{},
+		live: map[string]*claude.Session{},
 	}
 	return m, d
 }

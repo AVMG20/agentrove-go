@@ -43,6 +43,9 @@ type Module struct {
 	starting map[string]bool
 	bgTasks  map[string][]backgroundTask
 	bgOwner  map[string]string // chat -> user, for publishing task changes
+	// live is the session whose output and background tasks the chat follows;
+	// a session replaced by a respawn still runs until its Close finishes.
+	live map[string]*claude.Session
 
 	// routeMu orders session output against turns attaching and detaching:
 	// output that arrives while no turn is attached is held in pending and
@@ -65,6 +68,7 @@ func New(a *app.App) *Module {
 		a: a, st: &store{db: a.DB}, sessions: newSessions(),
 		turns: map[string]*turn{}, attached: map[string]*turn{}, starting: map[string]bool{},
 		bgTasks: map[string][]backgroundTask{}, bgOwner: map[string]string{}, pending: map[string][]claude.Message{},
+		live: map[string]*claude.Session{},
 	}
 	m.runTurn = m.startTurn
 	a.Hooks.StartChatTurn = m.hookStartTurn
@@ -331,21 +335,21 @@ func (m *Module) hasPendingCycle(chatID string) bool {
 
 func (m *Module) wireSession(s *claude.Session) {
 	chatID := s.ChatID
+	// A new process starts without background tasks; any listed belonged to
+	// the one it replaces and would keep the chat (and box) awake forever.
+	m.mu.Lock()
+	m.live[chatID] = s
+	had := len(m.bgTasks[chatID]) > 0
+	delete(m.bgTasks, chatID)
+	m.mu.Unlock()
+	if had {
+		m.publishBackgroundTasks(chatID)
+	}
 	go func() {
 		<-s.Done()
-		m.dropPending(chatID)
-		// Its background tasks died with it.
-		if m.sessions.get(chatID) == nil {
-			m.mu.Lock()
-			had := len(m.bgTasks[chatID]) > 0
-			delete(m.bgTasks, chatID)
-			m.mu.Unlock()
-			if had {
-				m.publishBackgroundTasks(chatID)
-			}
-		}
+		m.sessionClosed(s)
 	}()
-	s.Attach(func(msg claude.Message) { m.onSessionMessage(chatID, msg) },
+	s.Attach(func(msg claude.Message) { m.sessionOutput(s, msg) },
 		func(id string, raw json.RawMessage) {
 			m.mu.Lock()
 			t := m.attached[chatID]
@@ -358,6 +362,40 @@ func (m *Module) wireSession(s *claude.Session) {
 			}
 			t.handleControl(id, raw)
 		})
+}
+
+func (m *Module) isLive(s *claude.Session) bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.live[s.ChatID] == s
+}
+
+// sessionOutput routes s's output, dropping what a replaced session still
+// prints while it shuts down.
+func (m *Module) sessionOutput(s *claude.Session, msg claude.Message) {
+	if m.isLive(s) {
+		m.onSessionMessage(s.ChatID, msg)
+	}
+}
+
+// sessionClosed clears the chat's per-process state when its live session
+// exits. A replaced session's exit leaves its successor's state alone.
+func (m *Module) sessionClosed(s *claude.Session) {
+	chatID := s.ChatID
+	m.mu.Lock()
+	if m.live[chatID] != s {
+		m.mu.Unlock()
+		return
+	}
+	delete(m.live, chatID)
+	// Its background tasks died with it.
+	had := len(m.bgTasks[chatID]) > 0
+	delete(m.bgTasks, chatID)
+	m.mu.Unlock()
+	m.dropPending(chatID)
+	if had {
+		m.publishBackgroundTasks(chatID)
+	}
 }
 
 func (m *Module) onSessionMessage(chatID string, msg claude.Message) {
