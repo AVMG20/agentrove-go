@@ -51,6 +51,10 @@ type Module struct {
 	routeMu sync.Mutex
 	pending map[string][]claude.Message
 
+	// runTurn is startTurn; queue hand-offs go through it so tests can
+	// observe them without a sandbox.
+	runTurn func(context.Context, startInput) (app.ChatTurnResult, error)
+
 	// MCPConfig returns the mcpServers map for a chat's Claude session. It
 	// must be stable across turns: the session fingerprint includes it.
 	MCPConfig func(userID, chatID, sandboxKind string, channelMember bool) map[string]any
@@ -62,6 +66,7 @@ func New(a *app.App) *Module {
 		turns: map[string]*turn{}, attached: map[string]*turn{}, starting: map[string]bool{},
 		bgTasks: map[string][]backgroundTask{}, bgOwner: map[string]string{}, pending: map[string][]claude.Message{},
 	}
+	m.runTurn = m.startTurn
 	a.Hooks.StartChatTurn = m.hookStartTurn
 	a.Hooks.CancelChatTurn = func(chatID string) error { m.cancelTurn(chatID, 10*time.Second); return nil }
 	a.Hooks.ChatTurnActive = m.busy
@@ -247,19 +252,30 @@ func (m *Module) launch(t *turn) {
 			if r := recover(); r != nil {
 				slog.Error("turn panicked", "chat", t.chatID, "panic", r)
 			}
-			m.mu.Lock()
-			if m.turns[t.chatID] == t {
-				delete(m.turns, t.chatID)
-			}
-			m.mu.Unlock()
-			// Output Claude produced on its own after the turn ended (a
-			// background task finished) waits in pending; stream it now.
-			if m.hasPendingCycle(t.chatID) {
-				m.startFollowup(t.chatID)
-			}
+			m.release(t)
 		}()
 		t.run()
 	}()
+}
+
+// release lets go of the chat once t has finished, then starts whatever was
+// waiting for it.
+func (m *Module) release(t *turn) {
+	m.mu.Lock()
+	released := m.turns[t.chatID] == t
+	if released {
+		delete(m.turns, t.chatID)
+	}
+	m.mu.Unlock()
+	// Output Claude produced on its own after the turn ended (a
+	// background task finished) waits in pending; stream it now.
+	if m.hasPendingCycle(t.chatID) {
+		m.startFollowup(t.chatID)
+	} else if released && t.queueMode != "" {
+		// A message queued after finish checked the queue saw the chat
+		// busy and left it to this turn.
+		_ = m.runQueued(t.chatID, t.req.userID, t.queueMode == queueSendNow)
+	}
 }
 
 func (m *Module) attach(chatID string, t *turn) {
@@ -601,6 +617,9 @@ type startInput struct {
 	onDone         func(string, string)
 	unattended     bool
 	includeChannel bool
+	// reserved: the caller already holds the chat's reservation and releases
+	// it itself if the turn does not launch.
+	reserved bool
 	// beforeLaunch runs once the turn's rows exist, before it starts streaming
 	// (queued hand-offs announce the new message on the previous stream).
 	beforeLaunch func(user, assistant *Message, checkpointID *string)
@@ -643,13 +662,17 @@ func (m *Module) startTurn(ctx context.Context, in startInput) (app.ChatTurnResu
 	if err != nil {
 		return res, err
 	}
-	if !m.reserve(in.chatID) {
+	if !in.reserved && !m.reserve(in.chatID) {
 		return res, httpx.Conflict(errBusy.Error())
 	}
 	launched := false
 	defer func() {
-		if !launched {
+		if !launched && !in.reserved {
 			m.unreserve(in.chatID)
+			if in.member == nil {
+				// A message queued while we held the chat was left to us.
+				go func() { _ = m.runQueued(in.chatID, in.userID, false) }()
+			}
 		}
 	}()
 
@@ -769,6 +792,19 @@ func (m *Module) createCheckpoint(ctx context.Context, sb *sandbox.Sandbox, chat
 	return &id
 }
 
+const (
+	queueAll     = "all"
+	queueSendNow = "send_now"
+)
+
+func queuedInput(userID, chatID string, q *QueuedMessage) startInput {
+	return startInput{
+		userID: userID, chatID: chatID, prompt: q.Content, modelID: q.ModelID, permissionMode: q.PermissionMode,
+		thinkingMode: q.ThinkingMode, worktree: q.Worktree, baseBranch: q.BaseBranch, persona: q.SelectedPersonaName, attachments: q.Attachments,
+		reserved: true,
+	}
+}
+
 // startQueued hands the stream over to the next queued message, if any.
 func (m *Module) startQueued(prev *turn, sendNowOnly bool, priorDur *int64) bool {
 	ctx := context.Background()
@@ -776,34 +812,81 @@ func (m *Module) startQueued(prev *turn, sendNowOnly bool, priorDur *int64) bool
 	if err != nil || q == nil {
 		return false
 	}
-	// Release the chat so startTurn can claim it; the new turn replaces prev.
+	// Swap prev for a reservation in one step, so nothing else can claim the
+	// chat in between; the new turn replaces prev.
 	m.mu.Lock()
-	if m.turns[prev.chatID] == prev {
-		delete(m.turns, prev.chatID)
-	}
-	m.mu.Unlock()
-	in := startInput{
-		userID: prev.req.userID, chatID: prev.chatID, prompt: q.Content, modelID: q.ModelID, permissionMode: q.PermissionMode,
-		thinkingMode: q.ThinkingMode, worktree: q.Worktree, baseBranch: q.BaseBranch, persona: q.SelectedPersonaName, attachments: q.Attachments,
-		beforeLaunch: func(user, asst *Message, cp *string) {
-			atts := []map[string]any(nil)
-			if len(q.Attachments) > 0 {
-				for _, a := range user.Attachments {
-					atts = append(atts, map[string]any{"id": a.ID, "message_id": a.MessageID, "file_url": a.FileURL, "file_type": a.FileType, "filename": a.Filename, "created_at": a.CreatedAt})
-				}
-			}
-			prev.emit("queue_processing", map[string]any{
-				"queued_message_id": q.ID, "user_message_id": user.ID, "assistant_message_id": asst.ID, "checkpoint_id": cp,
-				"content": q.Content, "model_id": q.ModelID, "attachments": atts, "prior_duration_ms": priorDur,
-			})
-		},
-	}
-	if _, err := m.startTurn(ctx, in); err != nil {
-		slog.Error("start queued message", "chat", prev.chatID, "err", err)
+	if m.turns[prev.chatID] != prev || m.starting[prev.chatID] {
+		m.mu.Unlock()
 		m.st.requeue(ctx, prev.chatID, q)
 		return false
 	}
+	delete(m.turns, prev.chatID)
+	m.starting[prev.chatID] = true
+	m.mu.Unlock()
+	in := queuedInput(prev.req.userID, prev.chatID, q)
+	in.beforeLaunch = func(user, asst *Message, cp *string) {
+		atts := []map[string]any(nil)
+		if len(q.Attachments) > 0 {
+			for _, a := range user.Attachments {
+				atts = append(atts, map[string]any{"id": a.ID, "message_id": a.MessageID, "file_url": a.FileURL, "file_type": a.FileType, "filename": a.Filename, "created_at": a.CreatedAt})
+			}
+		}
+		prev.emit("queue_processing", map[string]any{
+			"queued_message_id": q.ID, "user_message_id": user.ID, "assistant_message_id": asst.ID, "checkpoint_id": cp,
+			"content": q.Content, "model_id": q.ModelID, "attachments": atts, "prior_duration_ms": priorDur,
+		})
+	}
+	if _, err := m.runTurn(ctx, in); err != nil {
+		slog.Error("start queued message", "chat", prev.chatID, "err", err)
+		m.st.requeue(ctx, prev.chatID, q)
+		m.unreserve(prev.chatID)
+		return false
+	}
 	return true
+}
+
+// enqueue adds a message to the chat's queue. The turn it was queued behind
+// may have ended already, or be past its queue check, in which case it runs
+// the queue as it lets go of the chat.
+func (m *Module) enqueue(ctx context.Context, chatID, userID string, q *QueuedMessage) error {
+	if err := m.st.enqueue(ctx, chatID, q); err != nil {
+		return err
+	}
+	if !m.busy(chatID) {
+		go func() { _ = m.runQueued(chatID, userID, false) }()
+	}
+	return nil
+}
+
+// runQueued starts the chat's next queued message unless something holds the
+// chat. Every holder checks the queue when it lets go (launch, startTurn), and
+// enqueueing checks busy after the row is written, so a queued message is
+// either taken by the holder or started here, never left behind.
+func (m *Module) runQueued(chatID, userID string, sendNowOnly bool) error {
+	ctx := context.Background()
+	for m.st.hasQueued(ctx, chatID, sendNowOnly) {
+		if !m.reserve(chatID) {
+			return nil // the holder runs the queue when it releases the chat
+		}
+		q, err := m.st.popQueued(ctx, chatID, sendNowOnly)
+		if err != nil || q == nil {
+			// Someone else took it; recheck for anything queued while we held the chat.
+			m.unreserve(chatID)
+			if err != nil {
+				return err
+			}
+			continue
+		}
+		if _, err := m.runTurn(ctx, queuedInput(userID, chatID, q)); err != nil {
+			// No retry: the same message would most likely fail again.
+			slog.Error("start queued message", "chat", chatID, "err", err)
+			m.st.requeue(ctx, chatID, q)
+			m.unreserve(chatID)
+			return err
+		}
+		return nil
+	}
+	return nil
 }
 
 // startFollowup streams a cycle Claude Code started on its own.
@@ -816,6 +899,9 @@ func (m *Module) startFollowup(chatID string) {
 	fail := func() {
 		m.unreserve(chatID)
 		m.dropPending(chatID)
+		if chat, err := m.a.Store.GetChatByID(context.Background(), chatID); err == nil {
+			_ = m.runQueued(chatID, chat.UserID, false)
+		}
 	}
 	ctx := context.Background()
 	chat, err := m.a.Store.GetChatByID(ctx, chatID)

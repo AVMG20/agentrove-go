@@ -174,7 +174,7 @@ func (s *store) appendEvents(ctx context.Context, chatID, messageID, streamID st
 
 type snapshot struct {
 	ContentText    string
-	Render         map[string]any
+	Render         any // render map, or the same pre-encoded as json.RawMessage
 	LastSeq        int64
 	ActiveStreamID *string
 	Status         string // "" leaves status unchanged
@@ -558,8 +558,12 @@ func (s *store) requeue(ctx context.Context, chatID string, q *QueuedMessage) {
 		q.ID, chatID, chatID, q.Content, q.ModelID, q.PermissionMode, q.ThinkingMode, q.Worktree, q.BaseBranch, q.SelectedPersonaName, atts, q.sendNow, q.QueuedAt)
 }
 
-func (s *store) hasSendNow(ctx context.Context, chatID string) bool {
-	var n int
-	_ = s.db.QueryRowContext(ctx, `SELECT COUNT(1) FROM queued_messages WHERE chat_id = ? AND send_now = 1`, chatID).Scan(&n)
-	return n > 0
+func (s *store) hasQueued(ctx context.Context, chatID string, sendNowOnly bool) bool {
+	q := `SELECT EXISTS (SELECT 1 FROM queued_messages WHERE chat_id = ?`
+	if sendNowOnly {
+		q += ` AND send_now = 1`
+	}
+	var ok bool
+	_ = s.db.QueryRowContext(ctx, q+`)`, chatID).Scan(&ok)
+	return ok
 }

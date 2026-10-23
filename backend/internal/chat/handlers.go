@@ -771,7 +771,7 @@ func (m *Module) queueMessage(w http.ResponseWriter, r *http.Request) error {
 		ThinkingMode: httpx.FormOptional(r, "thinking_mode"), Worktree: httpx.FormBool(r, "worktree", false), BaseBranch: httpx.FormOptional(r, "base_branch"),
 		SelectedPersonaName: firstNonEmpty(r.FormValue("selected_persona_name"), DefaultPersona), QueuedAt: db.Now(), Attachments: atts,
 	}
-	if err := m.st.enqueue(r.Context(), c.ID, q); err != nil {
+	if err := m.enqueue(r.Context(), c.ID, u.ID, q); err != nil {
 		return err
 	}
 	return httpx.Created(w, map[string]any{"id": q.ID, "queued_at": q.QueuedAt})
@@ -863,16 +863,7 @@ func (m *Module) sendNow(w http.ResponseWriter, r *http.Request) error {
 		t.cancel()
 		return httpx.NoContent(w)
 	}
-	q, err := m.st.popQueued(r.Context(), c.ID, true)
-	if err != nil || q == nil {
-		return httpx.NoContent(w)
-	}
-	_, err = m.startTurn(r.Context(), startInput{
-		userID: u.ID, chatID: c.ID, prompt: q.Content, modelID: q.ModelID, permissionMode: q.PermissionMode,
-		thinkingMode: q.ThinkingMode, worktree: q.Worktree, baseBranch: q.BaseBranch, persona: q.SelectedPersonaName, attachments: q.Attachments,
-	})
-	if err != nil {
-		m.st.requeue(context.Background(), c.ID, q)
+	if err := m.runQueued(c.ID, u.ID, true); err != nil {
 		return httpx.Errorf(503, "Failed to start send-now execution")
 	}
 	return httpx.NoContent(w)

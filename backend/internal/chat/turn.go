@@ -27,11 +27,23 @@ var snapshotKinds = map[string]bool{
 }
 
 const (
-	flushInterval      = 200 * time.Millisecond
-	flushBatch         = 24
-	checkpointInterval = 2 * time.Second
-	interruptGrace     = 20 * time.Second
-	memberPermTimeout  = 5 * time.Minute
+	flushInterval = 200 * time.Millisecond
+	flushBatch    = 24
+	// After a failed event write, wait this long before trying again.
+	flushRetryInterval = time.Second
+	// Events kept for retry while the DB keeps failing; older ones are dropped
+	// (they stay in the render snapshot, only the live stream misses them).
+	maxBufferedEvents = 5000
+	// A checkpoint rewrites the whole render, so its interval grows with the
+	// render's size: checkpointInterval plus a second per checkpointBytesPerSec,
+	// at most checkpointMaxInterval. Clients and crash recovery replay the event
+	// log after the snapshot's last_seq, so checkpointMaxLag bounds that replay.
+	checkpointInterval    = 2 * time.Second
+	checkpointBytesPerSec = 64 << 10
+	checkpointMaxInterval = time.Minute
+	checkpointMaxLag      = 2000
+	interruptGrace        = 20 * time.Second
+	memberPermTimeout     = 5 * time.Minute
 )
 
 var promptSuggestionsRE = regexp.MustCompile(`(?s)<prompt_suggestions>\s*(.*?)\s*</prompt_suggestions>`)
@@ -92,17 +104,28 @@ type turn struct {
 
 	mu             sync.Mutex
 	buf            []bufferedEvent
+	flushTimer     *time.Timer // pending timed flush of buf
+	retryAt        time.Time   // no flush before this, after a failed write
+	closed         bool        // finished: no more timed flushes
 	render         []map[string]any
+	renderVersion  int // bumped by applySnapshot
 	textParts      []string
 	lastSeq        int64
 	lastFlush      time.Time
 	lastCheckpoint time.Time
-	perms          map[string]*pendingPerm
-	elicits        map[string]*pendingElicit
-	elicitOrder    []string
-	lastTokens     int
-	lastWindow     int
-	costUSD        *float64
+	// State of the last checkpoint, to skip or space out rewrites.
+	checkpointVersion int
+	checkpointSeq     int64
+	checkpointBytes   int
+	// queueMode is how much of the queue the chat may run once this turn
+	// releases it: "" none, "send_now" or "all". Set by finish.
+	queueMode   string
+	perms       map[string]*pendingPerm
+	elicits     map[string]*pendingElicit
+	elicitOrder []string
+	lastTokens  int
+	lastWindow  int
+	costUSD     *float64
 }
 
 func newTurn(m *Module, req *turnRequest) *turn {
@@ -122,26 +145,60 @@ func newTurn(m *Module, req *turnRequest) *turn {
 }
 
 // emit records one stream event. Snapshot kinds are buffered and flushed in
-// batches; everything else is persisted and published immediately.
+// batches (at the latest flushInterval later); everything else is persisted
+// and published immediately.
 func (t *turn) emit(kind string, payload map[string]any) int64 {
 	if t.req.member != nil {
 		t.req.member(kind, payload)
 	}
 	t.mu.Lock()
 	defer t.mu.Unlock()
+	defer t.scheduleFlushLocked()
+	t.buf = append(t.buf, bufferedEvent{kind, payload})
 	if snapshotKinds[kind] {
-		t.buf = append(t.buf, bufferedEvent{kind, payload})
 		t.applySnapshot(kind, payload)
-		if len(t.buf) >= flushBatch || time.Since(t.lastFlush) >= flushInterval {
+		if t.closed || len(t.buf) >= flushBatch || time.Since(t.lastFlush) >= flushInterval {
 			t.flushLocked()
 		}
 		return 0
 	}
-	t.buf = append(t.buf, bufferedEvent{kind, payload})
 	return t.flushLocked()
 }
 
+// scheduleFlushLocked arms a timed flush for whatever is still buffered, so
+// an event emitted just before a long tool run (tool_started) goes out
+// without waiting for the next event.
+func (t *turn) scheduleFlushLocked() {
+	if len(t.buf) == 0 || t.flushTimer != nil || t.closed {
+		return
+	}
+	d := flushInterval
+	if wait := time.Until(t.retryAt); wait > d {
+		d = wait
+	}
+	t.flushTimer = time.AfterFunc(d, func() {
+		t.mu.Lock()
+		defer t.mu.Unlock()
+		t.flushTimer = nil
+		if t.closed {
+			return
+		}
+		t.flushLocked()
+		t.scheduleFlushLocked()
+	})
+}
+
+// closeLocked stops timed flushes at the end of the turn.
+func (t *turn) closeLocked() {
+	t.closed = true
+	if t.flushTimer != nil {
+		t.flushTimer.Stop()
+		t.flushTimer = nil
+	}
+}
+
 func (t *turn) applySnapshot(kind string, payload map[string]any) {
+	t.renderVersion++
 	key := map[string]string{"assistant_text": "text", "assistant_thinking": "thinking"}[kind]
 	if kind == "assistant_text" {
 		if s, _ := payload["text"].(string); s != "" {
@@ -162,8 +219,11 @@ func (t *turn) applySnapshot(kind string, payload map[string]any) {
 	t.render = append(t.render, ev)
 }
 
+// flushLocked persists and publishes the buffer. A failed write keeps the
+// events buffered, in order, for the next flush after flushRetryInterval
+// (or the next emit once the turn is closed and no timer will retry).
 func (t *turn) flushLocked() int64 {
-	if len(t.buf) == 0 {
+	if len(t.buf) == 0 || (!t.closed && time.Now().Before(t.retryAt)) {
 		return t.lastSeq
 	}
 	batch := t.buf
@@ -175,9 +235,16 @@ func (t *turn) flushLocked() int64 {
 	}
 	end, err := t.m.st.appendEvents(context.Background(), t.chatID, t.req.messageID, t.streamID, kinds, payloads, false)
 	if err != nil {
-		slog.Error("persist stream events", "chat", t.chatID, "err", err)
+		slog.Error("persist stream events; will retry", "chat", t.chatID, "events", len(batch), "err", err)
+		if n := len(batch) - maxBufferedEvents; n > 0 {
+			slog.Error("dropping unpersisted stream events", "chat", t.chatID, "dropped", n)
+			batch = batch[n:]
+		}
+		t.buf = batch
+		t.retryAt = time.Now().Add(flushRetryInterval)
 		return t.lastSeq
 	}
+	t.retryAt = time.Time{}
 	t.lastSeq = end
 	t.lastFlush = time.Now()
 	start := end - int64(len(batch)) + 1
@@ -186,10 +253,24 @@ func (t *turn) flushLocked() int64 {
 			t.m.publishEnvelope(t.publish, t.chatID, t.req.messageID, t.streamID, start+int64(i), kinds[i], payloads[i])
 		}
 	}
-	if time.Since(t.lastCheckpoint) >= checkpointInterval {
+	if t.checkpointDueLocked() {
 		t.checkpointLocked("")
 	}
 	return end
+}
+
+// checkpointDueLocked decides whether to rewrite the mid-turn snapshot. The
+// event log keeps everything after the snapshot until the turn ends, so a
+// skipped checkpoint only means a longer replay, never lost output.
+func (t *turn) checkpointDueLocked() bool {
+	if t.lastSeq-t.checkpointSeq >= checkpointMaxLag {
+		return true
+	}
+	if t.renderVersion == t.checkpointVersion {
+		return false
+	}
+	interval := checkpointInterval + time.Duration(t.checkpointBytes/checkpointBytesPerSec)*time.Second
+	return time.Since(t.lastCheckpoint) >= min(interval, checkpointMaxInterval)
 }
 
 func (t *turn) contentText() string {
@@ -213,14 +294,17 @@ func (t *turn) checkpointLocked(status string) *int64 {
 	if status == "" || status == StatusInProgress {
 		active = &t.streamID
 	}
+	render, _ := json.Marshal(t.renderCopy())
 	dur, err := t.m.st.updateSnapshot(context.Background(), t.req.messageID, snapshot{
-		ContentText: t.contentText(), Render: t.renderCopy(), LastSeq: t.lastSeq,
+		ContentText: t.contentText(), Render: json.RawMessage(render), LastSeq: t.lastSeq,
 		ActiveStreamID: active, Status: status, TotalCostUSD: t.costUSD, RecordActivity: true,
 	})
+	t.lastCheckpoint = time.Now()
 	if err != nil {
 		slog.Error("persist message snapshot", "chat", t.chatID, "err", err)
+		return dur
 	}
-	t.lastCheckpoint = time.Now()
+	t.checkpointVersion, t.checkpointSeq, t.checkpointBytes = t.renderVersion, t.lastSeq, len(render)
 	return dur
 }
 
@@ -668,6 +752,7 @@ func (t *turn) finish(status, errText string) {
 	t.denyPending("The turn ended.")
 	t.emitPromptSuggestions()
 	t.mu.Lock()
+	t.closeLocked() // from here on every emit flushes inline
 	t.flushLocked()
 	if status == StatusFailed {
 		if errText == "" {
@@ -681,6 +766,14 @@ func (t *turn) finish(status, errText string) {
 
 	if t.req.onDone != nil {
 		defer t.req.onDone(status, content)
+	}
+	if t.req.member == nil {
+		switch status {
+		case StatusCompleted:
+			t.queueMode = queueAll
+		case StatusInterrupted:
+			t.queueMode = queueSendNow
+		}
 	}
 	switch status {
 	case StatusCompleted:
