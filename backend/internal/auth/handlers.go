@@ -48,6 +48,8 @@ func (s *Service) Routes(mux *http.ServeMux, prefix string) {
 	mux.HandleFunc("POST "+prefix+"/auth/jwt/refresh", httpx.Wrap(limiter.limit("refresh", 30, time.Minute, s.refresh)))
 	mux.HandleFunc("POST "+prefix+"/auth/jwt/logout", httpx.Wrap(s.logout))
 	mux.HandleFunc("GET "+prefix+"/auth/me", s.Require(s.me))
+	mux.HandleFunc("GET "+prefix+"/auth/config", httpx.Wrap(s.getAuthConfig))
+	mux.HandleFunc("PUT "+prefix+"/auth/registration", s.Require(s.setRegistration))
 	mux.HandleFunc("POST "+prefix+"/auth/forgot-password", httpx.Wrap(limiter.limit("forgot", 5, time.Minute, s.forgotPassword)))
 	mux.HandleFunc("POST "+prefix+"/auth/reset-password", httpx.Wrap(s.resetPassword))
 	mux.HandleFunc("POST "+prefix+"/auth/request-verify-token", httpx.Wrap(limiter.limit("verify", 5, time.Minute, s.requestVerify)))
@@ -84,7 +86,7 @@ func (s *Service) issueTokens(w http.ResponseWriter, r *http.Request, u *models.
 }
 
 func (s *Service) register(w http.ResponseWriter, r *http.Request) error {
-	if s.Cfg.RegistrationDisabled {
+	if !s.authConfig(r.Context()).RegistrationEnabled && !s.needsFirstUser(r.Context()) {
 		return httpx.Forbidden("Registration is disabled")
 	}
 	var body struct {
@@ -158,7 +160,7 @@ func validateUsername(v string) error {
 
 func (s *Service) me(w http.ResponseWriter, r *http.Request) error {
 	u := UserFrom(r.Context())
-	return httpx.OK(w, map[string]any{"id": u.ID, "email": u.Email, "username": u.Username, "is_verified": u.IsVerified})
+	return httpx.OK(w, map[string]any{"id": u.ID, "email": u.Email, "username": u.Username, "is_verified": u.IsVerified, "is_superuser": u.IsSuperuser})
 }
 
 func (s *Service) refresh(w http.ResponseWriter, r *http.Request) error {
