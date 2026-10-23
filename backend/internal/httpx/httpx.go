@@ -8,10 +8,14 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net"
 	"net/http"
+	"net/netip"
 	"runtime/debug"
+	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -263,15 +267,101 @@ func Chain(h http.Handler, mws ...func(http.Handler) http.Handler) http.Handler 
 	return h
 }
 
-// ClientIP prefers X-Forwarded-For's first hop (we sit behind the frontend proxy).
-func ClientIP(r *http.Request) string {
-	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
-		ip, _, _ := strings.Cut(xff, ",")
-		return strings.TrimSpace(ip)
-	}
+// ClientIP is the address rate limits and refresh tokens are keyed on. The
+// direct peer is used unless it is one of trusted (our reverse proxies);
+// then X-Forwarded-For is walked from the right, skipping trusted hops, since
+// only the entries appended by our own proxies can't be forged by the client.
+// untrusted (the box networks) overrides trusted: code in a box reaches the
+// API from a private address but is never a proxy.
+func ClientIP(r *http.Request, trusted []netip.Prefix, untrusted *PrefixSet) string {
 	host := r.RemoteAddr
-	if i := strings.LastIndex(host, ":"); i > 0 {
-		host = host[:i]
+	if h, _, err := net.SplitHostPort(host); err == nil {
+		host = h
 	}
-	return host
+	peer, err := netip.ParseAddr(host)
+	if err != nil || !isTrusted(peer.Unmap(), trusted, untrusted) {
+		return host
+	}
+	var hops []string
+	for _, v := range r.Header.Values("X-Forwarded-For") {
+		for _, part := range strings.Split(v, ",") {
+			if part = strings.TrimSpace(part); part != "" {
+				hops = append(hops, part)
+			}
+		}
+	}
+	if len(hops) == 0 {
+		return host
+	}
+	for i := len(hops) - 1; i >= 0; i-- {
+		addr, ok := parseHop(hops[i])
+		if !ok {
+			return hops[i]
+		}
+		if !isTrusted(addr, trusted, untrusted) {
+			return addr.String()
+		}
+	}
+	// Every hop is one of ours (an internal caller): the furthest one.
+	addr, _ := parseHop(hops[0])
+	return addr.String()
+}
+
+// parseHop accepts "ip", "ip:port" and "[v6]:port" entries.
+func parseHop(s string) (netip.Addr, bool) {
+	if a, err := netip.ParseAddr(s); err == nil {
+		return a.Unmap(), true
+	}
+	if ap, err := netip.ParseAddrPort(s); err == nil {
+		return ap.Addr().Unmap(), true
+	}
+	return netip.Addr{}, false
+}
+
+func isTrusted(a netip.Addr, trusted []netip.Prefix, untrusted *PrefixSet) bool {
+	if untrusted.Contains(a) {
+		return false
+	}
+	for _, p := range trusted {
+		if p.Contains(a) {
+			return true
+		}
+	}
+	return false
+}
+
+// PrefixSet is a concurrency-safe set of networks that grows at runtime
+// (box network subnets as the sandbox provider learns them). A nil set is
+// empty.
+type PrefixSet struct {
+	mu       sync.RWMutex
+	prefixes []netip.Prefix
+}
+
+func NewPrefixSet() *PrefixSet { return &PrefixSet{} }
+
+func (s *PrefixSet) Add(ps ...netip.Prefix) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, p := range ps {
+		p = p.Masked()
+		if !p.IsValid() || slices.Contains(s.prefixes, p) {
+			continue
+		}
+		s.prefixes = append(s.prefixes, p)
+	}
+}
+
+func (s *PrefixSet) Contains(a netip.Addr) bool {
+	if s == nil {
+		return false
+	}
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	for _, p := range s.prefixes {
+		if p.Contains(a) {
+			return true
+		}
+	}
+	return false
 }

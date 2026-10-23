@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef, useId } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { GitBranch, Brain, Shield } from 'lucide-react';
 import toast from 'react-hot-toast';
@@ -43,6 +43,7 @@ interface CreateSubThreadDialogProps {
 }
 
 export function CreateSubThreadDialog({ parentChat, onClose }: CreateSubThreadDialogProps) {
+  const titleId = useId();
   const navigate = useNavigate();
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
   const { data: models = [] } = useModelsQuery({ enabled: isAuthenticated });
@@ -156,13 +157,16 @@ export function CreateSubThreadDialog({ parentChat, onClose }: CreateSubThreadDi
       size="sm"
       zIndex="modalHighest"
       className={styles.dialog}
+      ariaLabelledBy={titleId}
     >
       <div className={styles['create-sub-thread-dialog']}>
         <div className={styles.header}>
           <div className={styles['icon-box']}>
             <GitBranch className={styles['header-icon']} />
           </div>
-          <h2 className={styles.title}>New sub-thread</h2>
+          <h2 id={titleId} className={styles.title}>
+            New sub-thread
+          </h2>
         </div>
 
         <p className={styles['parent-info']}>

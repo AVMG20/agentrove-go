@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
-import { act, render, waitFor } from '@testing-library/react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { TerminalTab } from './TerminalTab';
 
@@ -93,6 +93,13 @@ class FakeWebSocket {
     this.dispatch('message', new MessageEvent('message', { data: JSON.stringify(data) }));
   }
 
+  // Browsers fire `error` then `close` (1006) when the server goes away.
+  drop(code = 1006, reason = ''): void {
+    this.readyState = 3;
+    this.dispatch('error', new Event('error'));
+    this.dispatch('close', new CloseEvent('close', { code, reason }));
+  }
+
   sentMessages(): unknown[] {
     return this.send.mock.calls
       .filter(([payload]) => typeof payload === 'string')
@@ -155,5 +162,100 @@ describe('TerminalTab restored output', () => {
     act(() => websocket.message({ type: 'stdout', data: 'later output' }));
     expect(mocks.terminal.write).toHaveBeenLastCalledWith('later output', undefined);
     expect(mocks.terminal.focus).toHaveBeenCalledOnce();
+  });
+});
+
+describe('TerminalTab disconnects', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    FakeWebSocket.instances = [];
+    vi.stubGlobal('WebSocket', FakeWebSocket);
+    vi.stubGlobal(
+      'requestAnimationFrame',
+      vi.fn(() => 1),
+    );
+    vi.stubGlobal('cancelAnimationFrame', vi.fn());
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    cleanup();
+    vi.useRealTimers();
+  });
+
+  // Let the token mint promise resolve so the socket gets created.
+  const flush = () => act(async () => {});
+
+  it('auto-reconnects with backoff after an error+close, then offers Reconnect', async () => {
+    render(<TerminalTab isVisible sandboxId="sandbox-1" terminalId="terminal-1" />);
+    await flush();
+    expect(FakeWebSocket.instances).toHaveLength(1);
+
+    act(() => FakeWebSocket.instances[0].drop());
+    expect(screen.getByText('Connection lost — reconnecting…')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Reconnect' })).toBeNull();
+
+    for (const [index, delay] of [1000, 2000, 4000].entries()) {
+      await act(() => vi.advanceTimersByTimeAsync(delay));
+      expect(FakeWebSocket.instances).toHaveLength(index + 2);
+      act(() => FakeWebSocket.instances[index + 1].drop());
+    }
+
+    expect(screen.getByText('Terminal disconnected')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Reconnect' }));
+    await flush();
+    expect(FakeWebSocket.instances).toHaveLength(5);
+  });
+
+  it('resets the retry budget once the session is healthy again', async () => {
+    render(<TerminalTab isVisible sandboxId="sandbox-1" terminalId="terminal-1" />);
+    await flush();
+
+    act(() => FakeWebSocket.instances[0].drop());
+    await act(() => vi.advanceTimersByTimeAsync(1000));
+    const second = FakeWebSocket.instances[1];
+    act(() => second.open());
+    act(() => second.message({ type: 'init', rows: 40, cols: 120 }));
+    act(() => second.drop());
+
+    // Back to the first (1s) backoff step rather than 2s.
+    await act(() => vi.advanceTimersByTimeAsync(1000));
+    expect(FakeWebSocket.instances).toHaveLength(3);
+  });
+
+  // The server closes a viewer with 1000 when another tab attaches to the same
+  // terminal (or the shell exits); auto-reconnecting would steal it back forever.
+  it('does not auto-reconnect after a normal closure', async () => {
+    render(<TerminalTab isVisible sandboxId="sandbox-1" terminalId="terminal-1" />);
+    await flush();
+    const ws = FakeWebSocket.instances[0];
+    act(() => ws.open());
+    act(() => ws.message({ type: 'init', rows: 40, cols: 120 }));
+
+    act(() => ws.drop(1000));
+    await act(() => vi.advanceTimersByTimeAsync(10_000));
+    expect(FakeWebSocket.instances).toHaveLength(1);
+    expect(screen.getByText('Terminal disconnected')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Reconnect' })).toBeTruthy();
+  });
+
+  it('shows the server reason and a Reconnect button on a fatal close code', async () => {
+    render(<TerminalTab isVisible sandboxId="sandbox-1" terminalId="terminal-1" />);
+    await flush();
+
+    act(() => FakeWebSocket.instances[0].drop(4004, 'Sandbox not found'));
+    expect(screen.getByText('Sandbox not found')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Reconnect' })).toBeTruthy();
+  });
+
+  it('offers Reconnect when the auth token cannot be minted', async () => {
+    mocks.getValidToken.mockRejectedValueOnce(new Error('offline'));
+    render(<TerminalTab isVisible sandboxId="sandbox-1" terminalId="terminal-1" />);
+    await flush();
+
+    expect(screen.getByText('Terminal authentication failed')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Reconnect' }));
+    await flush();
+    expect(FakeWebSocket.instances).toHaveLength(1);
   });
 });

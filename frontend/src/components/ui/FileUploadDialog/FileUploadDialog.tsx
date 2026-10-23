@@ -1,4 +1,4 @@
-import { memo } from 'react';
+import { memo, useId } from 'react';
 import { Plus, Image, FileText, FileSpreadsheet, FileUp } from 'lucide-react';
 import clsx from 'clsx';
 import { useDragAndDrop } from '@/hooks/useDragAndDrop';
@@ -21,6 +21,7 @@ export const FileUploadDialog = memo(function FileUploadDialog({
   onClose,
   onFileSelect,
 }: FileUploadDialogProps) {
+  const titleId = useId();
   const { files, previewUrls, addFiles, removeFile, clearFiles } = useFileHandling({});
 
   const { isDragging, dragHandlers } = useDragAndDrop({
@@ -46,8 +47,14 @@ export const FileUploadDialog = memo(function FileUploadDialog({
   if (!isOpen) return null;
 
   return (
-    <BaseModal isOpen={isOpen} onClose={onClose} size="md" className={styles.container}>
-      <ModalHeader title="Upload Files" onClose={onClose} />
+    <BaseModal
+      isOpen={isOpen}
+      onClose={onClose}
+      size="md"
+      className={styles.container}
+      ariaLabelledBy={titleId}
+    >
+      <ModalHeader title="Upload Files" titleId={titleId} onClose={onClose} />
       <div className={styles.content}>
         <div
           {...dragHandlers}

@@ -121,7 +121,15 @@ func (m *Module) openRepo(r *http.Request) (*gitops.HostRepo, error) {
 	if err != nil {
 		return nil, err
 	}
-	return gitops.OpenHost(sb, rel)
+	repo, err := gitops.OpenHost(sb, rel)
+	if err != nil {
+		return nil, err
+	}
+	// Surface an unsafe repo as an error instead of an empty "not a repo" view.
+	if err := repo.Verify(r.Context()); err != nil {
+		return nil, err
+	}
+	return repo, nil
 }
 
 // ---- files ----
@@ -158,6 +166,9 @@ func (m *Module) fileContent(w http.ResponseWriter, r *http.Request) error {
 		return httpx.BadRequest(err.Error())
 	}
 	fc, err := readFile(sb, rel)
+	if errors.Is(err, errTooLarge) {
+		return httpx.Errorf(http.StatusRequestEntityTooLarge, "Failed to read file %s: %s", rel, err)
+	}
 	if err != nil {
 		reason := err.Error()
 		if errors.Is(err, fs.ErrNotExist) || errors.Is(err, errNotAFile) {
@@ -345,11 +356,7 @@ func (m *Module) search(w http.ResponseWriter, r *http.Request) error {
 	if err != nil {
 		return err
 	}
-	dir, err := gitops.HostDir(sb, rel)
-	if err != nil {
-		return err
-	}
-	out, err := search(r.Context(), sb, rel, dir, opts)
+	out, err := search(r.Context(), sb, rel, opts)
 	if err != nil {
 		return err
 	}

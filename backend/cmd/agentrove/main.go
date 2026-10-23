@@ -17,6 +17,7 @@ import (
 	"agentrove/internal/config"
 	"agentrove/internal/db"
 	"agentrove/internal/events"
+	"agentrove/internal/httpx"
 	"agentrove/internal/sandbox"
 	"agentrove/internal/server"
 	"agentrove/internal/store"
@@ -47,14 +48,16 @@ func run() error {
 		return err
 	}
 	st := &store.Store{DB: database, Keys: keys}
-	sandboxes := sandbox.NewManager(cfg)
+	// Box network subnets: requests from them never count as a trusted proxy.
+	boxSubnets := httpx.NewPrefixSet()
+	sandboxes := sandbox.NewManager(cfg, boxSubnets)
 	sandboxes.SetEnvSource(st.UserEnv)
 
 	a := &app.App{
 		Cfg:       cfg,
 		DB:        database,
 		Keys:      keys,
-		Auth:      &auth.Service{DB: database, Cfg: cfg, Keys: keys},
+		Auth:      &auth.Service{DB: database, Cfg: cfg, Keys: keys, BoxSubnets: boxSubnets},
 		Hub:       events.NewHub(),
 		Sandboxes: sandboxes,
 		Store:     st,

@@ -17,6 +17,9 @@ type Subscription struct {
 	hub   *Hub
 	topic string
 	once  sync.Once
+	// dropOnce guards Dropped: concurrent publishers can both find the same
+	// subscriber full, and a second close would panic.
+	dropOnce sync.Once
 	// Closed when the hub dropped this subscriber for falling behind; the
 	// client is expected to reconnect and replay from its cursor.
 	Dropped chan struct{}
@@ -69,11 +72,7 @@ func (h *Hub) Publish(topic string, msg []byte) {
 	h.mu.RUnlock()
 	for _, s := range slow {
 		s.Close()
-		select {
-		case <-s.Dropped:
-		default:
-			close(s.Dropped)
-		}
+		s.dropOnce.Do(func() { close(s.Dropped) })
 	}
 }
 

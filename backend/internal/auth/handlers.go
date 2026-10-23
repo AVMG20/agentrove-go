@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/mail"
+	"net/netip"
 	"net/smtp"
 	"strings"
 	"sync"
@@ -42,7 +43,7 @@ func (s *Service) userRead(u *models.User) userRead {
 }
 
 func (s *Service) Routes(mux *http.ServeMux, prefix string) {
-	limiter := newRateLimiter()
+	limiter := newRateLimiter(s.Cfg.TrustedProxies, s.BoxSubnets)
 	mux.HandleFunc("POST "+prefix+"/auth/jwt/login", httpx.Wrap(limiter.limit("login", 10, time.Minute, s.login)))
 	mux.HandleFunc("POST "+prefix+"/auth/register", httpx.Wrap(limiter.limit("register", 5, time.Minute, s.register)))
 	mux.HandleFunc("POST "+prefix+"/auth/jwt/refresh", httpx.Wrap(limiter.limit("refresh", 30, time.Minute, s.refresh)))
@@ -78,7 +79,7 @@ func (s *Service) issueTokens(w http.ResponseWriter, r *http.Request, u *models.
 	if err != nil {
 		return err
 	}
-	refresh, err := s.CreateRefreshToken(r.Context(), s.DB, u.ID, r.UserAgent(), httpx.ClientIP(r))
+	refresh, err := s.CreateRefreshToken(r.Context(), s.DB, u.ID, r.UserAgent(), httpx.ClientIP(r, s.Cfg.TrustedProxies, s.BoxSubnets))
 	if err != nil {
 		return err
 	}
@@ -170,7 +171,7 @@ func (s *Service) refresh(w http.ResponseWriter, r *http.Request) error {
 	if err := httpx.Decode(r, &body); err != nil {
 		return err
 	}
-	u, newRefresh, err := s.RotateRefreshToken(r.Context(), body.RefreshToken, r.UserAgent(), httpx.ClientIP(r))
+	u, newRefresh, err := s.RotateRefreshToken(r.Context(), body.RefreshToken, r.UserAgent(), httpx.ClientIP(r, s.Cfg.TrustedProxies, s.BoxSubnets))
 	if err != nil {
 		return httpx.Unauthorized("Invalid or expired refresh token")
 	}
@@ -230,13 +231,11 @@ func (s *Service) resetPassword(w http.ResponseWriter, r *http.Request) error {
 	if err != nil {
 		return err
 	}
-	now := db.Now()
-	res, err := s.DB.ExecContext(r.Context(), `UPDATE users SET hashed_password = ?, reset_token = NULL, reset_token_expires = NULL, updated_at = ?
-		WHERE reset_token = ? AND reset_token_expires > ?`, hash, now, HashToken(body.Token), now)
+	ok, err := s.ResetPassword(r.Context(), body.Token, hash)
 	if err != nil {
 		return err
 	}
-	if n, _ := res.RowsAffected(); n == 0 {
+	if !ok {
 		return httpx.BadRequest("RESET_PASSWORD_BAD_TOKEN")
 	}
 	return httpx.OK(w, nil)
@@ -307,8 +306,10 @@ func (s *Service) sendMail(to, subject, body string) {
 
 // rateLimiter is a fixed-window per-IP limiter for the unauthenticated endpoints.
 type rateLimiter struct {
-	mu     sync.Mutex
-	counts map[string]*window
+	trusted   []netip.Prefix
+	untrusted *httpx.PrefixSet
+	mu        sync.Mutex
+	counts    map[string]*window
 }
 
 type window struct {
@@ -316,11 +317,13 @@ type window struct {
 	n     int
 }
 
-func newRateLimiter() *rateLimiter { return &rateLimiter{counts: map[string]*window{}} }
+func newRateLimiter(trusted []netip.Prefix, untrusted *httpx.PrefixSet) *rateLimiter {
+	return &rateLimiter{trusted: trusted, untrusted: untrusted, counts: map[string]*window{}}
+}
 
 func (l *rateLimiter) limit(name string, max int, per time.Duration, h httpx.HandlerFunc) httpx.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) error {
-		key := name + "|" + httpx.ClientIP(r)
+		key := name + "|" + httpx.ClientIP(r, l.trusted, l.untrusted)
 		now := time.Now()
 		l.mu.Lock()
 		win := l.counts[key]

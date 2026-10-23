@@ -2,9 +2,12 @@ package gitops
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"strings"
 	"testing"
@@ -291,5 +294,268 @@ func TestRestoreScript(t *testing.T) {
 	}
 	if r := RestoreScript("new.txt", "old.txt"); !strings.Contains(r, "git checkout HEAD -- 'old.txt' && {") {
 		t.Errorf("rename script: %s", r)
+	}
+}
+
+// The repo config is agent-written; host git must not honor settings that run
+// programs or read outside the workspace.
+func TestHostRepoRejectsUnsafeRepo(t *testing.T) {
+	ctx := context.Background()
+	outside := setupRepo(t)
+	write(t, filepath.Join(outside, "secret.txt"), "host secret\n")
+	git(t, outside, "add", "-A")
+	git(t, outside, "commit", "-qm", "secret")
+	write(t, filepath.Join(outside, "secret.txt"), "host secret changed\n")
+
+	var marker string
+	cases := map[string]func(ws string){
+		"external diff": func(ws string) {
+			git(t, ws, "config", "diff.external", "touch "+marker+" #")
+		},
+		"filter": func(ws string) {
+			git(t, ws, "config", "filter.x.clean", "touch "+marker+"; cat")
+			write(t, filepath.Join(ws, ".gitattributes"), "* filter=x\n")
+		},
+		"core.worktree": func(ws string) {
+			git(t, ws, "config", "core.worktree", outside)
+		},
+		"include": func(ws string) {
+			write(t, filepath.Join(ws, "extra.cfg"), "[diff]\n\texternal = touch "+marker+" #\n")
+			git(t, ws, "config", "include.path", filepath.Join(ws, "extra.cfg"))
+		},
+		"gitdir elsewhere": func(ws string) {
+			if err := os.RemoveAll(filepath.Join(ws, ".git")); err != nil {
+				t.Fatal(err)
+			}
+			write(t, filepath.Join(ws, ".git"), "gitdir: "+filepath.Join(outside, ".git")+"\n")
+		},
+	}
+	for name, plant := range cases {
+		t.Run(name, func(t *testing.T) {
+			marker = filepath.Join(t.TempDir(), "pwned")
+			ws := setupRepo(t)
+			write(t, filepath.Join(ws, "a.txt"), "changed\n")
+			plant(ws)
+			sb := &sandbox.Sandbox{Kind: sandbox.KindDocker, Root: "/home/user/workspace", WorkspacePath: ws}
+			r, err := OpenHost(sb, "")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := r.Verify(ctx); err == nil {
+				t.Error("Verify accepted an unsafe repo")
+			}
+			if out, err := Diff(ctx, r, "all", false); err == nil && out.HasChanges {
+				t.Errorf("diff ran on an unsafe repo: %q", out.Diff)
+			}
+			if _, err := os.Stat(marker); err == nil {
+				t.Fatal("host git executed the repo's program")
+			}
+		})
+	}
+}
+
+// When the box is running, read-only git must run inside it (where the agent's
+// config is harmless) and never touch the host: Verify is skipped and no host
+// git subprocess runs, so a malicious repo config can't execute on the host.
+func TestInBoxDispatchSkipsHostAndVerify(t *testing.T) {
+	ctx := context.Background()
+	ws := setupRepo(t)
+	write(t, filepath.Join(ws, "a.txt"), "changed\n")
+	marker := filepath.Join(t.TempDir(), "pwned")
+	git(t, ws, "config", "diff.external", "touch "+marker+" #") // would run on host
+
+	sb := &sandbox.Sandbox{Kind: sandbox.KindDocker, Root: "/home/user/workspace", WorkspacePath: ws}
+	r, err := OpenHost(sb, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Simulate a running box: dispatch to a recording in-box executor instead
+	// of the host. The executor returns canned output; we only assert routing.
+	var calls int
+	r.boxUp = func(context.Context) bool { return true }
+	r.boxCmd = nil // unbatched: every git call goes through boxExec
+	r.boxExec = func(_ context.Context, _ string, args []string) (Result, error) {
+		calls++
+		if len(args) > 0 && args[0] == "rev-parse" {
+			return Result{Stdout: "true\n"}, nil // IsRepo check
+		}
+		return Result{Stdout: ""}, nil
+	}
+
+	if _, err := Diff(ctx, r, "all", false); err != nil {
+		t.Fatal(err)
+	}
+	if calls == 0 {
+		t.Error("read-only git did not dispatch into the running box")
+	}
+	// Verify is a no-op while the box is up.
+	if err := r.Verify(ctx); err != nil {
+		t.Errorf("Verify should pass (be skipped) when the box is up: %v", err)
+	}
+	if _, err := os.Stat(marker); err == nil {
+		t.Fatal("host git executed the repo's diff.external program")
+	}
+}
+
+func TestCapBuffer(t *testing.T) {
+	c := &capBuffer{max: 4}
+	if _, err := c.Write([]byte("abc")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.Write([]byte("de")); err == nil || !c.overflow {
+		t.Error("write past the cap should fail")
+	}
+	d := &capBuffer{max: 2, drop: true}
+	if n, err := d.Write([]byte("abcd")); n != 4 || err != nil || d.buf.Len() != 0 {
+		t.Errorf("drop mode = %d, %v, %q", n, err, d.buf.String())
+	}
+}
+
+// Untracked files are diffed in a few batched shell loops inside the box (one
+// docker exec per file made a diff of a new project take seconds), with the
+// same output as one git call per file on the host.
+func TestDiffNewFilesBatchesInBox(t *testing.T) {
+	if _, err := exec.LookPath("sh"); err != nil {
+		t.Skip("sh not installed")
+	}
+	ctx := context.Background()
+	ws := setupRepo(t)
+	var files []string
+	for i := 0; i < newFilesBatch+3; i++ {
+		name := fmt.Sprintf("new/f %d'$x.txt", i)
+		write(t, filepath.Join(ws, name), fmt.Sprintf("line %d\n", i))
+		files = append(files, name)
+	}
+	sb := &sandbox.Sandbox{Kind: sandbox.KindDocker, Root: ws, WorkspacePath: ws}
+	host, err := OpenHost(sb, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	host.boxExec, host.boxCmd = nil, nil
+	want, err := host.DiffNewFiles(ctx, []string{"-U99999"}, files)
+	if err != nil || strings.Count(want, "diff --git") != len(files) {
+		t.Fatalf("host diff: %d patches, %v", strings.Count(want, "diff --git"), err)
+	}
+
+	box, err := OpenHost(sb, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var execs int
+	box.boxUp = func(context.Context) bool { return true }
+	box.boxExec = func(context.Context, string, []string) (Result, error) {
+		t.Fatal("per-file exec used in the box")
+		return Result{}, nil
+	}
+	box.boxCmd = func(ctx context.Context, dir string, cmd []string) (Result, error) {
+		execs++
+		c := exec.CommandContext(ctx, cmd[0], cmd[1:]...)
+		c.Dir = dir
+		out, err := c.Output()
+		return Result{Stdout: string(out)}, err
+	}
+	got, err := box.DiffNewFiles(ctx, []string{"-U99999"}, files)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if execs != 2 {
+		t.Errorf("in-box execs = %d, want 2", execs)
+	}
+	if got != want {
+		t.Errorf("in-box output differs from host output:\n%s\n---\n%s", got, want)
+	}
+}
+
+// In a running box the read-only views batch their git commands into a few
+// docker execs, with the same results as running git on the host.
+func TestInBoxBatchingMatchesHost(t *testing.T) {
+	ctx := context.Background()
+	ws := setupRepo(t)
+	git(t, ws, "checkout", "-q", "-b", "feature")
+	write(t, filepath.Join(ws, "src", "b.txt"), "b\nmore\n")
+	git(t, ws, "commit", "-qam", "feature work")
+	write(t, filepath.Join(ws, "a.txt"), "one\nTWO\n")
+	write(t, filepath.Join(ws, "src", "new.txt"), "x\ny")
+	write(t, filepath.Join(ws, "top.txt"), "t\n")
+	sb := &sandbox.Sandbox{Kind: sandbox.KindDocker, Root: ws, WorkspacePath: ws}
+
+	open := func(rel string, box bool) (*HostRepo, *int) {
+		r, err := OpenHost(sb, rel)
+		if err != nil {
+			t.Fatal(err)
+		}
+		execs := new(int)
+		if !box {
+			r.boxExec, r.boxCmd = nil, nil
+			return r, execs
+		}
+		run := func(ctx context.Context, dir string, cmd []string) (Result, error) {
+			*execs++
+			c := exec.CommandContext(ctx, cmd[0], cmd[1:]...)
+			c.Dir = dir
+			var so, se strings.Builder
+			c.Stdout, c.Stderr = &so, &se
+			err := c.Run()
+			var ee *exec.ExitError
+			if errors.As(err, &ee) {
+				return Result{Stdout: so.String(), Stderr: se.String(), Exit: ee.ExitCode()}, nil
+			}
+			return Result{Stdout: so.String(), Stderr: se.String()}, err
+		}
+		r.boxUp = func(context.Context) bool { return true }
+		r.boxCmd = run
+		r.boxExec = func(ctx context.Context, dir string, args []string) (Result, error) {
+			return run(ctx, dir, append([]string{"git"}, args...))
+		}
+		return r, execs
+	}
+	for _, rel := range []string{"", "src"} {
+		host, _ := open(rel, false)
+		box, execs := open(rel, true)
+
+		wantStats, _ := DiffStats(ctx, host)
+		gotStats, _ := DiffStats(ctx, box)
+		if !reflect.DeepEqual(gotStats, wantStats) || wantStats.Branch.FilesChanged != 1 || wantStats.Uncommitted.FilesChanged != 3 {
+			t.Errorf("%q: stats box=%+v host=%+v", rel, gotStats, wantStats)
+		}
+		if *execs > 2 {
+			t.Errorf("%q: diff-stats used %d execs", rel, *execs)
+		}
+		for _, mode := range []string{"all", "branch"} {
+			*execs = 0
+			want, _ := Diff(ctx, host, mode, false)
+			got, _ := Diff(ctx, box, mode, false)
+			if !reflect.DeepEqual(got, want) || !want.HasChanges {
+				t.Errorf("%q %s: diff box=%+v host=%+v", rel, mode, got, want)
+			}
+			if *execs > 2 {
+				t.Errorf("%q %s: diff used %d execs", rel, mode, *execs)
+			}
+		}
+		*execs = 0
+		wantCP, _ := ChangedPaths(ctx, host)
+		gotCP, _ := ChangedPaths(ctx, box)
+		if !reflect.DeepEqual(gotCP, wantCP) || len(wantCP.Paths) == 0 || *execs != 1 {
+			t.Errorf("%q: changed paths box=%+v host=%+v execs=%d", rel, gotCP, wantCP, *execs)
+		}
+		wantBr, _ := Branches(ctx, host)
+		gotBr, _ := Branches(ctx, box)
+		if !reflect.DeepEqual(gotBr, wantBr) || wantBr.CurrentBranch != "feature" {
+			t.Errorf("%q: branches box=%+v host=%+v", rel, gotBr, wantBr)
+		}
+	}
+	box, _ := open("src", true)
+	if b, err := FileBaseline(ctx, box, "b.txt"); err != nil || b.Content != "b\nmore\n" {
+		t.Errorf("baseline = %+v %v", b, err)
+	}
+}
+
+func TestParseBatchRejectsTruncatedOutput(t *testing.T) {
+	if _, err := parseBatch("out\x00tok0\x00partial", "tok", 2); err == nil {
+		t.Fatal("truncated batch accepted")
+	}
+	rs, err := parseBatch("a\x00b\x00tok0\x00\x00tok128\x00", "tok", 2)
+	if err != nil || rs[0].Stdout != "a\x00b" || rs[0].Exit != 0 || rs[1].Stdout != "" || rs[1].Exit != 128 {
+		t.Fatalf("rs = %+v, %v", rs, err)
 	}
 }

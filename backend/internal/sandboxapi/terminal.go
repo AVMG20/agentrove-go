@@ -524,7 +524,8 @@ func (m *Module) terminalWS(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		return
 	}
-	c.SetReadLimit(8 << 20)
+	// Unauthenticated peers only get room for the auth frame.
+	c.SetReadLimit(64 << 10)
 	ctx := r.Context()
 
 	actx, cancel := context.WithTimeout(ctx, wsAuthTimeout)
@@ -546,6 +547,7 @@ func (m *Module) terminalWS(w http.ResponseWriter, r *http.Request) {
 		_ = c.Close(wsCloseAuthFailed, "Authentication failed")
 		return
 	}
+	c.SetReadLimit(8 << 20)
 	sandboxID := r.PathValue("sandbox_id")
 	ws, err := m.a.Store.GetWorkspaceBySandbox(ctx, user.ID, sandboxID)
 	if err != nil {

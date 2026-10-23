@@ -8,9 +8,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"io/fs"
 	"os"
+	"path"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -55,28 +55,92 @@ func ClaudeConfigDir(cfg *config.Config, ws *models.Workspace) string {
 	return filepath.Join(cfg.AgentHomeDir(ws.UserID), "claude")
 }
 
+// skillRoot locates a directory of skills in a way that is safe against the
+// agent, which is root inside the box and can replace any directory it owns
+// (its project dir, its ~/claude) with a symlink pointing at other host files.
+// Instead of validating a path and then opening it (a TOCTOU), every access
+// goes through os.Root starting at anchor — a bind-mount point the box cannot
+// replace — and navigates inward. os.Root refuses any component that is a
+// symlink escaping the anchor and pins each directory to an fd, so a swap
+// after the check cannot move the operation out of the user's own tree.
+//
+//	anchor  non-swappable mount dir to open first (per-user projects dir / HOME)
+//	pin     a dir under anchor to sub-root before rel (the swappable project
+//	        dir), pinning it; "" when rel is reached directly under anchor
+//	rel     the skills base dir, relative to the pinned dir (or anchor)
+type skillRoot struct {
+	anchor, pin, rel string
+}
+
+// openBase opens the skills base dir as a pinned, symlink-safe *os.Root. The
+// caller closes it.
+func (sr skillRoot) openBase() (*os.Root, error) {
+	a, err := os.OpenRoot(sr.anchor)
+	if err != nil {
+		return nil, err
+	}
+	cur := a
+	if sr.pin != "" {
+		p, err := a.OpenRoot(sr.pin)
+		a.Close()
+		if err != nil {
+			return nil, err
+		}
+		cur = p
+	}
+	base, err := cur.OpenRoot(sr.rel)
+	cur.Close()
+	return base, err
+}
+
 type Service struct {
-	paths []string // search order: workspace first, then user, then plugins
+	paths []skillRoot // search order: workspace first, then user, then plugins
+}
+
+// maxSkillFile bounds one file the API reads from an agent-writable skill
+// dir; it matches the size Update accepts.
+const maxSkillFile = 10_000_000
+
+// readFileLimited reads rel under root (symlink-safe), rejecting non-regular
+// or oversized files.
+func readFileLimited(root *os.Root, rel string) ([]byte, error) {
+	fi, err := root.Stat(rel)
+	if err != nil {
+		return nil, err
+	}
+	if !fi.Mode().IsRegular() {
+		return nil, fmt.Errorf("%s is not a regular file", rel)
+	}
+	if fi.Size() > maxSkillFile {
+		return nil, fmt.Errorf("%s is larger than %d bytes", rel, maxSkillFile)
+	}
+	return root.ReadFile(rel)
 }
 
 func NewService(cfg *config.Config, ws *models.Workspace) *Service {
 	claudeDir := ClaudeConfigDir(cfg, ws)
-	paths := []string{
-		filepath.Join(ws.WorkspacePath, ".claude", "skills"),
-		filepath.Join(claudeDir, "skills"),
+	paths := []skillRoot{
+		// Workspace skills: anchor at the (non-swappable) projects mount, pin
+		// the project dir to defeat a project-dir symlink swap, then .claude/skills.
+		{anchor: filepath.Dir(ws.WorkspacePath), pin: filepath.Base(ws.WorkspacePath), rel: filepath.Join(".claude", "skills")},
+		// Config-dir skills: anchor at the (non-swappable) HOME mount; ~/claude
+		// itself is swappable, so os.Root navigation guards it.
+		{anchor: cfg.AgentHomeDir(ws.UserID), rel: "claude/skills"},
 	}
 	containerClaude := ""
 	if ws.SandboxProvider == sandbox.KindDocker {
 		containerClaude = sandbox.ContainerClaudeDir
 	}
-	paths = append(paths, pluginSkillPaths(claudeDir, containerClaude)...)
+	paths = append(paths, pluginSkillPaths(cfg.AgentHomeDir(ws.UserID), claudeDir, containerClaude)...)
 	return &Service{paths: paths}
 }
 
 // pluginSkillPaths cross-references settings.json (enabledPlugins) with
 // plugins/installed_plugins.json (install paths). Install paths recorded
-// inside a Docker sandbox are mapped back onto the host config dir.
-func pluginSkillPaths(claudeDir, containerClaude string) []string {
+// inside a Docker sandbox are mapped back onto the host config dir, and every
+// path is anchored at the (non-swappable) HOME mount so a manifest written by
+// the agent can't point the API at another user's tree.
+func pluginSkillPaths(homeDir, claudeDir, containerClaude string) []skillRoot {
 	var settings struct {
 		EnabledPlugins map[string]any `json:"enabledPlugins"`
 	}
@@ -94,7 +158,7 @@ func pluginSkillPaths(claudeDir, containerClaude string) []string {
 		ids = append(ids, id)
 	}
 	sort.Strings(ids)
-	var out []string
+	var out []skillRoot
 	for _, id := range ids {
 		if enabled, _ := settings.EnabledPlugins[id].(bool); !enabled {
 			continue
@@ -113,10 +177,14 @@ func pluginSkillPaths(claudeDir, containerClaude string) []string {
 					}
 				}
 			}
-			dir := filepath.Join(p, "skills")
-			if fi, err := os.Stat(dir); err == nil && fi.IsDir() {
-				out = append(out, dir)
+			// The skills dir must resolve within the user's own HOME mount; a
+			// manifest install path pointing elsewhere (another user's dir) is
+			// rejected as an escaping relative path.
+			rel, err := filepath.Rel(homeDir, filepath.Join(p, "skills"))
+			if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) || filepath.IsAbs(rel) {
+				continue
 			}
+			out = append(out, skillRoot{anchor: homeDir, rel: filepath.ToSlash(rel)})
 		}
 	}
 	return out
@@ -127,13 +195,14 @@ func readJSON(p string, v any) bool {
 	return err == nil && json.Unmarshal(b, v) == nil
 }
 
-func dirStats(dir string) (count int, size int64) {
-	_ = filepath.WalkDir(dir, func(p string, d fs.DirEntry, err error) error {
-		if err != nil {
+// dirStats counts the regular files and total size of the skill dir name,
+// following only symlinks that stay inside base.
+func dirStats(base *os.Root, name string) (count int, size int64) {
+	_ = fs.WalkDir(base.FS(), name, func(p string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() {
 			return nil
 		}
-		fi, err := os.Stat(p)
-		if err == nil && fi.Mode().IsRegular() {
+		if fi, err := base.Stat(p); err == nil && fi.Mode().IsRegular() {
 			count++
 			size += fi.Size()
 		}
@@ -144,35 +213,37 @@ func dirStats(dir string) (count int, size int64) {
 
 func description(meta map[string]string) string { return meta["description"] }
 
-// List returns every skill, deduplicated by resolved directory.
+// skillExists reports whether name under base is a directory with a readable
+// SKILL.md, following only in-root symlinks.
+func skillExists(base *os.Root, name string) bool {
+	fi, err := base.Stat(name)
+	if err != nil || !fi.IsDir() {
+		return false
+	}
+	_, err = readFileLimited(base, path.Join(name, skillMD))
+	return err == nil
+}
+
+// List returns every skill, deduplicated by name (search order wins).
 func (s *Service) List() []CustomSkill {
 	out := []CustomSkill{}
-	seenDirs := map[string]bool{}
 	seenNames := map[string]bool{}
-	for _, base := range s.paths {
-		entries, err := os.ReadDir(base)
+	for _, sr := range s.paths {
+		base, err := sr.openBase()
 		if err != nil {
 			continue
 		}
+		entries, err := fs.ReadDir(base.FS(), ".")
+		if err != nil {
+			base.Close()
+			continue
+		}
 		for _, e := range entries {
-			dir := filepath.Join(base, e.Name())
-			fi, err := os.Stat(dir)
-			if err != nil || !fi.IsDir() || seenNames[e.Name()] {
+			name := e.Name()
+			if seenNames[name] || !skillExists(base, name) {
 				continue
 			}
-			md := filepath.Join(dir, skillMD)
-			if _, err := os.Stat(md); err != nil {
-				continue
-			}
-			resolved, err := filepath.EvalSymlinks(dir)
-			if err != nil {
-				resolved = dir
-			}
-			if seenDirs[resolved] {
-				seenNames[e.Name()] = true
-				continue
-			}
-			content, err := os.ReadFile(md)
+			content, err := readFileLimited(base, path.Join(name, skillMD))
 			if err != nil || !utf8.Valid(content) {
 				continue
 			}
@@ -180,11 +251,11 @@ func (s *Service) List() []CustomSkill {
 			if err != nil {
 				meta = map[string]string{}
 			}
-			count, size := dirStats(dir)
-			seenDirs[resolved] = true
-			seenNames[e.Name()] = true
-			out = append(out, CustomSkill{Name: e.Name(), Description: description(meta), SizeBytes: size, FileCount: count, Sources: []string{Source}})
+			count, size := dirStats(base, name)
+			seenNames[name] = true
+			out = append(out, CustomSkill{Name: name, Description: description(meta), SizeBytes: size, FileCount: count, Sources: []string{Source}})
 		}
+		base.Close()
 	}
 	return out
 }
@@ -193,33 +264,43 @@ func validName(name string) bool {
 	return name != "" && name != "." && name != ".." && !strings.ContainsAny(name, `/\`) && !strings.ContainsRune(name, 0)
 }
 
-func (s *Service) find(source, name string) (string, error) {
+// find returns the skillRoot that holds the named skill.
+func (s *Service) find(source, name string) (skillRoot, error) {
 	if source != Source || !validName(name) {
-		return "", fmt.Errorf("%w: Skill '%s' not found", ErrNotFound, name)
+		return skillRoot{}, fmt.Errorf("%w: Skill '%s' not found", ErrNotFound, name)
 	}
-	for _, base := range s.paths {
-		dir := filepath.Join(base, name)
-		if fi, err := os.Stat(dir); err == nil && fi.IsDir() {
-			if _, err := os.Stat(filepath.Join(dir, skillMD)); err == nil {
-				return dir, nil
-			}
+	for _, sr := range s.paths {
+		base, err := sr.openBase()
+		if err != nil {
+			continue
+		}
+		ok := skillExists(base, name)
+		base.Close()
+		if ok {
+			return sr, nil
 		}
 	}
-	return "", fmt.Errorf("%w: Skill '%s' not found", ErrNotFound, name)
+	return skillRoot{}, fmt.Errorf("%w: Skill '%s' not found", ErrNotFound, name)
 }
 
 // Files returns every file of a skill; non-UTF-8 files come back base64.
 func (s *Service) Files(source, name string) ([]FileEntry, error) {
-	dir, err := s.find(source, name)
+	sr, err := s.find(source, name)
 	if err != nil {
 		return nil, err
 	}
+	base, err := sr.openBase()
+	if err != nil {
+		return nil, err
+	}
+	defer base.Close()
 	var paths []string
-	_ = filepath.WalkDir(dir, func(p string, d fs.DirEntry, err error) error {
-		if err != nil {
+	_ = fs.WalkDir(base.FS(), name, func(p string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() {
 			return nil
 		}
-		if fi, err := os.Stat(p); err == nil && fi.Mode().IsRegular() {
+		// Stat follows symlinks, but only to targets inside the skills root.
+		if fi, err := base.Stat(p); err == nil && fi.Mode().IsRegular() {
 			paths = append(paths, p)
 		}
 		return nil
@@ -227,12 +308,14 @@ func (s *Service) Files(source, name string) ([]FileEntry, error) {
 	sort.Strings(paths)
 	files := []FileEntry{}
 	for _, p := range paths {
-		data, err := os.ReadFile(p)
+		rel := strings.TrimPrefix(p, name+"/")
+		data, err := readFileLimited(base, p)
 		if err != nil {
+			if fi, serr := base.Stat(p); serr == nil && fi.Size() > maxSkillFile {
+				return nil, fmt.Errorf("%w: %s is too large to edit", ErrInvalid, rel)
+			}
 			continue
 		}
-		rel, _ := filepath.Rel(dir, p)
-		rel = filepath.ToSlash(rel)
 		if utf8.Valid(data) {
 			files = append(files, FileEntry{Path: rel, Content: string(data)})
 		} else {
@@ -242,28 +325,23 @@ func (s *Service) Files(source, name string) ([]FileEntry, error) {
 	return files, nil
 }
 
-// Update replaces a skill's files atomically-ish: everything is written and
-// SKILL.md validated in a temp dir first, then swapped in. Symlinked skills
-// are replaced at their target so the link keeps pointing at it.
+// Update replaces a skill's files. Everything is validated first (frontmatter,
+// paths), then the skill dir is removed and rewritten through the pinned,
+// symlink-safe skills root, so a concurrent symlink swap can neither redirect
+// the delete nor the writes out of the user's own tree. (A skill that was a
+// symlink is replaced by a regular directory.)
 func (s *Service) Update(source, name string, files []FileEntry) (CustomSkill, error) {
-	dir, err := s.find(source, name)
+	sr, err := s.find(source, name)
 	if err != nil {
 		return CustomSkill{}, err
 	}
-	tmpRoot, err := os.MkdirTemp("", "agentrove-skill-")
-	if err != nil {
-		return CustomSkill{}, err
+	// Validate and decode everything before touching the real tree.
+	type decoded struct {
+		rel  string
+		data []byte
 	}
-	defer os.RemoveAll(tmpRoot)
-	tmp := filepath.Join(tmpRoot, name)
-	if err := os.Mkdir(tmp, 0o755); err != nil {
-		return CustomSkill{}, err
-	}
-	root, err := os.OpenRoot(tmp)
-	if err != nil {
-		return CustomSkill{}, err
-	}
-	defer root.Close()
+	var items []decoded
+	var mdContent []byte
 	for _, f := range files {
 		rel := filepath.ToSlash(filepath.Clean(f.Path))
 		if f.Path == "" || filepath.IsAbs(f.Path) || rel == "." || rel == ".." || strings.HasPrefix(rel, "../") {
@@ -271,80 +349,70 @@ func (s *Service) Update(source, name string, files []FileEntry) (CustomSkill, e
 		}
 		data := []byte(f.Content)
 		if f.IsBinary {
-			if data, err = base64.StdEncoding.DecodeString(f.Content); err != nil {
+			d, derr := base64.StdEncoding.DecodeString(f.Content)
+			if derr != nil {
 				return CustomSkill{}, fmt.Errorf("%w: Invalid base64 content for %s", ErrInvalid, f.Path)
 			}
+			data = d
 		}
-		if d := filepath.Dir(rel); d != "." {
-			if err := root.MkdirAll(d, 0o755); err != nil {
-				return CustomSkill{}, fmt.Errorf("%w: Invalid file path: %s", ErrInvalid, f.Path)
-			}
-		}
-		if err := root.WriteFile(rel, data, 0o644); err != nil {
-			return CustomSkill{}, fmt.Errorf("%w: Invalid file path: %s", ErrInvalid, f.Path)
+		items = append(items, decoded{rel: rel, data: data})
+		if rel == skillMD {
+			mdContent = data
 		}
 	}
-	md, err := os.ReadFile(filepath.Join(tmp, skillMD))
-	if err != nil {
+	if mdContent == nil {
 		return CustomSkill{}, fmt.Errorf("%w: %s is required", ErrInvalid, skillMD)
 	}
-	meta, err := ParseFrontmatter(string(md))
+	meta, err := ParseFrontmatter(string(mdContent))
 	if err != nil {
 		return CustomSkill{}, fmt.Errorf("%w: %s", ErrInvalid, err.Error())
 	}
-	count, size := dirStats(tmp)
 
-	target, err := filepath.EvalSymlinks(dir)
+	base, err := sr.openBase()
 	if err != nil {
 		return CustomSkill{}, err
 	}
-	uid, gid := -1, -1
-	if fi, err := os.Stat(target); err == nil {
-		if st, ok := fi.Sys().(*syscall.Stat_t); ok {
-			uid, gid = int(st.Uid), int(st.Gid)
+	defer base.Close()
+	// Preserve the owner (the sandbox user for Docker) so the agent keeps edit
+	// access; fall back to the skills dir's owner.
+	uid, gid := skillOwner(base, name)
+	if err := base.RemoveAll(name); err != nil {
+		return CustomSkill{}, err
+	}
+	if err := base.Mkdir(name, 0o755); err != nil {
+		return CustomSkill{}, err
+	}
+	for _, it := range items {
+		full := path.Join(name, it.rel)
+		if d := path.Dir(full); d != "." {
+			if err := base.MkdirAll(d, 0o755); err != nil {
+				return CustomSkill{}, fmt.Errorf("%w: Invalid file path: %s", ErrInvalid, it.rel)
+			}
+		}
+		if err := base.WriteFile(full, it.data, 0o644); err != nil {
+			return CustomSkill{}, fmt.Errorf("%w: Invalid file path: %s", ErrInvalid, it.rel)
 		}
 	}
-	if err := os.RemoveAll(target); err != nil {
-		return CustomSkill{}, err
-	}
-	if err := copyTree(tmp, target); err != nil {
-		return CustomSkill{}, err
-	}
-	// Keep the skill owned by whoever owned it (the sandbox user for Docker).
 	if os.Geteuid() == 0 && uid >= 0 {
-		_ = filepath.WalkDir(target, func(p string, d fs.DirEntry, err error) error {
+		_ = fs.WalkDir(base.FS(), name, func(p string, d fs.DirEntry, err error) error {
 			if err == nil {
-				_ = os.Lchown(p, uid, gid)
+				_ = base.Lchown(p, uid, gid)
 			}
 			return nil
 		})
 	}
+	count, size := dirStats(base, name)
 	return CustomSkill{Name: name, Description: description(meta), SizeBytes: size, FileCount: count, Sources: []string{source}}, nil
 }
 
-func copyTree(src, dst string) error {
-	return filepath.WalkDir(src, func(p string, d fs.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-		rel, _ := filepath.Rel(src, p)
-		out := filepath.Join(dst, rel)
-		if d.IsDir() {
-			return os.MkdirAll(out, 0o755)
-		}
-		in, err := os.Open(p)
-		if err != nil {
-			return err
-		}
-		defer in.Close()
-		f, err := os.OpenFile(out, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o644)
-		if err != nil {
-			return err
-		}
-		if _, err := io.Copy(f, in); err != nil {
-			f.Close()
-			return err
-		}
-		return f.Close()
-	})
+// skillOwner returns the uid/gid of the skill dir name under base, or -1,-1.
+func skillOwner(base *os.Root, name string) (int, int) {
+	fi, err := base.Stat(name)
+	if err != nil {
+		return -1, -1
+	}
+	if st, ok := fi.Sys().(*syscall.Stat_t); ok {
+		return int(st.Uid), int(st.Gid)
+	}
+	return -1, -1
 }

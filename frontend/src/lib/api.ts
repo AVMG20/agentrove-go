@@ -43,6 +43,8 @@ interface ClientAuth {
   getToken: () => string | null;
   getRefreshToken: () => string | null;
   setTokens: (accessToken: string, refreshToken: string) => Promise<void>;
+  // Re-read tokens another tab may have rotated while this one missed the storage event.
+  syncFromStorage: () => void;
   onSessionExpired: () => void;
 }
 
@@ -50,6 +52,7 @@ const localAuth: ClientAuth = {
   getToken: () => authStorage.getToken(),
   getRefreshToken: () => authStorage.getRefreshToken(),
   setTokens: (accessToken, refreshToken) => authStorage.setTokens(accessToken, refreshToken),
+  syncFromStorage: () => authStorage.syncFromStorage(),
   onSessionExpired: invalidateSessionAndRedirect,
 };
 
@@ -106,6 +109,7 @@ class APIClient {
 
   // For SSE openers that bypass request(): may need a refresh after restart / dead feed.
   async getValidToken(): Promise<string | null> {
+    this.auth.syncFromStorage();
     const cached = this.auth.getToken();
     if (!this.auth.getRefreshToken()) return cached;
     // Don't rotate on every open — churns refresh tokens and can strand clients mid-rotation.
@@ -131,6 +135,9 @@ class APIClient {
   }
 
   private async performTokenRefresh(): Promise<TokenResponse> {
+    // A stale refresh token (rotated by another tab beyond the server grace window) 401s
+    // and would sign every tab out, so use the freshest one.
+    this.auth.syncFromStorage();
     const refreshToken = this.auth.getRefreshToken();
     if (!refreshToken) {
       throw new RefreshTokenError(401, 'No refresh token available');
@@ -294,11 +301,7 @@ class APIClient {
   }
 }
 
-const API_BASE_URL: string = resolveHttpBaseUrl(
-  import.meta.env.VITE_API_BASE_URL || '/api/v1',
-);
-export const WS_BASE_URL: string = resolveWsBaseUrl(
-  import.meta.env.VITE_WS_URL || '/api/v1/ws',
-);
+const API_BASE_URL: string = resolveHttpBaseUrl(import.meta.env.VITE_API_BASE_URL || '/api/v1');
+export const WS_BASE_URL: string = resolveWsBaseUrl(import.meta.env.VITE_WS_URL || '/api/v1/ws');
 
 export const apiClient = new APIClient(API_BASE_URL, localAuth);

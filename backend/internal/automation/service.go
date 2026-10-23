@@ -61,20 +61,22 @@ type Automation struct {
 	GithubWebhookSecret *string           `json:"-"`
 	GithubWebhookActive bool              `json:"github_webhook_active"`
 	GithubWebhookError  *string           `json:"github_webhook_error"`
-	CreatedAt           db.Time           `json:"created_at"`
-	UpdatedAt           db.Time           `json:"updated_at"`
+	// CreatedByAgent: made through MCP by an agent, not in the UI.
+	CreatedByAgent bool    `json:"created_by_agent"`
+	CreatedAt      db.Time `json:"created_at"`
+	UpdatedAt      db.Time `json:"updated_at"`
 }
 
 const columns = `id, user_id, workspace_id, name, prompt, model_id, cron_expression, timezone, permission_mode, thinking_mode,
 	worktree, selected_persona_name, enabled, next_run_at, last_run_at, trigger_type, github_repo, github_events, github_cursor,
-	github_webhook_id, github_webhook_secret, github_webhook_error, created_at, updated_at`
+	github_webhook_id, github_webhook_secret, github_webhook_error, created_by_agent, created_at, updated_at`
 
 func scan(row interface{ Scan(...any) error }) (*Automation, error) {
 	x := &Automation{}
 	err := row.Scan(&x.ID, &x.UserID, &x.WorkspaceID, &x.Name, &x.Prompt, &x.ModelID, &x.CronExpression, &x.Timezone,
 		&x.PermissionMode, &x.ThinkingMode, &x.Worktree, &x.SelectedPersonaName, &x.Enabled, &x.NextRunAt, &x.LastRunAt,
 		&x.TriggerType, &x.GithubRepo, &x.GithubEvents, &x.GithubCursor, &x.GithubWebhookID, &x.GithubWebhookSecret,
-		&x.GithubWebhookError, &x.CreatedAt, &x.UpdatedAt)
+		&x.GithubWebhookError, &x.CreatedByAgent, &x.CreatedAt, &x.UpdatedAt)
 	x.GithubWebhookActive = x.GithubWebhookID != nil
 	return x, err
 }
@@ -102,6 +104,8 @@ type Input struct {
 	TriggerType         *string   `json:"trigger_type"`
 	GithubRepo          *string   `json:"github_repo"`
 	GithubEvents        *[]string `json:"github_events"`
+	// CreatedByAgent is set by the MCP server, never from a request body.
+	CreatedByAgent bool `json:"-"`
 	// Set lists the JSON keys present in the body (PATCH semantics).
 	Set map[string]bool `json:"-"`
 }
@@ -231,6 +235,18 @@ func (s *Service) getOwned(ctx context.Context, id, userID string) (*Automation,
 	return x, err
 }
 
+// Get returns an automation owned by userID.
+func (s *Service) Get(ctx context.Context, id, userID string) (*Automation, error) {
+	return s.getOwned(ctx, id, userID)
+}
+
+// CountByAgent counts the user's agent-created automations.
+func (s *Service) CountByAgent(ctx context.Context, userID string) (int, error) {
+	var n int
+	err := s.a.DB.QueryRowContext(ctx, `SELECT COUNT(1) FROM automations WHERE user_id = ? AND created_by_agent = 1`, userID).Scan(&n)
+	return n, err
+}
+
 func (s *Service) getByID(ctx context.Context, id string) (*Automation, error) {
 	x, err := scan(s.a.DB.QueryRowContext(ctx, `SELECT `+columns+` FROM automations WHERE id = ?`, id))
 	if errors.Is(err, sql.ErrNoRows) {
@@ -279,7 +295,7 @@ func (s *Service) Create(ctx context.Context, userID string, in *Input, baseURL 
 		PermissionMode: deref(in.PermissionMode, models.FullAccessPermissionMode), ThinkingMode: in.ThinkingMode,
 		Worktree: deref(in.Worktree, false), SelectedPersonaName: deref(in.SelectedPersonaName, models.DefaultPersonaName),
 		Enabled: deref(in.Enabled, true), TriggerType: deref(in.TriggerType, "schedule"), GithubRepo: in.GithubRepo,
-		CreatedAt: db.T(now), UpdatedAt: db.T(now),
+		CreatedByAgent: in.CreatedByAgent, CreatedAt: db.T(now), UpdatedAt: db.T(now),
 	}
 	if in.GithubEvents != nil {
 		x.GithubEvents = db.J(*in.GithubEvents)
@@ -303,10 +319,10 @@ func (s *Service) Create(ctx context.Context, userID string, in *Input, baseURL 
 	}
 	_, err = s.a.DB.ExecContext(ctx, `INSERT INTO automations (id, user_id, workspace_id, name, prompt, model_id, cron_expression, timezone,
 		permission_mode, thinking_mode, worktree, selected_persona_name, enabled, next_run_at, trigger_type, github_repo, github_events,
-		github_cursor, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		github_cursor, created_by_agent, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		x.ID, x.UserID, x.WorkspaceID, x.Name, x.Prompt, x.ModelID, x.CronExpression, x.Timezone, x.PermissionMode, x.ThinkingMode,
 		x.Worktree, x.SelectedPersonaName, x.Enabled, x.NextRunAt, x.TriggerType, x.GithubRepo, x.GithubEvents, x.GithubCursor,
-		x.CreatedAt, x.UpdatedAt)
+		x.CreatedByAgent, x.CreatedAt, x.UpdatedAt)
 	if err != nil {
 		return nil, err
 	}
@@ -324,7 +340,7 @@ func (s *Service) Update(ctx context.Context, id, userID string, in *Input, base
 	if err != nil {
 		return nil, err
 	}
-	oldRepo, oldHook := x.GithubRepo, x.GithubWebhookID
+	oldRepo, oldHook, wasEnabled := x.GithubRepo, x.GithubWebhookID, x.Enabled
 	if in.WorkspaceID != nil {
 		if _, err := uuid.Parse(*in.WorkspaceID); err != nil {
 			return nil, httpx.Unprocessable("workspace_id: Input should be a valid UUID")
@@ -370,8 +386,11 @@ func (s *Service) Update(ctx context.Context, id, userID string, in *Input, base
 		return nil, httpx.BadRequest(err.Error())
 	}
 	now := time.Now().UTC()
-	if set["trigger_type"] || set["github_repo"] {
-		// Restart watching from now; never backfill history.
+	reenabled := !wasEnabled && x.Enabled
+	if set["trigger_type"] || set["github_repo"] || reenabled {
+		// Restart watching from now; never backfill history. Re-enabling
+		// counts: nothing polls a disabled automation, so the old cursor
+		// would replay everything that happened meanwhile, 10 runs a tick.
 		x.GithubCursor = db.NullTime{}
 		if x.TriggerType == "github" {
 			x.GithubCursor = db.NT(now)

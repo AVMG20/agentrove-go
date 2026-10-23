@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"os"
 	"os/exec"
 	"strconv"
 	"strings"
@@ -72,23 +73,38 @@ func rgArgs(o searchOptions) []string {
 
 // search runs ripgrep in the workspace dir rel: on the host when rg is
 // installed there (works with the sandbox stopped), else inside the sandbox.
-func search(ctx context.Context, sb *sandbox.Sandbox, rel, hostDir string, o searchOptions) (SearchResponse, error) {
+func search(ctx context.Context, sb *sandbox.Sandbox, rel string, o searchOptions) (SearchResponse, error) {
 	args := rgArgs(o)
 	var stdout, stderr string
 	var exit int
 	if rg, err := exec.LookPath("rg"); err == nil {
 		cctx, cancel := context.WithTimeout(ctx, 2*time.Minute)
 		defer cancel()
-		cmd := exec.CommandContext(cctx, rg, args...)
-		cmd.Dir = hostDir
+		// Pin the search dir via os.Root (symlink-safe, swap-immune) and hand
+		// rg the directory's fd. The child chdirs into /proc/self/fd/3 *after*
+		// exec, so the kernel never resolves an agent-swappable path string, and
+		// rg (no --follow) won't descend into symlinks under it. Passing the
+		// dir as a path argument instead would let rg follow a swapped symlink
+		// and read outside the workspace.
+		dirFile, err := openSearchDir(sb, rel)
+		if err != nil {
+			return SearchResponse{}, httpx.BadRequest(err.Error())
+		}
+		defer dirFile.Close()
+		script := `cd /proc/self/fd/3 || exit 125; exec "$@"`
+		cmd := exec.CommandContext(cctx, "sh", append([]string{"-c", script, "rg", rg}, args...)...)
+		cmd.ExtraFiles = []*os.File{dirFile} // becomes fd 3 in the child
 		var so, se bytes.Buffer
 		cmd.Stdout, cmd.Stderr = &so, &se
-		err := cmd.Run()
+		err = cmd.Run()
 		var exitErr *exec.ExitError
 		if errors.As(err, &exitErr) {
 			exit = exitErr.ExitCode()
 		} else if err != nil {
 			return SearchResponse{}, httpx.BadRequest("Search failed: " + err.Error())
+		}
+		if exit == 125 {
+			return SearchResponse{}, httpx.BadRequest("Search failed: could not enter the search directory")
 		}
 		stdout, stderr = so.String(), se.String()
 	} else {
@@ -227,3 +243,26 @@ func PrepareMatchLine(lineText string, byteStart, byteEnd int) (string, int, int
 }
 
 func clamp(v, lo, hi int) int { return max(lo, min(v, hi)) }
+
+// openSearchDir opens the workspace-relative dir rel as a directory fd, rooted
+// at the swap-safe workspace Root so the path can't escape via symlinks. The
+// returned fd is passed to the rg subprocess as its working directory.
+func openSearchDir(sb *sandbox.Sandbox, rel string) (*os.File, error) {
+	root, err := sb.OpenWorkspaceRoot()
+	if err != nil {
+		return nil, err
+	}
+	defer root.Close()
+	name := rel
+	if name == "" {
+		name = "."
+	}
+	fi, err := root.Stat(name)
+	if err != nil {
+		return nil, errors.New("Directory not found: " + rel)
+	}
+	if !fi.IsDir() {
+		return nil, errors.New("Not a directory: " + rel)
+	}
+	return root.OpenFile(name, os.O_RDONLY, 0)
+}

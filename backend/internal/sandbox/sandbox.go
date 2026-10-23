@@ -17,6 +17,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"path"
 	"path/filepath"
 	"strings"
@@ -110,6 +111,8 @@ type Provider interface {
 	Start(ctx context.Context, sandboxID string, req ExecRequest) (Process, error)
 	StartPTY(ctx context.Context, sandboxID string, req ExecRequest, rows, cols int) (PTY, error)
 	DiskUsage(ctx context.Context, sandboxID string) (int64, bool)
+	// State reports whether the sandbox exists and is running.
+	State(ctx context.Context, sandboxID string) (exists, running bool, err error)
 }
 
 // Sandbox is a workspace-bound handle: it knows the provider, the workspace
@@ -156,6 +159,40 @@ func (s *Sandbox) HostPath(sandboxPath string) (string, error) {
 		return "", fmt.Errorf("path %q is outside the workspace", sandboxPath)
 	}
 	return filepath.Join(s.WorkspacePath, filepath.FromSlash(rel)), nil
+}
+
+// OpenWorkspaceRoot opens the workspace directory as an *os.Root for race-free,
+// symlink-safe host access. The box mounts the *parent* (the user's projects
+// dir) and the agent is root inside the box, so it can delete the project dir
+// and replace it with a symlink; os.OpenRoot(WorkspacePath) would then follow
+// that link and escape. Anchoring at the parent (the bind-mount point, which
+// the box cannot replace) and sub-rooting the project's base name defeats the
+// swap: OpenRoot refuses a base that is a symlink out, and pins the returned
+// Root to the real directory's fd so later swaps can't move it.
+func (s *Sandbox) OpenWorkspaceRoot() (*os.Root, error) {
+	parent := filepath.Dir(s.WorkspacePath)
+	base := filepath.Base(s.WorkspacePath)
+	if parent == s.WorkspacePath || base == "." || base == "/" {
+		// No usable parent (e.g. root path): fall back to a direct root.
+		return os.OpenRoot(s.WorkspacePath)
+	}
+	pr, err := os.OpenRoot(parent)
+	if err != nil {
+		return nil, err
+	}
+	defer pr.Close()
+	return pr.OpenRoot(base)
+}
+
+// IsRunning reports whether the sandbox container is currently running. It is
+// false when there is no provider (e.g. in unit tests) or the state can't be
+// read, so callers treat "unknown" as "not running".
+func (s *Sandbox) IsRunning(ctx context.Context) bool {
+	if s.provider == nil {
+		return false
+	}
+	_, running, err := s.provider.State(ctx, s.ID)
+	return err == nil && running
 }
 
 // SandboxPath maps a host path back into the sandbox.

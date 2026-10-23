@@ -112,6 +112,35 @@ describe('updateQueuedMessage', () => {
   });
 });
 
+describe('failed server sync', () => {
+  const serverItem = (id: string, content: string) => ({
+    id,
+    content,
+    attachments: [],
+    queued_at: '2026-01-01T00:00:00Z',
+  });
+
+  it('restores the server copy when an edit fails to sync', async () => {
+    seed('c1', [localMsg({ id: 'm1', content: 'old', synced: true })]);
+    svc.updateQueuedMessage.mockRejectedValueOnce(new Error('500'));
+    svc.getQueue.mockResolvedValueOnce([serverItem('m1', 'old')] as never);
+
+    await useMessageQueueStore.getState().updateQueuedMessage('c1', 'm1', 'edited');
+
+    expect(queueOf('c1')[0].content).toBe('old');
+  });
+
+  it('brings a message back when its delete fails, since the server will still send it', async () => {
+    seed('c1', [localMsg({ id: 'm1', content: 'keep', synced: true })]);
+    svc.deleteQueuedMessage.mockRejectedValueOnce(new Error('500'));
+    svc.getQueue.mockResolvedValueOnce([serverItem('m1', 'keep')] as never);
+
+    await useMessageQueueStore.getState().removeMessage('c1', 'm1');
+
+    expect(queueOf('c1').map((m) => m.id)).toEqual(['m1']);
+  });
+});
+
 describe('removeMessage', () => {
   it('removes a synced message and deletes it on the server', async () => {
     seed('c1', [localMsg({ id: 'm1', synced: true }), localMsg({ id: 'm2', synced: true })]);

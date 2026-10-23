@@ -86,11 +86,9 @@ func (s *Service) saveFiles(ctx context.Context, ch *Channel, files []*multipart
 					return nil, err
 				}
 			}
-			root, err := sb.HostPath("")
-			if err != nil {
-				return nil, err
-			}
-			if err := os.WriteFile(filepath.Join(root, unique), data, 0o644); err != nil {
+			// The workspace is box-writable: write through the swap-safe root
+			// and never through a symlink planted at the target name.
+			if err := sb.WriteWorkspaceFile(unique, data); err != nil {
 				return nil, httpx.Errorf(500, "Failed to copy attachment into the workspace: %v", err)
 			}
 		}

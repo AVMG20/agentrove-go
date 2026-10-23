@@ -18,3 +18,9 @@ export function invalidateSessionAndRedirect(): void {
   redirectInProgress = true;
   window.location.replace('/login');
 }
+
+// Another tab signed out (or its session expired): this tab's UI and caches belong to a
+// dead session, so leave rather than keep acting on cleared credentials.
+export function watchRemoteSignOut(): () => void {
+  return authStorage.onRemoteSignOut(invalidateSessionAndRedirect);
+}

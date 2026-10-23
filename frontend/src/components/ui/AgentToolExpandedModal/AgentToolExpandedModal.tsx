@@ -1,4 +1,4 @@
-import { useMemo, useState, Suspense } from 'react';
+import { useMemo, useState, Suspense, useId } from 'react';
 import clsx from 'clsx';
 import { Button } from '@/components/ui/primitives/Button/Button';
 import { BaseModal } from '@/components/ui/shared/BaseModal/BaseModal';
@@ -23,6 +23,7 @@ export function AgentToolExpandedModal({
   initialAgentId,
   onClose,
 }: AgentToolExpandedModalProps) {
+  const titleId = useId();
   const [selectedId, setSelectedId] = useState(initialAgentId);
 
   const selectedAgent = agents.find((a) => a.id === selectedId);
@@ -50,8 +51,12 @@ export function AgentToolExpandedModal({
   const hasSidebar = agents.length > 1;
 
   return (
-    <BaseModal isOpen={true} onClose={onClose} size="4xl" ariaLabel="Subagent detail view">
-      <ModalHeader title={hasSidebar ? 'Subagents' : `Agent — ${subagentType}`} onClose={onClose} />
+    <BaseModal isOpen={true} onClose={onClose} size="4xl" ariaLabelledBy={titleId}>
+      <ModalHeader
+        title={hasSidebar ? 'Subagents' : `Agent — ${subagentType}`}
+        titleId={titleId}
+        onClose={onClose}
+      />
       <div className={styles.layout}>
         {hasSidebar && (
           <div className={styles.sidebar}>

@@ -57,11 +57,15 @@ export const HtmlPreview = memo(function HtmlPreview({
       isFullscreen={isFullscreen}
       onToggleFullscreen={onToggleFullscreen}
     >
+      {/* Fully sandboxed: agent-written HTML gets an opaque origin (no access to the
+          app's localStorage/cookies) and no scripts — DOMPurify strips them anyway, so
+          the preview is a static render of the markup + styles. */}
       <iframe
         srcDoc={sanitizedContent}
         className={styles.iframe}
         title={`HTML Preview: ${file.path}`}
-        sandbox="allow-scripts allow-same-origin"
+        sandbox=""
+        referrerPolicy="no-referrer"
       />
     </PreviewContainer>
   );

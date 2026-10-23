@@ -30,6 +30,8 @@
   background-color: var(--theme-surface);
   box-shadow: var(--shadow-strong);
   animation: modal-enter var(--duration-base) var(--easing-out);
+  // Focus lands on the container only as a fallback when it has nothing tabbable.
+  outline: none;
 
   :global([data-theme='dark']) & {
     background-color: var(--theme-surface-secondary);

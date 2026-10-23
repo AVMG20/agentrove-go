@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo, type ReactNode } from 'react';
+import { useState, useCallback, useMemo, type ReactNode, useId } from 'react';
 import { FolderOpen, Search, ChevronDown, X } from 'lucide-react';
 import { Button } from '@/components/ui/primitives/Button/Button';
 import { Input } from '@/components/ui/primitives/Input/Input';
@@ -26,6 +26,7 @@ export function WorkspacePicker({
   triggerDisabled = false,
   footer,
 }: WorkspacePickerProps) {
+  const titleId = useId();
   const [isOpen, setIsOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
 
@@ -68,8 +69,8 @@ export function WorkspacePicker({
         <ChevronDown className={styles['trigger-icon']} aria-hidden="true" />
       </Button>
 
-      <BaseModal isOpen={isOpen} onClose={close} size="md" ariaLabel="Choose a project">
-        <ModalHeader title="Projects" onClose={close} />
+      <BaseModal isOpen={isOpen} onClose={close} size="md" ariaLabelledBy={titleId}>
+        <ModalHeader title="Projects" titleId={titleId} onClose={close} />
 
         <div className={styles.body}>
           {workspaces.length > 0 && (

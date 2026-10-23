@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"agentrove/internal/config"
+	"agentrove/internal/httpx"
 
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/filters"
@@ -31,11 +32,22 @@ import (
 type DockerProvider struct {
 	cfg *config.Config
 	cli *client.Client
+	net dockerNetAPI
+	// hostname is os.Hostname and mountinfo reads /proc/self/mountinfo,
+	// swappable in tests (nil mountinfo: no such source).
+	hostname  func() (string, error)
+	mountinfo func() ([]byte, error)
 
-	netOnce sync.Once
+	netOnce  sync.Once
+	selfOnce sync.Once
+	self     string // the API's own container id; "" = not in a container
+	netMu    sync.Mutex
+	joined   map[string]bool // per-user networks the API is connected to
+	// subnets collects the box networks' subnets for httpx.ClientIP.
+	subnets *httpx.PrefixSet
 }
 
-func NewDockerProvider(cfg *config.Config) (*DockerProvider, error) {
+func NewDockerProvider(cfg *config.Config, subnets *httpx.PrefixSet) (*DockerProvider, error) {
 	opts := []client.Opt{client.FromEnv, client.WithAPIVersionNegotiation()}
 	if cfg.DockerHost != "" {
 		opts = append(opts, client.WithHost(cfg.DockerHost))
@@ -50,7 +62,8 @@ func NewDockerProvider(cfg *config.Config) (*DockerProvider, error) {
 		cli.Close()
 		return nil, fmt.Errorf("docker daemon unreachable: %w", err)
 	}
-	return &DockerProvider{cfg: cfg, cli: cli}, nil
+	return &DockerProvider{cfg: cfg, cli: cli, net: cli, hostname: os.Hostname,
+		mountinfo: func() ([]byte, error) { return os.ReadFile("/proc/self/mountinfo") }, joined: map[string]bool{}, subnets: subnets}, nil
 }
 
 func (d *DockerProvider) Kind() string { return KindDocker }
@@ -73,11 +86,16 @@ func (d *DockerProvider) ensureNetwork(ctx context.Context) {
 		if d.cfg.DockerNetwork == "" {
 			return
 		}
-		if _, err := d.cli.NetworkInspect(ctx, d.cfg.DockerNetwork, network.InspectOptions{}); err == nil {
+		if info, err := d.net.NetworkInspect(ctx, d.cfg.DockerNetwork, network.InspectOptions{}); err == nil {
+			d.recordSubnets(info)
 			return
 		}
-		if _, err := d.cli.NetworkCreate(ctx, d.cfg.DockerNetwork, network.CreateOptions{Driver: "bridge"}); err != nil {
+		if _, err := d.net.NetworkCreate(ctx, d.cfg.DockerNetwork, network.CreateOptions{Driver: "bridge"}); err != nil {
 			slog.Warn("create docker network", "network", d.cfg.DockerNetwork, "err", err)
+			return
+		}
+		if info, err := d.net.NetworkInspect(ctx, d.cfg.DockerNetwork, network.InspectOptions{}); err == nil {
+			d.recordSubnets(info)
 		}
 	})
 }
@@ -101,15 +119,27 @@ func (d *DockerProvider) prepareDirs(userID string) (home, projects string, err 
 // Create creates and starts the user's box: one container per user with the
 // persistent home and all projects mounted.
 func (d *DockerProvider) Create(ctx context.Context, opts CreateOptions) error {
-	d.ensureNetwork(ctx)
+	netName := d.boxNetwork(ctx, opts.UserID)
 	home, projects, err := d.prepareDirs(opts.UserID)
 	if err != nil {
 		return fmt.Errorf("prepare box dirs: %w", err)
 	}
 	hc := &container.HostConfig{
-		NetworkMode: container.NetworkMode(d.cfg.DockerNetwork),
+		NetworkMode: container.NetworkMode(netName),
+		// no-new-privileges stays off on purpose: the box is a dev environment
+		// where the agent uses sudo (NOPASSWD in the image) to apt/npm install,
+		// so uid 1000 is effectively root inside the box. Host-side code must
+		// never trust box file ownership (see the os.Root-based file access).
+		// The default seccomp and AppArmor (docker-default) profiles still
+		// apply since the box is not privileged.
 		SecurityOpt: []string{"no-new-privileges=false"},
-		Init:        boolPtr(true),
+		// Drop CAP_NET_RAW so the box can't craft raw/spoofed packets on its
+		// bridge (e.g. ARP-spoof the "api" alias). Nothing in apt/npm/dev-server
+		// workflows needs it; only raw ICMP `ping` stops working. The rest of
+		// the default caps are kept because a sudo-capable dev box needs them to
+		// install packages (chown/setuid/etc.), so CapDrop=ALL isn't viable.
+		CapDrop: []string{"NET_RAW"},
+		Init:    boolPtr(true),
 		Binds: []string{
 			d.hostPath(home) + ":" + ContainerHome,
 			d.hostPath(projects) + ":" + ContainerProjects,
@@ -150,7 +180,7 @@ func (d *DockerProvider) Create(ctx context.Context, opts CreateOptions) error {
 			BoxLabel:            "true",
 			InstanceLabel:       d.instance(),
 			"agentrove.sandbox": opts.SandboxID,
-			"agentrove.user":    opts.UserID,
+			UserLabel:           opts.UserID,
 		},
 	}
 	name := containerName(opts.SandboxID)
@@ -207,7 +237,9 @@ func (d *DockerProvider) EnsureRunning(ctx context.Context, sandboxID string, op
 	if err != nil {
 		return err
 	}
+	target := d.boxNetwork(ctx, opts.UserID)
 	if info.State != nil && info.State.Running {
+		// Left on its network until it next starts; the API has joined it.
 		if info.State.Paused {
 			return d.cli.ContainerUnpause(ctx, info.ID)
 		}
@@ -218,6 +250,9 @@ func (d *DockerProvider) EnsureRunning(ctx context.Context, sandboxID string, op
 	if img, err := d.cli.ImageInspect(ctx, d.cfg.DockerImage); err == nil && img.ID != info.Image {
 		slog.Info("recreating sandbox on the current image", "sandbox", sandboxID)
 		return d.Create(ctx, opts)
+	}
+	if err := d.moveBox(ctx, info, target); err != nil {
+		return fmt.Errorf("move sandbox to network %s: %w", target, err)
 	}
 	slog.Info("starting sandbox container", "sandbox", sandboxID)
 	return d.cli.ContainerStart(ctx, info.ID, container.StartOptions{})

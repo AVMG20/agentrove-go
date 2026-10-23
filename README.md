@@ -23,6 +23,14 @@ Open http://localhost:3000. The first account you register becomes the superuser
 
 For production (e.g. Coolify), use `docker-compose-production.yml`. It builds the sandbox image, serves the built frontend through nginx (`web`, port 80) and keeps data in `/data/agentrove-go/storage`. Set `SECRET_KEY` and `APP_URL`.
 
+The API trusts `X-Forwarded-For` only from `TRUSTED_PROXIES` (default: loopback and private ranges, which covers nginx/Traefik on the Docker network). Requests from the box networks never count as a proxy, so code in a box can't forge its address. Don't publish the API port directly on a network where untrusted clients have private addresses.
+
+Box networking: each user's box gets its own bridge network. The API firewalls boxes on the host with nftables, so they reach the internet and `api:8080` but not the host, other containers, the LAN or cloud metadata. To do this it runs a short-lived `NET_ADMIN` helper container with host networking. `SANDBOX_EGRESS_FIREWALL=off` turns this off, and `dry-run` only validates the rules. To manage the rules on the host instead, use `deploy/agentrove-egress.sh`. `deploy/README.md` has the reachability map, settings (`SANDBOX_EGRESS_ALLOW` for LAN services boxes may use) and a verification checklist.
+
+### Usage meter
+
+The chat input shows the 5-hour and weekly usage of the account the agents run on. With `ANTHROPIC_BASE_URL` unset or `https://api.anthropic.com`, it reads Anthropic's OAuth usage endpoint with `CLAUDE_CODE_OAUTH_TOKEN` (or an OAuth `sk-ant-oat…` token in `ANTHROPIC_AUTH_TOKEN` / `ANTHROPIC_API_KEY`; plain API keys have no usage meter). With an https proxy as base URL (e.g. `https://claude.bitsec.dev`), it reads `<ANTHROPIC_BASE_URL>/api/usage` with `ANTHROPIC_AUTH_TOKEN` / `ANTHROPIC_API_KEY`. If your proxy serves usage somewhere else, add `CLAUDE_USAGE_URL` as an environment variable in Settings (e.g. `CLAUDE_USAGE_URL=https://claude-admin.bitsec.dev/api/usage` for bitsec), or in `AGENT_ENV` for every user. URLs set in your own settings must resolve to a public address.
+
 ## Run locally without Compose
 
 Projects always run in the user's box, so Docker is required. Build the box image once, then run the API and the frontend:

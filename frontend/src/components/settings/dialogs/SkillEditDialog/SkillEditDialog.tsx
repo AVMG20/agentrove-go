@@ -1,4 +1,4 @@
-import { useState, useEffect, lazy, Suspense, useMemo, useCallback } from 'react';
+import { useState, useEffect, lazy, Suspense, useMemo, useCallback, useId } from 'react';
 import toast from 'react-hot-toast';
 import { BaseModal } from '@/components/ui/shared/BaseModal/BaseModal';
 import { DialogFooter } from '@/components/ui/shared/DialogFooter/DialogFooter';
@@ -48,6 +48,7 @@ export function SkillEditDialog({
   onClose,
   onSaved,
 }: SkillEditDialogProps) {
+  const titleId = useId();
   const [files, setFiles] = useState<SkillFileEntry[]>([]);
   const [selectedFile, setSelectedFile] = useState<FileStructure | null>(null);
   const [modifiedFiles, setModifiedFiles] = useState<Map<string, string>>(new Map());
@@ -159,9 +160,17 @@ export function SkillEditDialog({
   if (!isOpen || !skill) return null;
 
   return (
-    <BaseModal isOpen={isOpen} onClose={onClose} size="4xl" className={styles.dialog}>
+    <BaseModal
+      isOpen={isOpen}
+      onClose={onClose}
+      size="4xl"
+      className={styles.dialog}
+      ariaLabelledBy={titleId}
+    >
       <div className={styles.header}>
-        <h3 className={styles.title}>Edit Skill: {skill.name}</h3>
+        <h3 id={titleId} className={styles.title}>
+          Edit Skill: {skill.name}
+        </h3>
       </div>
 
       <div className={styles.content}>

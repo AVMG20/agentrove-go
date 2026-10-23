@@ -24,6 +24,12 @@ import (
 // debounce lets a burst of messages land before members wake (var for tests).
 var debounce = 2500 * time.Millisecond
 
+// maxAgentStreak caps consecutive agent messages since the last user message.
+// Members that keep @mentioning each other (or answer every broadcast) would
+// otherwise ping-pong forever, burning tokens until the user notices. Past the
+// cap members only wake for user messages (var for tests).
+var maxAgentStreak = 40
+
 const (
 	queueRetryDelay = 5 * time.Second
 	flushInterval   = 200 * time.Millisecond
@@ -274,6 +280,7 @@ func (s *Service) wake(st *state, gen int) {
 	}
 	ctx := s.ctx
 	now := time.Now()
+	capped := len(st.channel.Members) > 1 && s.agentStreakExceeded(ctx, st.channel.ID)
 	var retryTimes []time.Time
 	for _, member := range st.channel.Members {
 		if _, ok := models.LookupModel(member.ModelID); !ok {
@@ -310,6 +317,10 @@ func (s *Service) wake(st *state, gen int) {
 		}
 		any := false
 		for _, m := range batch {
+			// Past the streak cap agent messages stay unanswered context.
+			if capped && m.MemberID != nil {
+				continue
+			}
 			if addressed(m, member.ID) {
 				any = true
 				break
@@ -336,6 +347,24 @@ func (s *Service) wake(st *state, gen int) {
 		s.schedule(st, earliest)
 	}
 	s.sendNextQueued(ctx, st)
+}
+
+// agentStreakExceeded reports whether the agents have talked among themselves
+// maxAgentStreak times since the user last spoke.
+func (s *Service) agentStreakExceeded(ctx context.Context, channelID string) bool {
+	var n int
+	err := s.a.DB.QueryRowContext(ctx, `SELECT COUNT(1) FROM channel_messages
+		WHERE channel_id = ? AND member_id IS NOT NULL AND status = 'completed'
+		AND seq > COALESCE((SELECT MAX(seq) FROM channel_messages WHERE channel_id = ? AND member_id IS NULL), 0)`, channelID, channelID).Scan(&n)
+	if err != nil {
+		slog.Warn("channel agent streak", "channel", channelID, "err", err)
+		return false
+	}
+	if n >= maxAgentStreak {
+		slog.Warn("channel paused: agents replied to each other too many times; waiting for the user", "channel", channelID, "messages", n)
+		return true
+	}
+	return false
 }
 
 func idle(st *state) bool {

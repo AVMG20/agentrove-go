@@ -51,12 +51,20 @@ func (k *Keys) hmacKey(audience string) []byte {
 
 type Claims struct {
 	jwt.RegisteredClaims
+	// Chat binds an agent token to the chat whose session holds it, so the
+	// agent can't claim another chat of the user.
+	Chat string `json:"chat,omitempty"`
 }
 
 // IssueToken signs a token for subject with the given audience and lifetime.
 func (k *Keys) IssueToken(subject, audience string, ttl time.Duration) (string, error) {
+	return k.IssueChatToken(subject, audience, "", ttl)
+}
+
+// IssueChatToken is IssueToken bound to chatID (see Claims.Chat).
+func (k *Keys) IssueChatToken(subject, audience, chatID string, ttl time.Duration) (string, error) {
 	now := time.Now()
-	claims := Claims{RegisteredClaims: jwt.RegisteredClaims{
+	claims := Claims{Chat: chatID, RegisteredClaims: jwt.RegisteredClaims{
 		Subject:   subject,
 		Audience:  jwt.ClaimStrings{audience},
 		IssuedAt:  jwt.NewNumericDate(now),
@@ -67,6 +75,15 @@ func (k *Keys) IssueToken(subject, audience string, ttl time.Duration) (string, 
 
 // VerifyToken returns the subject of a valid token for audience.
 func (k *Keys) VerifyToken(token, audience string) (string, error) {
+	c, err := k.VerifyClaims(token, audience)
+	if err != nil {
+		return "", err
+	}
+	return c.Subject, nil
+}
+
+// VerifyClaims returns the claims of a valid token for audience.
+func (k *Keys) VerifyClaims(token, audience string) (*Claims, error) {
 	parsed, err := jwt.ParseWithClaims(token, &Claims{}, func(t *jwt.Token) (any, error) {
 		if t.Method != jwt.SigningMethodHS256 {
 			return nil, fmt.Errorf("unexpected signing method")
@@ -74,13 +91,13 @@ func (k *Keys) VerifyToken(token, audience string) (string, error) {
 		return k.hmacKey(audience), nil
 	}, jwt.WithAudience(audience), jwt.WithExpirationRequired())
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 	c, ok := parsed.Claims.(*Claims)
 	if !ok || c.Subject == "" {
-		return "", errors.New("invalid claims")
+		return nil, errors.New("invalid claims")
 	}
-	return c.Subject, nil
+	return c, nil
 }
 
 func (k *Keys) Encrypt(plain string) (string, error) {

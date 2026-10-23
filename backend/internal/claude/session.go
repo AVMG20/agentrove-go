@@ -156,6 +156,11 @@ type controlResult struct {
 	err  error
 }
 
+// outputDrainTimeout bounds how long exit handling waits for the readers to
+// hand on the process's last output (a grandchild can keep stdout open).
+// A var so tests can shorten it.
+var outputDrainTimeout = 5 * time.Second
+
 // Start launches the CLI in sb and performs the initialize handshake.
 func Start(ctx context.Context, sb *sandbox.Sandbox, chatID string, cfg Config) (*Session, error) {
 	bin := cfg.Binary
@@ -172,9 +177,13 @@ func Start(ctx context.Context, sb *sandbox.Sandbox, chatID string, cfg Config) 
 	if err != nil {
 		return nil, fmt.Errorf("start claude: %w", err)
 	}
+	return start(ctx, proc, release, sb.ID, chatID, cfg)
+}
+
+func start(ctx context.Context, proc sandbox.Process, release func(), sandboxID, chatID string, cfg Config) (*Session, error) {
 	s := &Session{
 		ChatID:      chatID,
-		SandboxID:   sb.ID,
+		SandboxID:   sandboxID,
 		fingerprint: cfg.fingerprint(),
 		proc:        proc,
 		release:     release,
@@ -188,10 +197,25 @@ func Start(ctx context.Context, sb *sandbox.Sandbox, chatID string, cfg Config) 
 		done:        make(chan struct{}),
 		stderr:      &tailBuffer{max: 8192},
 	}
-	go func() { _, _ = io.Copy(s.stderr, proc.Stderr()) }()
-	go s.readLoop(proc.Stdout())
+	stdoutDone, stderrDone := make(chan struct{}), make(chan struct{})
+	go func() { defer close(stderrDone); _, _ = io.Copy(s.stderr, proc.Stderr()) }()
+	go func() { defer close(stdoutDone); s.readLoop(proc.Stdout()) }()
 	go func() {
 		err := proc.Wait()
+		// Wait can return before the readers have handled the last lines (the
+		// turn's result among them, and the stderr tail deathError reports).
+		// Done must not fire ahead of that output.
+		drain := time.NewTimer(outputDrainTimeout)
+	wait:
+		for _, ch := range []chan struct{}{stdoutDone, stderrDone} {
+			select {
+			case <-ch:
+			case <-drain.C:
+				slog.Warn("claude exited but its output did not close", "chat", s.ChatID)
+				break wait
+			}
+		}
+		drain.Stop()
 		s.mu.Lock()
 		s.exitErr = err
 		s.closed = true
@@ -242,17 +266,27 @@ func (s *Session) readLoop(r io.Reader) {
 	}
 }
 
-func (s *Session) handleLine(line []byte) {
+// parseLine decodes one stdout line; ok is false for blank or non-JSON lines.
+func parseLine(line []byte) (m Message, ok bool, err error) {
 	line = []byte(strings.TrimSpace(string(line)))
 	if len(line) == 0 || line[0] != '{' {
-		return
+		return m, false, nil
 	}
-	var m Message
 	if err := json.Unmarshal(line, &m); err != nil {
+		return m, false, err
+	}
+	m.Raw = line
+	return m, true, nil
+}
+
+func (s *Session) handleLine(line []byte) {
+	m, ok, err := parseLine(line)
+	if err != nil {
 		slog.Debug("claude: unparsable line", "chat", s.ChatID, "err", err)
+	}
+	if !ok {
 		return
 	}
-	m.Raw = append(json.RawMessage(nil), line...)
 	switch m.Type {
 	case "control_response":
 		var env struct {

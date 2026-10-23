@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useId } from 'react';
 import { Sparkles } from 'lucide-react';
 import clsx from 'clsx';
 import { BaseModal } from '@/components/ui/shared/BaseModal/BaseModal';
@@ -32,6 +32,7 @@ export function RenameModal({
 }: RenameModalProps) {
   const [title, setTitle] = useState(currentTitle);
   const inputRef = useRef<HTMLInputElement>(null);
+  const titleId = useId();
 
   useEffect(() => {
     if (isOpen) {
@@ -70,23 +71,31 @@ export function RenameModal({
       if (e.key === 'Enter' && !isLoading && title.trim() !== '') {
         e.preventDefault();
         handleSave();
-      } else if (e.key === 'Escape' && !isLoading) {
-        e.preventDefault();
-        onClose();
       }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isOpen, isLoading, title, handleSave, onClose]);
+  }, [isOpen, isLoading, title, handleSave]);
+
+  // Escape/backdrop come through BaseModal; ignore them while a save is in flight.
+  const handleDismiss = useCallback(() => {
+    if (!isLoading) onClose();
+  }, [isLoading, onClose]);
 
   const isSaveDisabled = title.trim() === '' || isLoading;
 
   if (!isOpen) return null;
 
   return (
-    <BaseModal isOpen={isOpen} onClose={onClose} size="md" zIndex="modalHighest">
-      <ModalHeader title={modalTitle} onClose={onClose} />
+    <BaseModal
+      isOpen={isOpen}
+      onClose={handleDismiss}
+      size="md"
+      zIndex="modalHighest"
+      ariaLabelledBy={titleId}
+    >
+      <ModalHeader title={modalTitle} titleId={titleId} onClose={onClose} />
 
       <div className={styles.body}>
         <Input

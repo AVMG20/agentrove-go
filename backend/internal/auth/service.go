@@ -20,6 +20,9 @@ type Service struct {
 	DB   *db.DB
 	Cfg  *config.Config
 	Keys *Keys
+	// BoxSubnets are the sandbox networks' subnets, never trusted as proxies
+	// (httpx.ClientIP). Filled in by the sandbox provider; nil = none.
+	BoxSubnets *httpx.PrefixSet
 }
 
 type ctxKey struct{}
@@ -63,17 +66,26 @@ func TokenFromRequest(r *http.Request) string {
 	return r.URL.Query().Get("token")
 }
 
-// Authenticate resolves a session or MCP token to an active user.
+// Authenticate resolves a session token to an active user. MCP tokens are
+// rejected: they live in agent config inside the user's box, so they must
+// not work as a login for the rest of the API (see AuthenticateMCP).
 func (s *Service) Authenticate(ctx context.Context, token string) (*models.User, error) {
+	return s.authenticate(ctx, token, AudienceSession)
+}
+
+// AuthenticateMCP resolves a full-access MCP token; only the MCP endpoint
+// accepts it.
+func (s *Service) AuthenticateMCP(ctx context.Context, token string) (*models.User, error) {
+	return s.authenticate(ctx, token, AudienceMCP)
+}
+
+func (s *Service) authenticate(ctx context.Context, token, audience string) (*models.User, error) {
 	if token == "" {
 		return nil, errors.New("missing token")
 	}
-	sub, err := s.Keys.VerifyToken(token, AudienceSession)
+	sub, err := s.Keys.VerifyToken(token, audience)
 	if err != nil {
-		sub, err = s.Keys.VerifyToken(token, AudienceMCP)
-		if err != nil {
-			return nil, err
-		}
+		return nil, err
 	}
 	u, err := s.GetUser(ctx, sub)
 	if err != nil {
@@ -102,7 +114,7 @@ func (s *Service) IssueAccessToken(userID string) (string, error) {
 }
 
 // IssueMCPToken mints the token handed to the agentrove MCP server of a chat
-// session; it authenticates as the chat's owner for the whole API.
+// session; it authenticates as the chat's owner on the MCP endpoint only.
 func (s *Service) IssueMCPToken(userID string) (string, error) {
 	return s.Keys.IssueToken(userID, AudienceMCP, s.Cfg.MCPTokenLifetime)
 }
@@ -118,29 +130,38 @@ func (s *Service) CreateRefreshToken(ctx context.Context, q db.Querier, userID, 
 
 var ErrInvalidRefresh = errors.New("invalid or expired refresh token")
 
+// rotationGrace is how long a token replaced by a refresh may be replayed
+// without counting as theft: tabs (or a waking laptop) refresh at once, and
+// the losers pick up the rotated token from storage (frontend/src/utils/storage.ts).
+const rotationGrace = 60 * time.Second
+
 // RotateRefreshToken validates token, revokes it and issues a replacement.
-// Reusing a revoked token revokes every token of that user (theft signal).
+// Reusing a revoked token revokes every token of that user (theft signal),
+// except a just-rotated one within rotationGrace, which only fails.
 func (s *Service) RotateRefreshToken(ctx context.Context, token, userAgent, ip string) (*models.User, string, error) {
 	var user *models.User
-	var newToken string
+	var newToken, reusedBy string
 	err := s.DB.Tx(ctx, func(tx *sql.Tx) error {
 		var id, userID string
 		var expires db.Time
 		var revoked db.NullTime
-		err := tx.QueryRowContext(ctx, `SELECT id, user_id, expires_at, revoked_at FROM refresh_tokens WHERE token_hash = ?`, HashToken(token)).
-			Scan(&id, &userID, &expires, &revoked)
+		var reason sql.NullString
+		err := tx.QueryRowContext(ctx, `SELECT id, user_id, expires_at, revoked_at, revoked_reason FROM refresh_tokens WHERE token_hash = ?`, HashToken(token)).
+			Scan(&id, &userID, &expires, &revoked, &reason)
 		if err != nil {
 			return ErrInvalidRefresh
 		}
 		now := db.Now()
 		if revoked.Valid {
-			_, _ = tx.ExecContext(ctx, `UPDATE refresh_tokens SET revoked_at = ?, updated_at = ? WHERE user_id = ? AND revoked_at IS NULL`, now, now, userID)
+			if reason.String != "rotated" || time.Since(revoked.Time.Time) > rotationGrace {
+				reusedBy = userID
+			}
 			return ErrInvalidRefresh
 		}
 		if time.Now().After(expires.Time) {
 			return ErrInvalidRefresh
 		}
-		if _, err := tx.ExecContext(ctx, `UPDATE refresh_tokens SET revoked_at = ?, updated_at = ? WHERE id = ?`, now, now, id); err != nil {
+		if _, err := tx.ExecContext(ctx, `UPDATE refresh_tokens SET revoked_at = ?, revoked_reason = 'rotated', updated_at = ? WHERE id = ?`, now, now, id); err != nil {
 			return err
 		}
 		u := &models.User{}
@@ -154,14 +175,46 @@ func (s *Service) RotateRefreshToken(ctx context.Context, token, userAgent, ip s
 		newToken, err = s.CreateRefreshToken(ctx, tx, userID, userAgent, ip)
 		return err
 	})
-	if err != nil {
-		// A theft-triggered revoke-all must persist even though we report failure.
-		if errors.Is(err, ErrInvalidRefresh) {
-			return nil, "", err
+	if reusedBy != "" {
+		// Outside the tx: returning the error rolled it back, and the
+		// theft-triggered revoke-all must persist.
+		if rerr := s.RevokeAllRefreshTokens(ctx, s.DB, reusedBy); rerr != nil {
+			return nil, "", rerr
 		}
+	}
+	if err != nil {
 		return nil, "", err
 	}
 	return user, newToken, nil
+}
+
+// RevokeAllRefreshTokens signs the user out everywhere (token reuse,
+// password reset). Access tokens stay valid until they expire.
+func (s *Service) RevokeAllRefreshTokens(ctx context.Context, q db.Querier, userID string) error {
+	now := db.Now()
+	_, err := q.ExecContext(ctx, `UPDATE refresh_tokens SET revoked_at = ?, updated_at = ? WHERE user_id = ? AND revoked_at IS NULL`, now, now, userID)
+	return err
+}
+
+// ResetPassword sets a new password hash for the holder of a valid reset
+// token and revokes their refresh tokens, so a reset locks out whoever had
+// the old password. ok=false means the token was invalid or expired.
+func (s *Service) ResetPassword(ctx context.Context, token, hash string) (ok bool, err error) {
+	err = s.DB.Tx(ctx, func(tx *sql.Tx) error {
+		now := db.Now()
+		var userID string
+		err := tx.QueryRowContext(ctx, `UPDATE users SET hashed_password = ?, reset_token = NULL, reset_token_expires = NULL, updated_at = ?
+			WHERE reset_token = ? AND reset_token_expires > ? RETURNING id`, hash, now, HashToken(token), now).Scan(&userID)
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		ok = true
+		return s.RevokeAllRefreshTokens(ctx, tx, userID)
+	})
+	return ok && err == nil, err
 }
 
 func (s *Service) RevokeRefreshToken(ctx context.Context, token string) error {

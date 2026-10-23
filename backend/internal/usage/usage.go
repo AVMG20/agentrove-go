@@ -1,6 +1,9 @@
 // Package usage serves GET /api/v1/usage/claude: the 5-hour / weekly usage
-// windows of the Claude proxy the user's agents run through, when the
-// deployment maps that proxy host to a usage endpoint (CLAUDE_USAGE_ENDPOINTS).
+// windows of the Claude account or proxy the user's agents run through. The
+// endpoint follows ANTHROPIC_BASE_URL: Anthropic's own OAuth usage endpoint
+// when it is unset or api.anthropic.com, otherwise <base URL>/api/usage
+// (proxies mirror the OAuth usage layout), unless CLAUDE_USAGE_URL names
+// the endpoint.
 package usage
 
 import (
@@ -10,11 +13,14 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
+	"net"
 	"net/http"
+	"net/netip"
 	"net/url"
 	"strconv"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"agentrove/internal/app"
@@ -47,42 +53,93 @@ type Response struct {
 	FetchedAt db.Time `json:"fetched_at"`
 }
 
+const (
+	officialHost     = "api.anthropic.com"
+	officialEndpoint = "https://api.anthropic.com/api/oauth/usage"
+	proxyUsagePath   = "/api/usage"
+	oauthTokenPrefix = "sk-ant-oat"
+	usageURLKey      = "CLAUDE_USAGE_URL"
+)
+
 type Source struct {
 	Provider string
 	URL      string
 	Token    string
+	Headers  map[string]string
+	// PublicOnly is set when a user's own var picked the host: the server
+	// must not be steerable at internal addresses.
+	PublicOnly bool
 }
 
 // ResolveSource applies the precedence the agent sees (deployment env, then
-// the user's vars) and matches the ANTHROPIC_BASE_URL host to an endpoint.
-func ResolveSource(globalEnv map[string]string, endpoints map[string]string, custom []models.CustomEnvVar) *Source {
+// the user's vars) and picks the usage endpoint for ANTHROPIC_BASE_URL: the
+// official endpoint when it is unset or Anthropic's, else <base URL>/api/usage
+// (https only, since the token goes with it). CLAUDE_USAGE_URL replaces the
+// endpoint for proxies that serve usage elsewhere; the token stays the one
+// for the base URL.
+func ResolveSource(globalEnv map[string]string, custom []models.CustomEnvVar) *Source {
 	env := map[string]string{}
 	for k, v := range globalEnv {
 		env[k] = v
 	}
+	userBase, userUsage := false, false
 	for _, ev := range custom {
 		env[ev.Key] = ev.Value
-	}
-	host := ""
-	if u, err := url.Parse(strings.TrimSpace(env["ANTHROPIC_BASE_URL"])); err == nil {
-		host = strings.ToLower(u.Hostname())
-	}
-	byHost := map[string]string{}
-	for h, u := range endpoints {
-		h, u = strings.ToLower(strings.TrimSpace(h)), strings.TrimSpace(u)
-		if h != "" && strings.HasPrefix(u, "https://") {
-			byHost[h] = u
+		switch ev.Key {
+		case "ANTHROPIC_BASE_URL":
+			userBase = true
+		case usageURLKey:
+			userUsage = true
 		}
 	}
-	endpoint := byHost[host]
-	token := strings.TrimSpace(env["ANTHROPIC_AUTH_TOKEN"])
-	if token == "" {
-		token = strings.TrimSpace(env["ANTHROPIC_API_KEY"])
+	var base *url.URL
+	if raw := strings.TrimSpace(env["ANTHROPIC_BASE_URL"]); raw != "" {
+		u, err := url.Parse(raw)
+		if err != nil || u.Hostname() == "" {
+			return nil
+		}
+		base = u
 	}
-	if host == "" || endpoint == "" || token == "" {
+	src := &Source{Provider: officialHost}
+	switch {
+	case base == nil || strings.EqualFold(base.Hostname(), officialHost):
+		// The official endpoint only takes the OAuth token the CLI logs in
+		// with; an API key would just be rejected on every poll.
+		src.URL = officialEndpoint
+		src.Token = firstEnv(env, "CLAUDE_CODE_OAUTH_TOKEN")
+		if src.Token == "" {
+			if t := firstEnv(env, "ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_API_KEY"); strings.HasPrefix(t, oauthTokenPrefix) {
+				src.Token = t
+			}
+		}
+		src.Headers = map[string]string{"anthropic-beta": "oauth-2025-04-20"}
+	case base.Scheme == "https":
+		src.Provider = strings.ToLower(base.Hostname())
+		src.URL = "https://" + base.Host + strings.TrimRight(base.Path, "/") + proxyUsagePath
+		src.Token = firstEnv(env, "ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_API_KEY")
+		src.PublicOnly = userBase
+	}
+	if raw := strings.TrimSpace(env[usageURLKey]); raw != "" {
+		u, err := url.Parse(raw)
+		if err != nil || u.Scheme != "https" || u.Hostname() == "" {
+			return nil
+		}
+		src.URL = u.String()
+		src.PublicOnly = src.PublicOnly || userUsage
+	}
+	if src.URL == "" || src.Token == "" {
 		return nil
 	}
-	return &Source{Provider: host, URL: endpoint, Token: token}
+	return src
+}
+
+func firstEnv(env map[string]string, keys ...string) string {
+	for _, k := range keys {
+		if v := strings.TrimSpace(env[k]); v != "" {
+			return v
+		}
+	}
+	return ""
 }
 
 // parseReset accepts epoch seconds/milliseconds (number or numeric string)
@@ -167,6 +224,8 @@ type cacheEntry struct {
 type Module struct {
 	a      *app.App
 	client *http.Client
+	// publicClient refuses non-public addresses, for user-picked hosts.
+	publicClient *http.Client
 
 	mu    sync.Mutex
 	cache map[string]cacheEntry
@@ -175,13 +234,38 @@ type Module struct {
 
 func New(a *app.App) *Module {
 	return &Module{
-		a: a,
-		client: &http.Client{Timeout: fetchTimeout, CheckRedirect: func(*http.Request, []*http.Request) error {
-			return http.ErrUseLastResponse
-		}},
-		cache: map[string]cacheEntry{},
-		locks: map[string]*sync.Mutex{},
+		a:            a,
+		client:       newClient(nil),
+		publicClient: newClient(publicOnlyControl),
+		cache:        map[string]cacheEntry{},
+		locks:        map[string]*sync.Mutex{},
 	}
+}
+
+func newClient(control func(network, address string, c syscall.RawConn) error) *http.Client {
+	tr := http.DefaultTransport.(*http.Transport).Clone()
+	tr.DialContext = (&net.Dialer{Timeout: fetchTimeout, Control: control}).DialContext
+	return &http.Client{Timeout: fetchTimeout, Transport: tr, CheckRedirect: func(*http.Request, []*http.Request) error {
+		return http.ErrUseLastResponse
+	}}
+}
+
+// publicOnlyControl runs after DNS resolution, so a public name that
+// resolves to an internal address is refused too.
+func publicOnlyControl(_, address string, _ syscall.RawConn) error {
+	host, _, err := net.SplitHostPort(address)
+	if err != nil {
+		return err
+	}
+	ip, err := netip.ParseAddr(host)
+	if err != nil {
+		return err
+	}
+	ip = ip.Unmap()
+	if !ip.IsGlobalUnicast() || ip.IsPrivate() {
+		return fmt.Errorf("usage endpoint %s is not a public address", ip)
+	}
+	return nil
 }
 
 func (m *Module) Routes(mux *http.ServeMux) {
@@ -198,7 +282,7 @@ func (m *Module) get(w http.ResponseWriter, r *http.Request) error {
 	if st, err := m.a.Store.GetUserSettings(r.Context(), u.ID); err == nil && st.CustomEnvVars.Valid {
 		custom = st.CustomEnvVars.V
 	}
-	src := ResolveSource(m.a.Cfg.AgentGlobalEnv(), m.a.Cfg.ClaudeUsageEndpoints, custom)
+	src := ResolveSource(m.a.Cfg.AgentGlobalEnv(), custom)
 	return httpx.OK(w, m.usage(r.Context(), u.ID, src, refresh))
 }
 
@@ -252,7 +336,14 @@ func (m *Module) fetch(ctx context.Context, src *Source) Response {
 	}
 	req.Header.Set("Authorization", "Bearer "+src.Token)
 	req.Header.Set("Accept", "application/json")
-	resp, err := m.client.Do(req)
+	for k, v := range src.Headers {
+		req.Header.Set(k, v)
+	}
+	client := m.client
+	if src.PublicOnly {
+		client = m.publicClient
+	}
+	resp, err := client.Do(req)
 	if err != nil {
 		return errorResponse(src.Provider, "Usage endpoint unreachable")
 	}

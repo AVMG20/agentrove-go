@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef } from 'react';
+import { useState, useMemo, useRef, useId } from 'react';
 import { GitPullRequest, Sparkles } from 'lucide-react';
 import toast from 'react-hot-toast';
 import clsx from 'clsx';
@@ -55,6 +55,7 @@ function parseChangedFiles(
 }
 
 export function CreatePRDialog({ onClose }: CreatePRDialogProps) {
+  const titleId = useId();
   const currentChat = useActiveChat();
   const sandboxId = currentChat?.sandbox_id ?? '';
   const worktreeCwd = currentChat?.worktree_cwd ?? undefined;
@@ -223,6 +224,7 @@ export function CreatePRDialog({ onClose }: CreatePRDialogProps) {
       size="md"
       zIndex="modalHighest"
       className={styles.dialog}
+      ariaLabelledBy={titleId}
     >
       <div className={styles.body}>
         <div className={styles.header}>
@@ -230,7 +232,9 @@ export function CreatePRDialog({ onClose }: CreatePRDialogProps) {
             <GitPullRequest className={styles['header-icon']} />
           </div>
           <div>
-            <h2 className={styles.title}>Create pull request</h2>
+            <h2 id={titleId} className={styles.title}>
+              Create pull request
+            </h2>
             {headBranch && (
               <p className={styles.subtitle}>
                 {headBranch} → {baseBranch}

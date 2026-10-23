@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useId } from 'react';
 import { GitCommitHorizontal, Sparkles } from 'lucide-react';
 import toast from 'react-hot-toast';
 import clsx from 'clsx';
@@ -18,6 +18,7 @@ interface CreateCommitDialogProps {
 }
 
 export function CreateCommitDialog({ onClose }: CreateCommitDialogProps) {
+  const titleId = useId();
   const currentChat = useActiveChat();
   const sandboxId = currentChat?.sandbox_id ?? '';
   const worktreeCwd = currentChat?.worktree_cwd ?? undefined;
@@ -94,13 +95,21 @@ export function CreateCommitDialog({ onClose }: CreateCommitDialogProps) {
   };
 
   return (
-    <BaseModal isOpen={true} onClose={onClose} size="sm" zIndex="modalHighest">
+    <BaseModal
+      isOpen={true}
+      onClose={onClose}
+      size="sm"
+      zIndex="modalHighest"
+      ariaLabelledBy={titleId}
+    >
       <div className={styles.body}>
         <div className={styles.header}>
           <div className={styles['icon-box']}>
             <GitCommitHorizontal className={styles['header-icon']} />
           </div>
-          <h2 className={styles.title}>Create commit</h2>
+          <h2 id={titleId} className={styles.title}>
+            Create commit
+          </h2>
         </div>
 
         <div className={styles.field}>

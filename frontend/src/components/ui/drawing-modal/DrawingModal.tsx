@@ -1,4 +1,4 @@
-import { memo, useEffect, useRef, useState, useCallback } from 'react';
+import { memo, useEffect, useRef, useState, useCallback, useId } from 'react';
 import clsx from 'clsx';
 import { logger } from '@/utils/logger';
 import { BaseModal } from '../shared/BaseModal/BaseModal';
@@ -24,6 +24,7 @@ export const DrawingModal = memo(function DrawingModal({
   onClose,
   onSave,
 }: DrawingModalProps) {
+  const titleId = useId();
   const [color, setColor] = useState('#FF0000');
   const [brushSize, setBrushSize] = useState(5);
   const [canvasReady, setCanvasReady] = useState(false);
@@ -195,22 +196,6 @@ export const DrawingModal = memo(function DrawingModal({
     };
   }, []);
 
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        onClose();
-      }
-    };
-
-    if (isOpen) {
-      window.addEventListener('keydown', handleKeyDown);
-    }
-
-    return () => {
-      window.removeEventListener('keydown', handleKeyDown);
-    };
-  }, [isOpen, onClose]);
-
   const handleSave = () => {
     try {
       const dataUrl = getImageData();
@@ -236,8 +221,8 @@ export const DrawingModal = memo(function DrawingModal({
   ];
 
   return (
-    <BaseModal isOpen={isOpen} onClose={onClose} size="4xl">
-      <ModalHeader title="Edit Image" onClose={onClose} />
+    <BaseModal isOpen={isOpen} onClose={onClose} size="4xl" ariaLabelledBy={titleId}>
+      <ModalHeader title="Edit Image" titleId={titleId} onClose={onClose} />
 
       <div className={styles.body}>
         <div className={styles['canvas-wrap']}>

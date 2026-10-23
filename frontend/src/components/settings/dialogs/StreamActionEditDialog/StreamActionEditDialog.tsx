@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, useId } from 'react';
 import { GitBranch, Brain, Shield } from 'lucide-react';
 import type { CustomSkill, Persona, StreamAction } from '@/types/user.types';
 import type { SlashCommand } from '@/types/ui.types';
@@ -51,6 +51,7 @@ export function StreamActionEditDialog({
   onSubmit,
   onActionChange,
 }: StreamActionEditDialogProps) {
+  const titleId = useId();
   const { data: models = [] } = useModelsQuery();
   // Builtins only — stream actions are global and the clicked chat may lack a custom skill.
   const workspaces = useWorkspacesList();
@@ -108,13 +109,21 @@ export function StreamActionEditDialog({
   });
 
   return (
-    <BaseModal isOpen={isOpen} onClose={onClose} size="sm" className={styles.dialog}>
+    <BaseModal
+      isOpen={isOpen}
+      onClose={onClose}
+      size="sm"
+      className={styles.dialog}
+      ariaLabelledBy={titleId}
+    >
       <div className={styles.body}>
         <div className={styles.header}>
           <div className={styles['icon-box']}>
             <GitBranch className={styles['header-icon']} />
           </div>
-          <h3 className={styles.title}>{isEditing ? 'Edit action' : 'Add action'}</h3>
+          <h3 id={titleId} className={styles.title}>
+            {isEditing ? 'Edit action' : 'Add action'}
+          </h3>
         </div>
 
         <DialogError error={error} className={styles.error} />

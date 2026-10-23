@@ -1,3 +1,4 @@
+import { useId } from 'react';
 import type { Persona } from '@/types/user.types';
 import { Input } from '@/components/ui/primitives/Input/Input';
 import { Label } from '@/components/ui/primitives/Label/Label';
@@ -26,10 +27,19 @@ export function PersonaEditDialog({
   onSubmit,
   onPersonaChange,
 }: PersonaEditDialogProps) {
+  const titleId = useId();
   return (
-    <BaseModal isOpen={isOpen} onClose={onClose} size="4xl" className={styles.dialog}>
+    <BaseModal
+      isOpen={isOpen}
+      onClose={onClose}
+      size="4xl"
+      className={styles.dialog}
+      ariaLabelledBy={titleId}
+    >
       <div className={styles.body}>
-        <h3 className={styles.title}>{isEditing ? 'Edit Persona' : 'Add Persona'}</h3>
+        <h3 id={titleId} className={styles.title}>
+          {isEditing ? 'Edit Persona' : 'Add Persona'}
+        </h3>
 
         <DialogError error={error} className={styles.error} />
 

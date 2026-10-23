@@ -16,6 +16,8 @@ export const KNOWN_CLAUDE_ENV_VARS = [
   'CLAUDE_CODE_USE_VERTEX',
   'CLAUDE_CODE_MAX_OUTPUT_TOKENS',
   'API_TIMEOUT_MS',
+  // Agentrove's usage meter, for proxies that serve usage off <base URL>/api/usage.
+  'CLAUDE_USAGE_URL',
   'GITHUB_TOKEN',
   'GH_TOKEN',
 ] as const;

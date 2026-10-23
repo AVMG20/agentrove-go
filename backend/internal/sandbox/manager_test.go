@@ -52,6 +52,11 @@ func (f *fakeProvider) Running(context.Context) ([]string, error) {
 func (f *fakeProvider) Exec(_ context.Context, id string, _ ExecRequest) (ExecResult, error) {
 	return ExecResult{}, nil
 }
+func (f *fakeProvider) State(_ context.Context, id string) (bool, bool, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.running[id], f.running[id], nil
+}
 func (f *fakeProvider) Start(context.Context, string, ExecRequest) (Process, error) { return nil, nil }
 func (f *fakeProvider) StartPTY(context.Context, string, ExecRequest, int, int) (PTY, error) {
 	return nil, nil
