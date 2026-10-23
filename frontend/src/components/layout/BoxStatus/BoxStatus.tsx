@@ -14,7 +14,7 @@ const RESET_MESSAGE =
   `Stops the box and removes system packages installed with apt, so it starts fresh from the latest image. ` +
   `Kept: your home folder (${BOX_HOME}) with its toolchains, settings and Claude login, and all projects.`;
 
-// "● Box running · idles in 12m" in the sidebar footer; click for stop/reset.
+// "● Box running" in the sidebar footer; click for the idle countdown and stop/reset.
 export function BoxStatus() {
   const { data: box, dataUpdatedAt } = useBoxQuery();
   const stopBox = useStopBoxMutation();
@@ -42,6 +42,8 @@ export function BoxStatus() {
   const elapsed = Math.max(0, (now - dataUpdatedAt) / 1000);
   const { tone, label, detail } = summarizeBox(box, elapsed);
   const isRunning = box.state === 'running';
+  // The countdown ticks; it lives in the panel so the footer stays still.
+  const counting = isRunning && !box.busy && box.idle_ttl_seconds > 0;
 
   const stop = async (reset: boolean) => {
     try {
@@ -64,7 +66,7 @@ export function BoxStatus() {
         <span className={clsx(styles.dot, styles[`dot--${tone}`])} aria-hidden="true" />
         <span className={styles.text}>
           {label}
-          <span className={styles.detail}>{` · ${detail}`}</span>
+          {!counting && <span className={styles.detail}>{` · ${detail}`}</span>}
         </span>
       </button>
 
@@ -81,6 +83,9 @@ export function BoxStatus() {
               ` and stops after ${formatIdleDuration(box.idle_ttl_seconds)} without activity`}
             . Everything in <code>{BOX_HOME}</code> stays.
           </p>
+          {counting && (
+            <p className={styles.meta}>{detail.charAt(0).toUpperCase() + detail.slice(1)}</p>
+          )}
           {box.disk_bytes != null && (
             <p className={styles.meta}>System packages: {formatBytes(box.disk_bytes)}</p>
           )}
