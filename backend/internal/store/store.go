@@ -6,6 +6,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"log/slog"
 
 	"agentrove/internal/auth"
 	"agentrove/internal/db"
@@ -118,7 +119,12 @@ func (s *Store) GetUserSettings(ctx context.Context, userID string) (*models.Use
 	}
 	if st.GithubPersonalAccessToken != nil {
 		plain, err := s.Keys.Decrypt(*st.GithubPersonalAccessToken)
-		if err == nil {
+		if err != nil {
+			// Returning the ciphertext would send "enc:..." to GitHub as a
+			// token and export it into every box; treat it as not set.
+			slog.Warn("cannot decrypt GitHub token; ignoring it (was SECRET_KEY changed?)", "user", userID, "err", err)
+			st.GithubPersonalAccessToken = nil
+		} else {
 			st.GithubPersonalAccessToken = &plain
 		}
 	}
@@ -131,6 +137,8 @@ func (s *Store) UserEnv(ctx context.Context, userID string) map[string]string {
 	env := map[string]string{}
 	st, err := s.GetUserSettings(ctx, userID)
 	if err != nil {
+		// Callers cache this map; say why the box has no custom env/token.
+		slog.Warn("load user env", "user", userID, "err", err)
 		return env
 	}
 	if st.CustomEnvVars.Valid {

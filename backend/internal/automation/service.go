@@ -324,7 +324,7 @@ func (s *Service) Update(ctx context.Context, id, userID string, in *Input, base
 	if err != nil {
 		return nil, err
 	}
-	oldRepo, oldHook := x.GithubRepo, x.GithubWebhookID
+	oldRepo, oldHook, wasEnabled := x.GithubRepo, x.GithubWebhookID, x.Enabled
 	if in.WorkspaceID != nil {
 		if _, err := uuid.Parse(*in.WorkspaceID); err != nil {
 			return nil, httpx.Unprocessable("workspace_id: Input should be a valid UUID")
@@ -370,8 +370,11 @@ func (s *Service) Update(ctx context.Context, id, userID string, in *Input, base
 		return nil, httpx.BadRequest(err.Error())
 	}
 	now := time.Now().UTC()
-	if set["trigger_type"] || set["github_repo"] {
-		// Restart watching from now; never backfill history.
+	reenabled := !wasEnabled && x.Enabled
+	if set["trigger_type"] || set["github_repo"] || reenabled {
+		// Restart watching from now; never backfill history. Re-enabling
+		// counts: nothing polls a disabled automation, so the old cursor
+		// would replay everything that happened meanwhile, 10 runs a tick.
 		x.GithubCursor = db.NullTime{}
 		if x.TriggerType == "github" {
 			x.GithubCursor = db.NT(now)

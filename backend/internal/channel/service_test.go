@@ -291,3 +291,56 @@ func TestChannelStopCancelsTurns(t *testing.T) {
 		t.Fatalf("member chats left: %d", n)
 	}
 }
+
+func TestChannelAgentReplyLoopIsCapped(t *testing.T) {
+	// Registered before setup so it runs after Shutdown stops the timers.
+	old := maxAgentStreak
+	t.Cleanup(func() { maxAgentStreak = old })
+	maxAgentStreak = 6
+	rt := &fakeRuntime{prompts: map[string][]string{}, canceled: map[string]int{}}
+	s, _, userID, wsID := setup(t, rt)
+	ctx := context.Background()
+	ch, err := s.Create(ctx, userID, CreateInput{WorkspaceID: wsID, Name: "loop", Members: []MemberInput{{ModelID: "opus"}, {ModelID: "sonnet"}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	opus := ch.Members[0]
+	// Neither member ever passes: each reply @mentions the other.
+	rt.reply = func(chatID string, n int) string {
+		if chatID == opus.ChatID {
+			return "ok @sonnet"
+		}
+		return "ok @opus"
+	}
+	agentMessages := func() int {
+		msgs, err := s.Messages(ctx, ch.ID, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		n := 0
+		for _, m := range msgs {
+			if m.MemberID != nil && m.Status == "completed" {
+				n++
+			}
+		}
+		return n
+	}
+
+	if _, err := s.Post(ctx, ch, "start @everyone", nil); err != nil {
+		t.Fatal(err)
+	}
+	waitFor(t, "loop to stop", func() bool { return idleNow(s, ch) && agentMessages() >= maxAgentStreak })
+	time.Sleep(200 * time.Millisecond)
+	stopped := agentMessages()
+	// In-flight turns may overshoot the cap by at most one per member.
+	if stopped > maxAgentStreak+len(ch.Members) {
+		t.Fatalf("agents exchanged %d messages, cap is %d", stopped, maxAgentStreak)
+	}
+
+	// A user message resets the streak and the conversation resumes.
+	if _, err := s.Post(ctx, ch, "carry on @everyone", nil); err != nil {
+		t.Fatal(err)
+	}
+	waitFor(t, "conversation to resume", func() bool { return agentMessages() > stopped })
+	waitFor(t, "idle again", func() bool { return idleNow(s, ch) })
+}

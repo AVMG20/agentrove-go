@@ -118,3 +118,44 @@ func TestGitHubPollFiresEachNewPROnce(t *testing.T) {
 		t.Fatalf("fired twice: %d turns", len(*turns))
 	}
 }
+
+func TestGitHubReenableDoesNotReplayBacklog(t *testing.T) {
+	s, turns := newService(t)
+	gh := &fakeGitHub{}
+	srv := httptest.NewServer(gh)
+	defer srv.Close()
+	s.githubFor = func(context.Context, string) *GitHubClient {
+		c := NewGitHubClient("tok")
+		c.base = srv.URL
+		return c
+	}
+	ctx := context.Background()
+	x, err := s.Create(ctx, uid, &Input{WorkspaceID: sp(wsID), Name: sp("Review PRs"), Prompt: sp("Review"),
+		ModelID: sp("sonnet"), CronExpression: sp("*/5 * * * *"), Timezone: sp("UTC"), TriggerType: sp("github"),
+		GithubRepo: sp("o/r"), GithubEvents: &[]string{"pull_request_opened"}}, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	off, on := false, true
+	if _, err := s.Update(ctx, x.ID, uid, &Input{Enabled: &off, Set: map[string]bool{"enabled": true}}, ""); err != nil {
+		t.Fatal(err)
+	}
+	// A month passes while disabled; PRs open meanwhile.
+	month := time.Now().Add(-30 * 24 * time.Hour)
+	if _, err := s.a.DB.Exec(`UPDATE automations SET github_cursor = ? WHERE id = ?`, db.T(month), x.ID); err != nil {
+		t.Fatal(err)
+	}
+	gh.add(1, "alice", true, time.Now().Add(-14*24*time.Hour))
+	gh.add(2, "bob", true, time.Now().Add(-7*24*time.Hour))
+
+	if _, err := s.Update(ctx, x.ID, uid, &Input{Enabled: &on, Set: map[string]bool{"enabled": true}}, ""); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.a.DB.Exec(`UPDATE automations SET next_run_at = ? WHERE id = ?`, db.T(time.Now().Add(-time.Minute)), x.ID); err != nil {
+		t.Fatal(err)
+	}
+	s.RunDue(ctx)
+	if len(*turns) != 0 {
+		t.Fatalf("re-enabling replayed %d old events", len(*turns))
+	}
+}
