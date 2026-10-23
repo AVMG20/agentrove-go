@@ -333,7 +333,9 @@ func (m *Module) wireSession(s *claude.Session) {
 			t := m.attached[chatID]
 			m.mu.Unlock()
 			if t == nil {
-				s.RespondControl(id, map[string]any{"behavior": "deny", "message": "No active turn"})
+				if string(raw) != string(claude.CancelControl) {
+					s.RespondControl(id, map[string]any{"behavior": "deny", "message": "No active turn"})
+				}
 				return
 			}
 			t.handleControl(id, raw)

@@ -100,7 +100,6 @@ type turn struct {
 	perms          map[string]*pendingPerm
 	elicits        map[string]*pendingElicit
 	elicitOrder    []string
-	elicitSeq      int
 	lastTokens     int
 	lastWindow     int
 	costUSD        *float64
@@ -484,6 +483,10 @@ func (t *turn) contextUsage(tokens, window int) {
 // It must not block: the answer arrives later from an HTTP handler.
 func (t *turn) handleControl(controlID string, raw json.RawMessage) {
 	subtype, req := claude.ParseControl(raw)
+	if subtype == "cancel" {
+		t.dismissControl(controlID)
+		return
+	}
 	if subtype != "can_use_tool" {
 		t.sess.RespondControl(controlID, map[string]any{})
 		return
@@ -552,8 +555,8 @@ func (t *turn) resolvePermission(requestID, optionID string) bool {
 func (t *turn) askQuestion(controlID string, req claude.CanUseTool) {
 	msg, schema := claude.QuestionSchema(req.Input)
 	t.mu.Lock()
-	t.elicitSeq++
-	id := fmt.Sprintf("elicit-%d", t.elicitSeq)
+	// Unique across turns: the client ignores a request id it already holds.
+	id := "elicit-" + uuid.NewString()
 	payload := map[string]any{"message": msg, "tool_call_id": nilIfEmpty(req.ToolUseID), "requested_schema": schema}
 	t.elicits[id] = &pendingElicit{controlID: controlID, req: req, payload: payload}
 	t.elicitOrder = append(t.elicitOrder, id)
@@ -622,8 +625,37 @@ func (t *turn) denyPending(msg string) {
 		}
 		t.sess.RespondControl(p.controlID, map[string]any{"behavior": "deny", "message": msg, "interrupt": true})
 	}
-	for _, e := range elicits {
+	for id, e := range elicits {
 		t.sess.RespondControl(e.controlID, map[string]any{"behavior": "deny", "message": msg, "interrupt": true})
+		t.emit("elicitation_dismissed", map[string]any{"request_id": id})
+	}
+}
+
+// dismissControl drops a prompt whose control request the CLI cancelled.
+func (t *turn) dismissControl(controlID string) {
+	t.mu.Lock()
+	var permID, elicitID string
+	for id, p := range t.perms {
+		if p.controlID == controlID {
+			permID = id
+			if p.timer != nil {
+				p.timer.Stop()
+			}
+			delete(t.perms, id)
+		}
+	}
+	for id, e := range t.elicits {
+		if e.controlID == controlID {
+			elicitID = id
+			delete(t.elicits, id)
+		}
+	}
+	t.mu.Unlock()
+	if permID != "" {
+		t.emit("permission_resolved", map[string]any{"request_id": permID})
+	}
+	if elicitID != "" {
+		t.emit("elicitation_dismissed", map[string]any{"request_id": elicitID})
 	}
 }
 

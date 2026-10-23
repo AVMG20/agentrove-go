@@ -16,6 +16,10 @@ type CanUseTool struct {
 	BlockedPath string          `json:"blocked_path"`
 }
 
+// CancelControl is the request passed to the control handler when the CLI
+// cancels an earlier control request; the handler must not respond to it.
+var CancelControl = json.RawMessage(`{"subtype":"cancel"}`)
+
 func ParseControl(raw json.RawMessage) (subtype string, req CanUseTool) {
 	var head struct {
 		Subtype string `json:"subtype"`

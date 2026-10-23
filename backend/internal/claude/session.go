@@ -286,6 +286,14 @@ func (s *Session) handleLine(line []byte) {
 		}
 		return
 	case "control_cancel_request":
+		// The CLI withdrew a pending request (e.g. the turn was interrupted):
+		// pass it on so its prompt is dismissed.
+		s.mu.Lock()
+		cb := s.onControl
+		s.mu.Unlock()
+		if cb != nil && m.RequestID != "" {
+			cb(m.RequestID, CancelControl)
+		}
 		return
 	}
 	if m.SessionID != "" {
