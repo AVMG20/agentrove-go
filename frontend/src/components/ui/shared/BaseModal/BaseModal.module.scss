@@ -1,0 +1,71 @@
+@use '@/styles/globals/zlayer' as z;
+@use '@/styles/globals/animations' as anim;
+
+.backdrop {
+  // All modal tiers collapse to the single 'modal' z-layer; nested modals (e.g.
+  // a ConfirmDialog opened over another dialog) still stack correctly because each
+  // BaseModal portals to document.body in open order, so later mounts paint on top.
+  // TODO(refactor): the old modalHigh/modalHighest tiers (z 100/200) have no distinct
+  // z-layer token — relying on portal DOM order instead.
+  @include z.z('modal');
+  position: fixed;
+  inset: 0;
+  display: flex;
+  // Scrolls when a dialog is taller than the viewport; the container's auto
+  // margins center it otherwise (flex centering would clip the top instead).
+  overflow-y: auto;
+  padding: var(--space-4);
+  // Pure-black scrim — not a theme surface, an overlay
+  background-color: rgb(0 0 0 / 0.45);
+  backdrop-filter: blur(2px);
+  @include anim.fade-in(var(--duration-fast));
+}
+
+.container {
+  width: 100%;
+  margin: auto;
+  overflow: hidden;
+  border: 1px solid var(--theme-border);
+  border-radius: var(--radius-2xl);
+  background-color: var(--theme-surface);
+  box-shadow: var(--shadow-strong);
+  animation: modal-enter var(--duration-base) var(--easing-out);
+
+  :global([data-theme='dark']) & {
+    background-color: var(--theme-surface-secondary);
+  }
+
+  // Content max-widths mirror the old Tailwind max-w-* scale (rem, not spacing steps)
+  &--sm {
+    max-width: 24rem;
+  }
+  &--md {
+    max-width: 28rem;
+  }
+  &--lg {
+    max-width: 32rem;
+  }
+  &--xl {
+    max-width: 36rem;
+  }
+  &--2xl {
+    max-width: 42rem;
+  }
+  &--4xl {
+    max-width: 56rem;
+  }
+  &--full {
+    max-width: 100%;
+  }
+}
+
+@keyframes modal-enter {
+  from {
+    opacity: 0;
+    transform: translateY(4px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}

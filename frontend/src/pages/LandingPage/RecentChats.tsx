@@ -1,0 +1,87 @@
+import type { Chat } from '@/types/chat.types';
+import { useStreamStore } from '@/store/streamStore';
+import { useBlockedChatIds } from '@/hooks/useBlockedChatIds';
+import { useWorkingChatIds } from '@/hooks/useWorkingChatIds';
+import { useModelMap } from '@/hooks/queries/useModelQueries';
+import { formatRelativeTime } from '@/utils/date';
+import { stripMarkdownTitle } from '@/utils/format';
+import type { WorkspaceBadge } from '@/hooks/queries/useSidebarChatLists';
+import { ChatStatusDot } from '@/components/ui/ChatStatusDot/ChatStatusDot';
+import { chatStatusTone, CHAT_STATUS_LABEL } from '@/utils/message';
+import { AsciiSpinner } from '@/components/ui/AsciiSpinner/AsciiSpinner';
+import { FloatingTooltip } from '@/components/ui/FloatingTooltip/FloatingTooltip';
+import { Button } from '@/components/ui/primitives/Button/Button';
+import styles from './RecentChats.module.scss';
+
+const MAX_RECENT_CHATS = 4;
+
+export interface RecentChatsProps {
+  chats: Chat[];
+  workspaceBadgeById: Map<string, WorkspaceBadge>;
+  onChatSelect: (chatId: string) => void;
+}
+
+export function RecentChats({ chats, workspaceBadgeById, onChatSelect }: RecentChatsProps) {
+  const lastToolTitleByChatId = useStreamStore((state) => state.lastToolTitleByChatId);
+  const completedChatIds = useStreamStore((state) => state.completedChatIds);
+  // Blocked on plan/permission approval or an agent question form.
+  const blockedChatIds = useBlockedChatIds();
+  // Recents only mount when authenticated.
+  const modelMap = useModelMap();
+
+  const streamingChatIds = useWorkingChatIds();
+
+  const modelLabel = (chat: Chat) =>
+    (chat.last_model_id && modelMap.get(chat.last_model_id)?.name) || chat.session_agent_kind;
+
+  return (
+    <div className={styles.recents}>
+      <div className={styles.header}>Jump back in</div>
+      <div className={styles.list}>
+        {chats.slice(0, MAX_RECENT_CHATS).map((chat) => {
+          // Same tone order as sidebar/tabs; no open chat, so unread is never suppressed.
+          const status = chatStatusTone({
+            blocked: blockedChatIds.has(chat.id),
+            streaming: streamingChatIds.has(chat.id),
+            completed: completedChatIds.has(chat.id),
+            unread: chat.unread,
+          });
+          const statusSlot = (
+            <span className={styles['status-slot']}>
+              {status === 'running' ? (
+                <AsciiSpinner className={styles.spinner} />
+              ) : status ? (
+                <ChatStatusDot tone={status} />
+              ) : null}
+            </span>
+          );
+          const workspaceBadge = workspaceBadgeById.get(chat.workspace_id);
+          const meta = [workspaceBadge?.name, modelLabel(chat)].filter(Boolean).join(' · ');
+          const baseTitle = stripMarkdownTitle(chat.title);
+          const title =
+            status === 'running' ? (lastToolTitleByChatId.get(chat.id) ?? baseTitle) : baseTitle;
+          return (
+            <Button
+              key={chat.id}
+              type="button"
+              variant="unstyled"
+              onClick={() => onChatSelect(chat.id)}
+              className={styles.row}
+            >
+              {status ? (
+                <FloatingTooltip content={CHAT_STATUS_LABEL[status]}>{statusSlot}</FloatingTooltip>
+              ) : (
+                statusSlot
+              )}
+              <span className={styles.text}>
+                <span className={styles.title}>{title}</span>
+                <span className={styles.meta}>{meta}</span>
+              </span>
+              <span className={styles.time}>{formatRelativeTime(chat.updated_at)}</span>
+            </Button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}

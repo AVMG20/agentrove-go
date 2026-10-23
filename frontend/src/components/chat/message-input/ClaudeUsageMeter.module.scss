@@ -1,0 +1,62 @@
+@use '@/styles/globals/colors' as colors;
+@use '@/styles/globals/typography' as type;
+
+.meter {
+  @include type.type-meta;
+  @include type.type-noselect;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-4);
+  padding: 0 var(--space-2) var(--safe-area-bottom);
+  color: var(--theme-text-tertiary);
+}
+
+.window {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1-5);
+}
+
+.label {
+  color: var(--theme-text-tertiary);
+}
+
+.bar {
+  position: relative;
+  height: var(--space-1);
+  width: var(--space-10);
+  overflow: hidden;
+  border-radius: var(--radius-full);
+  background-color: var(--theme-border);
+}
+
+.fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  border-radius: inherit;
+  transition: width 300ms ease;
+
+  &--normal {
+    background-color: var(--theme-text-secondary);
+  }
+
+  &--warning {
+    background-color: colors.status-color('warning', 500);
+  }
+
+  &--danger {
+    background-color: colors.status-color('error', 500);
+  }
+}
+
+.value {
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  color: var(--theme-text-secondary);
+}
+
+.reset {
+  font-variant-numeric: tabular-nums;
+  color: var(--theme-text-quaternary);
+}

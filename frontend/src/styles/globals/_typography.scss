@@ -1,0 +1,94 @@
+// Typography system. Components never set font-size/weight/line-height directly —
+// always via a type-* mixin. Semantic names map to a dense, shadcn-like UI scale:
+//   type-meta       12px — metadata, badges, section headers
+//   type-default    13px — the app-wide default for UI chrome
+//   type-body       14px — inputs, buttons, sidebar rows
+//   type-prose      15px — chat messages, markdown, the composer
+//   type-large      16px
+//   type-title      18px — dialog titles only
+//   type-page-title 24px — page headings
+
+@mixin typography-tokens {
+  :root {
+    --font-sans:
+      ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial,
+      sans-serif;
+    --font-mono:
+      ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New',
+      monospace;
+    // Nerd Font with PUA icon glyphs — the in-app terminal only
+    --font-terminal: 'JetBrainsMono Nerd Font', var(--font-mono);
+  }
+}
+
+@mixin type($size, $line-height, $weight: 400, $family: var(--font-sans), $letter-spacing: normal) {
+  font-family: $family;
+  font-size: $size;
+  line-height: $line-height;
+  font-weight: $weight;
+  letter-spacing: $letter-spacing;
+}
+
+@mixin type-meta($weight: 400) {
+  @include type(0.75rem, 1rem, $weight);
+}
+
+@mixin type-default($weight: 400) {
+  @include type(0.8125rem, 1.25rem, $weight);
+}
+
+@mixin type-body($weight: 400) {
+  @include type(0.875rem, 1.25rem, $weight);
+}
+
+@mixin type-prose($weight: 400) {
+  @include type(0.9375rem, 1.625rem, $weight);
+}
+
+@mixin type-large($weight: 400) {
+  @include type(1rem, 1.5rem, $weight);
+}
+
+@mixin type-title($weight: 600) {
+  @include type(1.125rem, 1.75rem, $weight, $letter-spacing: -0.01em);
+}
+
+@mixin type-page-title($weight: 600) {
+  @include type(1.5rem, 2rem, $weight, $letter-spacing: -0.02em);
+}
+
+// Panel/sidebar section headers: 12px medium muted label
+@mixin type-section-header {
+  @include type(0.75rem, 1rem, 500);
+  color: var(--theme-text-tertiary);
+}
+
+// Code, file paths, env vars, technical IDs
+@mixin type-mono($size: 0.8125rem, $line-height: 1.25rem, $weight: 400) {
+  @include type($size, $line-height, $weight, var(--font-mono));
+}
+
+@mixin type-mono-meta {
+  @include type-mono(0.75rem, 1rem);
+}
+
+// ---- utilities ----
+
+@mixin type-overflow {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@mixin type-lineclamp($lines) {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: $lines;
+  line-clamp: $lines;
+  overflow: hidden;
+}
+
+@mixin type-noselect {
+  user-select: none;
+  -webkit-user-select: none;
+}

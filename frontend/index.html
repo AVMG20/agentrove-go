@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/assets/images/icon-dark.svg" />
+    <link
+      rel="icon"
+      type="image/svg+xml"
+      href="/assets/images/icon-white.svg"
+      media="(prefers-color-scheme: dark)"
+    />
+    <!-- Raster fallback for Safari, which doesn't reliably render SVG favicons -->
+    <link rel="icon" type="image/x-icon" href="/favicon.ico" sizes="16x16 32x32 48x48" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="theme-color" content="#0a0a0b" />
+    <meta name="color-scheme" content="light dark" />
+    <title>Agentrove</title>
+  </head>
+  <body>
+    <script>
+      (function initTheme() {
+        try {
+          const persisted = localStorage.getItem('app-storage');
+          let theme = 'dark';
+          if (persisted) {
+            const parsed = JSON.parse(persisted);
+            theme = parsed?.state?.theme === 'light' ? 'light' : 'dark';
+          } else if (window.matchMedia?.('(prefers-color-scheme: dark)')) {
+            theme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+          }
+          document.documentElement.setAttribute('data-theme', theme);
+          const meta = document.querySelector('meta[name="theme-color"]');
+          if (meta) {
+            meta.setAttribute('content', theme === 'dark' ? '#0a0a0b' : '#ffffff');
+          }
+        } catch (error) {
+          console.warn('Theme init failed', error);
+        }
+      })();
+    </script>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

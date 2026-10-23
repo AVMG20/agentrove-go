@@ -1,0 +1,29 @@
+@use '@/styles/globals/animations' as anim;
+
+.spinner {
+  @include anim.spin;
+  display: inline-flex;
+  border-radius: var(--radius-full);
+  border: 2px solid currentColor;
+  border-top-color: transparent;
+
+  &--xs {
+    height: var(--space-3);
+    width: var(--space-3);
+  }
+
+  &--sm {
+    height: var(--space-3-5);
+    width: var(--space-3-5);
+  }
+
+  &--md {
+    height: var(--space-4);
+    width: var(--space-4);
+  }
+
+  &--lg {
+    height: var(--space-5);
+    width: var(--space-5);
+  }
+}

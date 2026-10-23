@@ -1,0 +1,126 @@
+@use '@/styles/globals/typography' as type;
+@use '@/styles/globals/animations' as anim;
+@use '@/styles/globals/controls' as controls;
+@use '@/styles/globals/responsive' as responsive;
+
+.group + .group {
+  margin-top: var(--space-1);
+}
+
+.header {
+  position: relative;
+  display: flex;
+  margin-inline: calc(var(--space-2) * -1);
+  align-items: center;
+  border-radius: var(--radius-md);
+
+  @include responsive.hover {
+    background-color: var(--theme-surface-hover);
+
+    .actions {
+      opacity: 1;
+    }
+
+    .icon--folder {
+      opacity: 0;
+    }
+
+    .icon--chevron {
+      opacity: 1;
+    }
+  }
+
+  &:focus-within .actions {
+    opacity: 1;
+  }
+}
+
+.toggle {
+  @include type.type-body(500);
+  @include controls.focus-ring;
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  align-items: center;
+  gap: var(--space-2);
+  border-radius: var(--radius-md);
+  padding: var(--space-1-5) var(--space-2);
+  text-align: left;
+  color: var(--theme-text-primary);
+}
+
+// Folder and chevron share one slot: the chevron swaps in on hover
+.icon-slot {
+  position: relative;
+  display: flex;
+  height: var(--space-4);
+  width: var(--space-4);
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+}
+
+.icon {
+  position: absolute;
+  height: var(--space-4);
+  width: var(--space-4);
+  color: var(--theme-text-tertiary);
+  transition:
+    opacity var(--duration-fast),
+    transform var(--duration-base);
+
+  &--chevron {
+    height: var(--space-3-5);
+    width: var(--space-3-5);
+    opacity: 0;
+  }
+
+  &--expanded {
+    transform: rotate(90deg);
+  }
+}
+
+.name {
+  @include type.type-overflow;
+  min-width: 0;
+}
+
+.actions {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 1px;
+  padding-right: var(--space-1);
+  opacity: 0;
+  transition: opacity var(--duration-fast);
+
+  @include responsive.media('touch') {
+    opacity: 1;
+  }
+}
+
+.action {
+  @include anim.transition-colors;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: var(--space-6);
+  width: var(--space-6);
+  border-radius: var(--radius-sm);
+  color: var(--theme-text-tertiary);
+
+  @include responsive.hover {
+    background-color: var(--theme-surface-active);
+    color: var(--theme-text-primary);
+  }
+}
+
+.action-icon {
+  height: var(--space-3-5);
+  width: var(--space-3-5);
+}
+
+// Rows sit one step in from the folder so the hierarchy reads at a glance
+.body {
+  padding-left: var(--space-3);
+}

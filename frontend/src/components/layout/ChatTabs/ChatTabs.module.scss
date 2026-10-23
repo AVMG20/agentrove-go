@@ -1,0 +1,23 @@
+@use '@/styles/globals/typography' as type;
+
+.tab-spinner {
+  @include type.type-body;
+  width: var(--space-3);
+  flex-shrink: 0;
+  text-align: center;
+  line-height: 1;
+}
+
+.tab-status-dot {
+  height: var(--space-3);
+  width: var(--space-3);
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+}
+
+.tab-provider-icon {
+  height: var(--space-3);
+  width: var(--space-3);
+  flex-shrink: 0;
+}

@@ -1,0 +1,75 @@
+@use '@/styles/globals/colors' as colors;
+@use '@/styles/globals/typography' as type;
+@use '@/styles/globals/animations' as anim;
+@use '@/styles/globals/responsive' as responsive;
+
+.card {
+  display: flex;
+  max-width: var(--space-96);
+  align-items: center;
+  gap: var(--space-3);
+  border: 1px solid colors.theme-color('border', 0.5);
+  border-radius: var(--radius-lg);
+  background-color: var(--theme-surface-secondary);
+  padding: var(--space-2-5) var(--space-3);
+}
+
+.icon-box {
+  display: flex;
+  height: var(--space-8);
+  width: var(--space-8);
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid colors.theme-color('border', 0.5);
+  border-radius: var(--radius-md);
+  background-color: var(--theme-surface);
+  color: var(--theme-text-tertiary);
+}
+
+.icon {
+  height: var(--space-4);
+  width: var(--space-4);
+}
+
+.body {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+}
+
+.title {
+  @include type.type-default(500);
+  @include type.type-overflow;
+  color: var(--theme-text-primary);
+}
+
+.meta {
+  @include type.type-meta;
+  color: var(--theme-text-quaternary);
+}
+
+.open {
+  @include type.type-meta(500);
+  @include anim.transition-colors;
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: var(--space-1);
+  border: 1px solid colors.theme-color('border', 0.5);
+  border-radius: var(--radius-md);
+  background-color: var(--theme-surface);
+  padding: var(--space-1) var(--space-2-5);
+  color: var(--theme-text-secondary);
+
+  @include responsive.hover {
+    background-color: var(--theme-surface-hover);
+    color: var(--theme-text-primary);
+  }
+}
+
+.open-icon {
+  height: var(--space-3-5);
+  width: var(--space-3-5);
+}

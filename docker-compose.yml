@@ -1,0 +1,45 @@
+name: agentrove
+
+# Single-host setup: Go API + Vite dev frontend. Workspaces run in per-workspace
+# sandbox containers created through the Docker socket; idle ones are stopped
+# after SANDBOX_IDLE_TTL_SECONDS and restarted on demand. No Redis needed.
+services:
+  api:
+    build:
+      context: ./backend
+    restart: unless-stopped
+    user: root
+    ports:
+      - "${BACKEND_PORT:-8080}:8080"
+    volumes:
+      # Sandbox bind mounts are resolved by the host daemon, so the API must
+      # know the host-side path of its storage dir (HOST_STORAGE_PATH).
+      - ${HOST_STORAGE_PATH:-./storage}:/data/agentrove/storage
+      - /var/run/docker.sock:/var/run/docker.sock
+    env_file: .env
+    environment:
+      STORAGE_PATH: /data/agentrove/storage
+      DOCKER_NETWORK: ${DOCKER_NETWORK:-agentrove-sandbox-net}
+      # How sandbox agents reach the API's MCP endpoint over the sandbox network.
+      AGENTROVE_INTERNAL_URL: ${AGENTROVE_INTERNAL_URL:-http://api:8080}
+    networks:
+      - default
+      - sandbox
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      - api
+    ports:
+      - "${FRONTEND_PORT:-3000}:3000"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    env_file: .env
+
+networks:
+  sandbox:
+    name: ${DOCKER_NETWORK:-agentrove-sandbox-net}

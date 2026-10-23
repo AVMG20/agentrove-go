@@ -1,0 +1,6 @@
+@use '@/styles/globals/typography' as type;
+
+.markdown {
+  @include type.type-prose;
+  color: var(--theme-text-secondary);
+}

@@ -1,0 +1,89 @@
+@use '@/styles/globals/colors' as colors;
+@use '@/styles/globals/typography' as type;
+@use '@/styles/globals/animations' as anim;
+@use '@/styles/globals/responsive' as responsive;
+@use '@/styles/globals/zlayer' as z;
+
+.user-profile-menu {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2-5);
+}
+
+.trigger {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  align-items: center;
+  gap: var(--space-2-5);
+  border-radius: var(--radius-md);
+  text-align: left;
+}
+
+.avatar-wrap {
+  flex-shrink: 0;
+}
+
+.name {
+  @include type.type-default(500);
+  @include type.type-overflow;
+  min-width: 0;
+  flex: 1;
+  color: var(--theme-text-primary);
+}
+
+.panel {
+  @include z.z('dropdown');
+  @include anim.fade-in(var(--duration-base), forwards);
+  position: absolute;
+  bottom: 100%;
+  left: 0;
+  margin-bottom: var(--space-2);
+  width: var(--space-64);
+  border: 1px solid colors.theme-color('border', 0.5);
+  border-radius: var(--radius-xl);
+  background-color: var(--theme-surface-secondary);
+  box-shadow: var(--shadow-medium);
+}
+
+.menu-list {
+  padding: var(--space-1-5);
+}
+
+.menu-item {
+  @include anim.transition-colors;
+  display: flex;
+  width: 100%;
+  align-items: center;
+  gap: var(--space-2-5);
+  border-radius: var(--radius-md);
+  padding: var(--space-1-5) var(--space-2);
+  text-align: left;
+  color: var(--theme-text-secondary);
+
+  @include responsive.hover {
+    background-color: var(--theme-surface-hover);
+    color: var(--theme-text-primary);
+  }
+}
+
+.item-icon {
+  height: var(--space-3-5);
+  width: var(--space-3-5);
+  flex-shrink: 0;
+}
+
+.item-label {
+  @include type.type-default;
+  flex: 1;
+}
+
+.item-text {
+  @include type.type-default;
+}
+
+.item-value {
+  @include type.type-meta;
+  color: var(--theme-text-quaternary);
+}

@@ -1,0 +1,74 @@
+@use '@/styles/globals/typography' as type;
+@use '@/styles/globals/zlayer' as z;
+
+.title-bar {
+  @include z.z('titlebar');
+  @include type.type-noselect;
+  display: flex;
+  // 2.5rem bar + the iOS top inset (0 elsewhere)
+  height: calc(var(--space-10) + var(--safe-area-top));
+  flex-shrink: 0;
+}
+
+.left {
+  display: flex;
+  height: 100%;
+  width: auto;
+  align-items: center;
+  gap: var(--space-1);
+  background-color: var(--theme-surface-secondary);
+  padding-top: var(--safe-area-top);
+  border-bottom: 1px solid var(--theme-border);
+  transition-property: width, padding;
+  transition-duration: var(--sidebar-transition-duration, 0ms);
+  transition-timing-function: var(--easing-in-out);
+
+  // While the sidebar is open the left section becomes its header strip:
+  // full sidebar width, right border merging into the sidebar, no hairline below.
+  &--docked {
+    width: var(--sidebar-width);
+    border-bottom: none;
+    border-right: 1px solid var(--theme-border);
+  }
+}
+
+.toggle-wrap {
+  margin-left: var(--space-3);
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.icon-button {
+  height: var(--space-8);
+  width: var(--space-8);
+}
+
+.icon-button-glyph {
+  height: var(--space-4);
+  width: var(--space-4);
+  color: var(--theme-text-secondary);
+}
+
+.band {
+  display: flex;
+  height: 100%;
+  min-width: 0;
+  flex: 1;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  border-bottom: 1px solid var(--theme-border);
+  background-color: var(--theme-surface);
+  padding-inline: var(--space-3);
+  padding-top: var(--safe-area-top);
+}
+
+.tabs-area {
+  display: flex;
+  height: 100%;
+  min-width: 0;
+  flex: 1;
+  align-items: flex-end;
+  gap: var(--space-1);
+}

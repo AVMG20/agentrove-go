@@ -1,0 +1,72 @@
+@use '@/styles/globals/typography' as type;
+@use '@/styles/globals/colors' as colors;
+@use '@/styles/globals/responsive' as responsive;
+
+.select {
+  position: relative;
+  display: inline-flex;
+  width: 100%;
+}
+
+.select-input {
+  @include type.type-body;
+  height: var(--space-9);
+  width: 100%;
+  appearance: none;
+  border: 1px solid var(--theme-border);
+  border-radius: var(--radius-md);
+  background-color: var(--theme-surface);
+  padding-inline: var(--space-3) var(--space-9);
+  color: var(--theme-text-primary);
+  box-shadow: var(--shadow-xs);
+  transition:
+    color var(--duration-fast),
+    border-color var(--duration-fast),
+    box-shadow var(--duration-fast);
+
+  :global([data-theme='dark']) & {
+    background-color: colors.theme-color('surface-tertiary', 0.5);
+  }
+
+  @include responsive.hover {
+    border-color: var(--theme-border-secondary);
+  }
+
+  &:focus-visible {
+    outline: none;
+    border-color: var(--theme-border-hover);
+    box-shadow:
+      var(--shadow-xs),
+      0 0 0 3px colors.theme-color('text-quaternary', 0.25);
+  }
+
+  &:disabled {
+    cursor: not-allowed;
+    opacity: 0.5;
+  }
+
+  &--error {
+    border-color: colors.status-color('error', 500, 0.5);
+    color: var(--theme-error-text);
+
+    &:focus-visible {
+      border-color: colors.status-color('error', 500);
+      box-shadow: 0 0 0 3px colors.status-color('error', 500, 0.2);
+    }
+  }
+}
+
+.select-chevron {
+  pointer-events: none;
+  position: absolute;
+  inset-block: 0;
+  right: var(--space-3);
+  display: flex;
+  align-items: center;
+  color: var(--theme-text-quaternary);
+
+  svg {
+    height: var(--space-4);
+    width: var(--space-4);
+  }
+}

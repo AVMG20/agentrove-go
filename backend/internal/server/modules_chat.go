@@ -1,0 +1,80 @@
+package server
+
+import (
+	"fmt"
+	"log/slog"
+	"os"
+	"strings"
+	"sync"
+	"time"
+
+	"agentrove/internal/app"
+	"agentrove/internal/chat"
+	"agentrove/internal/mcpserver"
+	"agentrove/internal/sandbox"
+)
+
+// chatModules: chat, streaming runtime, Claude driver, models, attachments.
+func chatModules(a *app.App) ([]Module, error) {
+	m := chat.New(a)
+	m.MCPConfig = newMCPConfigs(a).forChat
+	return []Module{m}, nil
+}
+
+// mcpConfigs hands each chat session the agentrove MCP server over HTTP.
+// Configs are cached so the token (and thus the session fingerprint) stays
+// the same across turns until it nears expiry.
+type mcpConfigs struct {
+	a     *app.App
+	mu    sync.Mutex
+	cache map[string]cachedMCP
+}
+
+type cachedMCP struct {
+	servers map[string]any
+	renewAt time.Time
+}
+
+func newMCPConfigs(a *app.App) *mcpConfigs {
+	return &mcpConfigs{a: a, cache: map[string]cachedMCP{}}
+}
+
+func (c *mcpConfigs) forChat(userID, chatID, kind string, member bool) map[string]any {
+	// Channel members get no agentrove tools, as before.
+	if member {
+		return nil
+	}
+	full := c.a.Cfg.MCPEnabled
+	if !full && !c.a.Cfg.ArtifactsEnabled {
+		return nil
+	}
+	key := fmt.Sprintf("%s|%s|%s|%t", userID, chatID, kind, full)
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if hit, ok := c.cache[key]; ok && time.Now().Before(hit.renewAt) {
+		return hit.servers
+	}
+	cfg, err := mcpserver.ServerConfigForChat(c.a, userID, chatID, full)
+	if err != nil {
+		slog.Warn("mcp config", "chat", chatID, "err", err)
+		return nil
+	}
+	cfg["url"] = c.baseURL(kind) + c.a.Cfg.APIPrefix + "/mcp"
+	servers := map[string]any{"agentrove": cfg}
+	ttl := c.a.Cfg.MCPTokenLifetime
+	c.cache[key] = cachedMCP{servers: servers, renewAt: time.Now().Add(ttl - ttl/4)}
+	return servers
+}
+
+// baseURL is where an agent in the given sandbox kind reaches this API: host
+// agents share our network namespace; Docker sandboxes use the sandbox
+// network alias (AGENTROVE_INTERNAL_URL) or the public BASE_URL.
+func (c *mcpConfigs) baseURL(kind string) string {
+	if kind == sandbox.KindHost {
+		return fmt.Sprintf("http://127.0.0.1:%d", c.a.Cfg.Port)
+	}
+	if u := os.Getenv("AGENTROVE_INTERNAL_URL"); u != "" {
+		return strings.TrimRight(u, "/")
+	}
+	return strings.TrimRight(c.a.Cfg.BaseURL, "/")
+}

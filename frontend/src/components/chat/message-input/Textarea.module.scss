@@ -1,0 +1,58 @@
+@use '@/styles/globals/typography' as type;
+
+.textarea {
+  position: relative;
+}
+
+.backdrop {
+  @include type.type-prose;
+  pointer-events: none;
+  position: absolute;
+  inset: 0;
+  // Fixed viewport cap shared with the textarea (no spacing-scale token for 180px)
+  max-height: 180px;
+  // Text soft-wraps, so horizontal scrolling is never meaningful — hiding it
+  // prevents a stray scrollbar from subpixel rounding at fractional zoom levels
+  overflow: hidden auto;
+  padding-block: var(--space-1-5);
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+  color: var(--theme-text-primary);
+
+  &--dimmed {
+    opacity: 0.5;
+  }
+}
+
+.backdrop-token {
+  color: var(--theme-token-highlight);
+}
+
+.textarea-field {
+  @include type.type-prose;
+  position: relative;
+  // Fixed viewport cap shared with the backdrop (no spacing-scale token for 180px)
+  max-height: 180px;
+  width: 100%;
+  min-height: var(--space-9);
+  overflow: hidden auto;
+  padding-block: var(--space-1-5);
+  line-height: 1.5;
+  background: transparent;
+  color: var(--theme-text-primary);
+  transition: all var(--duration-base);
+
+  &::placeholder {
+    color: var(--theme-text-quaternary);
+  }
+
+  &--highlighted {
+    color: transparent;
+    caret-color: var(--theme-text-primary);
+  }
+
+  &--compact {
+    min-height: var(--space-7);
+  }
+}

@@ -1,0 +1,83 @@
+@use '@/styles/globals/typography' as type;
+@use '@/styles/globals/controls' as controls;
+@use '@/styles/globals/animations' as anim;
+@use '@/styles/globals/responsive' as responsive;
+
+.segmented-control {
+  position: relative;
+  display: inline-flex;
+  padding: 3px;
+  background-color: var(--theme-surface-tertiary);
+
+  :global([data-theme='dark']) & {
+    background-color: var(--theme-surface-hover);
+  }
+
+  &--sm {
+    border-radius: var(--radius-md);
+  }
+
+  &--md {
+    border-radius: var(--radius-lg);
+  }
+}
+
+.indicator {
+  position: absolute;
+  left: 0;
+  top: 0;
+  background-color: var(--theme-surface);
+  box-shadow: var(--shadow-sm);
+  transition:
+    transform var(--duration-slow) var(--easing-out),
+    width var(--duration-slow) var(--easing-out),
+    height var(--duration-slow) var(--easing-out);
+
+  :global([data-theme='dark']) & {
+    background-color: var(--theme-surface-active);
+  }
+
+  // Inner radius tucks inside the container's 3px inset — px art, not tokens
+  &--sm {
+    border-radius: 4px;
+  }
+
+  &--md {
+    border-radius: 6px;
+  }
+}
+
+.segment {
+  @include anim.transition-colors;
+  @include controls.focus-ring;
+  position: relative;
+  cursor: pointer;
+  border: none;
+  background: none;
+  color: var(--theme-text-tertiary);
+
+  @include responsive.hover {
+    color: var(--theme-text-primary);
+  }
+
+  &--sm {
+    @include type.type-meta(500);
+    padding: var(--space-1) var(--space-2-5);
+    border-radius: 4px;
+  }
+
+  &--md {
+    @include type.type-default(500);
+    padding: var(--space-1-5) var(--space-3-5);
+    border-radius: 6px;
+  }
+
+  &[aria-checked='true'] {
+    color: var(--theme-text-primary);
+  }
+
+  &:disabled {
+    cursor: not-allowed;
+    opacity: 0.35;
+  }
+}

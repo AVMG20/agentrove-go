@@ -1,0 +1,123 @@
+export interface TerminalSize {
+  cols: number;
+  rows: number;
+}
+
+export interface FileMetadata {
+  path: string;
+  type: string;
+  is_binary?: boolean;
+}
+
+export interface FileContent {
+  path: string;
+  content: string;
+  type: string;
+  is_binary: boolean;
+}
+
+export interface UpdateFileResult {
+  success: boolean;
+  message: string;
+}
+
+// `all` = uncommitted changes (worktree + index vs HEAD); shown as "Uncommitted".
+export type DiffMode = 'all' | 'branch';
+
+export interface GitDiffData {
+  diff: string;
+  has_changes: boolean;
+  is_git_repo: boolean;
+  error?: string;
+}
+
+export interface GitFileBaselineData {
+  path: string;
+  content: string;
+  is_git_repo: boolean;
+}
+
+export interface GitDiffTotals {
+  additions: number;
+  deletions: number;
+  files_changed: number;
+}
+
+export interface GitDiffStatsData {
+  uncommitted: GitDiffTotals;
+  branch: GitDiffTotals;
+  is_git_repo: boolean;
+  head_sha: string | null;
+}
+
+export interface GitFetchBaseData {
+  fetched: boolean;
+}
+
+export interface GitChangedPathsData {
+  paths: string[];
+  is_git_repo: boolean;
+}
+
+export interface GitBranchesData {
+  branches: string[];
+  current_branch: string;
+  is_git_repo: boolean;
+}
+
+export interface GitCheckoutData {
+  success: boolean;
+  current_branch: string;
+  error?: string;
+}
+
+export interface GitCommitResult {
+  success: boolean;
+  output: string;
+  error?: string;
+}
+
+export interface GitPushPullResult {
+  success: boolean;
+  output: string;
+  error?: string;
+}
+
+export interface GitCreateBranchResult {
+  success: boolean;
+  current_branch: string;
+  error?: string;
+}
+
+export interface GitRemoteUrlData {
+  owner: string;
+  repo: string;
+  remote_url: string;
+}
+
+export interface SearchMatch {
+  line_number: number;
+  line_text: string;
+  match_start: number;
+  match_end: number;
+}
+
+export interface SearchFileResult {
+  path: string;
+  matches: SearchMatch[];
+}
+
+export interface SearchResponse {
+  results: SearchFileResult[];
+  truncated: boolean;
+}
+
+export interface SearchParams {
+  query: string;
+  cwd?: string;
+  caseSensitive?: boolean;
+  regex?: boolean;
+  wholeWord?: boolean;
+  include?: string;
+  exclude?: string;
+}

@@ -1,0 +1,47 @@
+name: agentrove
+
+services:
+  api:
+    build:
+      context: ./backend
+    restart: unless-stopped
+    user: root
+    volumes:
+      - ${AGENTROVE_STORAGE_SOURCE:-/data/agentrove/storage}:/data/agentrove/storage
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      ENVIRONMENT: production
+      SECRET_KEY: ${SECRET_KEY:?Set SECRET_KEY to a 32+ character value}
+      STORAGE_PATH: /data/agentrove/storage
+      HOST_STORAGE_PATH: ${AGENTROVE_STORAGE_SOURCE:-/data/agentrove/storage}
+      DOCKER_IMAGE: ${DOCKER_IMAGE:-agentrove-sandbox:latest}
+      DOCKER_NETWORK: ${DOCKER_NETWORK:-agentrove-sandbox-net}
+      # How sandbox agents reach the API's MCP endpoint over the sandbox network.
+      AGENTROVE_INTERNAL_URL: ${AGENTROVE_INTERNAL_URL:-http://api:8080}
+      SANDBOX_IDLE_TTL_SECONDS: ${SANDBOX_IDLE_TTL_SECONDS:-3600}
+      ALLOWED_ORIGINS: ${APP_URL:-http://localhost}
+      BASE_URL: ${APP_URL:-http://localhost}
+      FRONTEND_URL: ${APP_URL:-http://localhost}
+      REGISTRATION_DISABLED: ${REGISTRATION_DISABLED:-false}
+      ANTHROPIC_BASE_URL: ${ANTHROPIC_BASE_URL:-}
+      ANTHROPIC_AUTH_TOKEN: ${ANTHROPIC_AUTH_TOKEN:-}
+      CLAUDE_CODE_OAUTH_TOKEN: ${CLAUDE_CODE_OAUTH_TOKEN:-}
+      AGENT_ENV: ${AGENT_ENV:-}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    networks:
+      - default
+      - sandbox
+
+  web:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.production
+    restart: unless-stopped
+    depends_on:
+      - api
+    ports:
+      - "${WEB_PORT:-80}:80"
+
+networks:
+  sandbox:
+    name: ${DOCKER_NETWORK:-agentrove-sandbox-net}

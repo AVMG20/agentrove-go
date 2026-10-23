@@ -1,0 +1,58 @@
+/*
+ * Monochrome theme for @pierre/trees file tree.
+ * Pierre renders into Shadow DOM and exposes a stable surface of
+ * `--trees-*-override` CSS variables; custom properties cross the shadow
+ * boundary via inheritance, so setting them on the host element themes the
+ * internal UI without needing `unsafeCSS` injection.
+ *
+ * Palette maps to the semantic --theme-* token vars (styles/globals/_colors.scss),
+ * which already resolve per data-theme/data-palette — so one block covers light,
+ * dark, dim and sepia with no mode-specific overrides.
+ */
+
+file-tree-container {
+  --trees-fg-override: var(--theme-text-secondary);
+  --trees-fg-muted-override: var(--theme-text-quaternary);
+  --trees-bg-override: transparent;
+  --trees-bg-muted-override: var(--theme-surface-hover);
+  --trees-accent-override: var(--theme-text-primary);
+  --trees-border-color-override: var(--theme-border);
+
+  --trees-selected-bg-override: var(--theme-surface-active);
+  --trees-selected-fg-override: var(--theme-text-primary);
+  --trees-selected-focused-border-color-override: transparent;
+
+  --trees-focus-ring-color-override: rgb(var(--theme-text-quaternary-rgb) / 0.3);
+  --trees-focus-ring-width-override: 1px;
+  --trees-focus-ring-offset-override: 0;
+
+  --trees-search-bg-override: transparent;
+  --trees-search-fg-override: var(--theme-text-primary);
+  --trees-search-font-weight-override: 500;
+
+  --trees-input-bg-override: transparent;
+  --trees-padding-inline-override: 10px;
+  --trees-item-padding-x-override: 6px;
+  /* Tighter than the 8px default so deep paths stay readable in the narrow panel. */
+  --trees-level-gap-override: 6px;
+  --trees-indent-guide-bg-override: rgb(var(--theme-border-rgb) / 0.5);
+  --trees-scrollbar-thumb-override: var(--theme-text-quaternary);
+
+  /* Monochrome git status — all modified/renamed/added collapse to the same
+     muted tone; "ignored" is dimmer via opacity so it tracks the palette too. */
+  --trees-status-modified-override: var(--theme-text-quaternary);
+  --trees-status-added-override: var(--theme-text-quaternary);
+  --trees-status-renamed-override: var(--theme-text-quaternary);
+  --trees-status-untracked-override: var(--theme-text-quaternary);
+  --trees-status-ignored-override: rgb(var(--theme-text-quaternary-rgb) / 0.6);
+  --trees-status-deleted-override: var(--theme-text-quaternary);
+
+  --trees-git-modified-color-override: var(--theme-text-quaternary);
+  --trees-git-added-color-override: var(--theme-text-quaternary);
+  --trees-git-renamed-color-override: var(--theme-text-quaternary);
+  --trees-git-untracked-color-override: var(--theme-text-quaternary);
+  --trees-git-ignored-color-override: rgb(var(--theme-text-quaternary-rgb) / 0.6);
+  --trees-git-deleted-color-override: var(--theme-text-quaternary);
+
+  --trees-font-size-override: 14px;
+}

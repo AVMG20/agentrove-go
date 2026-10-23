@@ -1,0 +1,68 @@
+@use '@/styles/globals/typography' as type;
+@use '@/styles/globals/animations' as anim;
+@use '@/styles/globals/controls' as controls;
+@use '@/styles/globals/responsive' as responsive;
+
+.section {
+  padding-bottom: var(--space-2);
+}
+
+.header {
+  display: flex;
+  height: var(--space-8);
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.toggle {
+  @include controls.focus-ring;
+  @include anim.transition-colors;
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: var(--space-1);
+  margin-left: calc(var(--space-2) * -1);
+  border-radius: var(--radius-md);
+  padding: var(--space-1) var(--space-2);
+  color: var(--theme-text-tertiary);
+
+  @include responsive.hover {
+    color: var(--theme-text-primary);
+
+    .chevron {
+      opacity: 1;
+    }
+  }
+
+  &:focus-visible .chevron {
+    opacity: 1;
+  }
+}
+
+.title {
+  @include type.type-meta(500);
+  @include type.type-overflow;
+}
+
+// Hidden at rest; a collapsed section keeps it visible so the state is legible
+.chevron {
+  height: var(--space-3);
+  width: var(--space-3);
+  flex-shrink: 0;
+  opacity: 0;
+  transition:
+    opacity var(--duration-fast),
+    transform var(--duration-base);
+
+  &--collapsed {
+    opacity: 1;
+    transform: rotate(-90deg);
+  }
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-0-5);
+}

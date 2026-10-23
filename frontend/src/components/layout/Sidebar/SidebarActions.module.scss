@@ -1,0 +1,55 @@
+@use '@/styles/globals/typography' as type;
+@use '@/styles/globals/animations' as anim;
+@use '@/styles/globals/responsive' as responsive;
+
+.actions {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: var(--space-2) var(--space-3) var(--space-1);
+}
+
+.action {
+  @include type.type-body;
+  @include anim.transition-colors;
+  display: flex;
+  width: 100%;
+  align-items: center;
+  gap: var(--space-2);
+  border-radius: var(--radius-md);
+  padding: var(--space-1-5) var(--space-2);
+  color: var(--theme-text-secondary);
+
+  @include responsive.hover {
+    background-color: var(--theme-surface-hover);
+    color: var(--theme-text-primary);
+
+    .kbd {
+      opacity: 1;
+    }
+  }
+
+  &:focus-visible .kbd {
+    opacity: 1;
+  }
+}
+
+.action-icon {
+  height: var(--space-4);
+  width: var(--space-4);
+  flex-shrink: 0;
+}
+
+.action-label {
+  flex: 1;
+  text-align: left;
+}
+
+// Shortcut hint — revealed on hover so the resting sidebar stays quiet
+.kbd {
+  @include type.type-meta;
+  font-family: var(--font-sans);
+  color: var(--theme-text-quaternary);
+  opacity: 0;
+  transition: opacity var(--duration-fast);
+}

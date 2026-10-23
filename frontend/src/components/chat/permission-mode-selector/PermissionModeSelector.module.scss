@@ -1,0 +1,30 @@
+@use '@/styles/globals/typography' as type;
+
+// Passed to Dropdown's itemClassName — mode label + description stacked.
+.item-column {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-0-5);
+}
+
+.mode-label {
+  @include type.type-meta(500);
+  color: var(--theme-text-primary);
+
+  // Original Tailwind kept light-mode at text-primary regardless of selection and only
+  // varied dark mode by selection — preserved as-is (styling-only refactor).
+  :global([data-theme='dark']) & {
+    color: var(--theme-text-secondary);
+  }
+
+  &--selected {
+    :global([data-theme='dark']) & {
+      color: var(--theme-text-primary);
+    }
+  }
+}
+
+.mode-description {
+  @include type.type-meta;
+  color: var(--theme-text-quaternary);
+}

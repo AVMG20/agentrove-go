@@ -1,0 +1,179 @@
+@use '@/styles/globals/colors' as colors;
+@use '@/styles/globals/typography' as type;
+@use '@/styles/globals/animations' as anim;
+@use '@/styles/globals/responsive' as responsive;
+
+.page {
+  display: flex;
+  height: 100vh;
+  height: 100dvh;
+  flex-direction: column;
+  background-color: var(--theme-surface);
+  color: var(--theme-text-primary);
+}
+
+.bar {
+  display: flex;
+  min-height: calc(var(--space-11) + var(--safe-area-top));
+  flex-shrink: 0;
+  align-items: center;
+  gap: var(--space-2-5);
+  border-bottom: 1px solid colors.theme-color('border', 0.5);
+  padding-inline: var(--space-3);
+  // TitleBar (which normally owns the iOS top inset) isn't rendered here
+  padding-top: var(--safe-area-top);
+}
+
+.home {
+  @include anim.transition-colors;
+  display: flex;
+  flex-shrink: 0;
+  border-radius: var(--radius-md);
+  padding: var(--space-1-5);
+
+  @include responsive.hover {
+    background-color: var(--theme-surface-hover);
+  }
+}
+
+.logo {
+  height: var(--space-4);
+  width: var(--space-4);
+  flex-shrink: 0;
+
+  &--on-light {
+    display: block;
+
+    :global([data-theme='dark']) & {
+      display: none;
+    }
+  }
+
+  &--on-dark {
+    display: none;
+
+    :global([data-theme='dark']) & {
+      display: block;
+    }
+  }
+}
+
+.heading {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  align-items: baseline;
+  gap: var(--space-2);
+}
+
+.title {
+  @include type.type-default(500);
+  @include type.type-overflow;
+  color: var(--theme-text-primary);
+}
+
+.meta {
+  @include type.type-meta;
+  @include type.type-overflow;
+  flex-shrink: 0;
+  color: var(--theme-text-quaternary);
+
+  @include responsive.hide('mobile');
+}
+
+.actions {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.visibility {
+  @include type.type-meta(500);
+  display: flex;
+  align-items: center;
+  gap: var(--space-1-5);
+  margin-right: var(--space-1);
+  border: 1px solid colors.theme-color('border', 0.5);
+  border-radius: var(--radius-md);
+  padding: var(--space-1) var(--space-2);
+  color: var(--theme-text-secondary);
+  cursor: pointer;
+}
+
+.visibility-icon {
+  height: var(--space-3);
+  width: var(--space-3);
+  color: var(--theme-text-tertiary);
+}
+
+.visibility-label {
+  min-width: var(--space-10);
+}
+
+.action-btn {
+  @include anim.transition-colors;
+  display: flex;
+  height: var(--space-7);
+  width: var(--space-7);
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-md);
+  color: var(--theme-text-tertiary);
+
+  @include responsive.hover {
+    background-color: var(--theme-surface-hover);
+    color: var(--theme-text-primary);
+  }
+}
+
+.action-icon {
+  height: var(--space-3-5);
+  width: var(--space-3-5);
+}
+
+.frame {
+  display: block;
+  width: 100%;
+  flex: 1;
+  border: 0;
+  // Pages without their own background render on white, like a browser tab.
+  background-color: #fff;
+}
+
+.status {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  padding: var(--space-4);
+  text-align: center;
+}
+
+.spinner {
+  @include anim.spin;
+  height: var(--space-6);
+  width: var(--space-6);
+  color: var(--theme-text-quaternary);
+}
+
+.status-icon {
+  height: var(--space-6);
+  width: var(--space-6);
+  margin-bottom: var(--space-1);
+  color: var(--theme-text-quaternary);
+}
+
+.status-title {
+  @include type.type-large(500);
+  color: var(--theme-text-primary);
+}
+
+.status-text {
+  @include type.type-default;
+  max-width: var(--space-96);
+  margin-bottom: var(--space-2);
+  color: var(--theme-text-tertiary);
+}

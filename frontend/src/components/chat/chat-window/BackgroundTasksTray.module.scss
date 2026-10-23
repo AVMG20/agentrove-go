@@ -1,0 +1,151 @@
+@use '@/styles/globals/colors' as colors;
+@use '@/styles/globals/typography' as type;
+@use '@/styles/globals/animations' as anim;
+@use '@/styles/globals/responsive' as responsive;
+
+.tray {
+  @include anim.fade-in;
+  position: relative;
+  // Same tucked-tab placement as the queue banner, which stacks over it.
+  z-index: 0;
+  margin-bottom: calc(-1 * var(--space-4));
+  padding-left: var(--space-10);
+  padding-right: var(--space-10);
+
+  @include responsive.media('sm-up') {
+    padding-left: var(--space-14);
+    padding-right: var(--space-14);
+  }
+}
+
+.card {
+  overflow: hidden;
+  border: 1px solid colors.theme-color('border', 0.5);
+  border-bottom: 0;
+  border-top-left-radius: var(--radius-2xl);
+  border-top-right-radius: var(--radius-2xl);
+  background-color: var(--theme-surface-secondary);
+  padding-bottom: var(--space-4);
+}
+
+.header {
+  @include type.type-meta;
+  @include anim.transition-colors;
+  display: flex;
+  width: 100%;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-1-5) var(--space-3);
+  color: var(--theme-text-tertiary);
+  cursor: pointer;
+
+  @include responsive.hover {
+    color: var(--theme-text-secondary);
+  }
+}
+
+.pulse {
+  @include anim.pulse;
+  height: var(--space-1-5);
+  width: var(--space-1-5);
+  flex-shrink: 0;
+  border-radius: var(--radius-full);
+  background-color: colors.status-color('success', 500);
+}
+
+.header-label {
+  @include anim.text-shimmer;
+  font-weight: 500;
+}
+
+.header-summary {
+  @include type.type-overflow;
+  min-width: 0;
+  flex: 1;
+  text-align: left;
+  color: var(--theme-text-quaternary);
+}
+
+.chevron {
+  height: var(--space-3-5);
+  width: var(--space-3-5);
+  flex-shrink: 0;
+  transition: transform var(--duration-base);
+
+  &--collapsed {
+    transform: rotate(180deg);
+  }
+}
+
+.list {
+  display: flex;
+  flex-direction: column;
+  padding-bottom: var(--space-1);
+}
+
+.row {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-2) var(--space-1) var(--space-3);
+}
+
+.row-icon {
+  height: var(--space-3-5);
+  width: var(--space-3-5);
+  flex-shrink: 0;
+  color: var(--theme-text-quaternary);
+}
+
+.row-title-wrap {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+}
+
+.row-title {
+  @include type.type-default;
+  @include type.type-overflow;
+  color: var(--theme-text-secondary);
+}
+
+.mono {
+  font-family: var(--font-mono);
+  font-size: 0.85em;
+}
+
+.elapsed {
+  @include type.type-meta;
+  flex-shrink: 0;
+  font-variant-numeric: tabular-nums;
+  color: var(--theme-text-quaternary);
+}
+
+.stop-btn {
+  @include anim.transition-colors;
+  display: inline-flex;
+  height: var(--space-6);
+  width: var(--space-6);
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-md);
+  color: var(--theme-text-tertiary);
+  cursor: pointer;
+
+  @include responsive.hover {
+    background-color: var(--theme-surface-hover);
+    color: colors.status-color('error', 500);
+  }
+
+  &:disabled {
+    cursor: default;
+  }
+}
+
+.stop-glyph {
+  height: var(--space-3);
+  width: var(--space-3);
+  fill: currentColor;
+}

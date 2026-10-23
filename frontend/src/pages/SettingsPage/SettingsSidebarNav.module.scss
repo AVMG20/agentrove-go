@@ -1,0 +1,104 @@
+@use '@/styles/globals/typography' as type;
+@use '@/styles/globals/animations' as anim;
+@use '@/styles/globals/responsive' as responsive;
+
+.nav {
+  display: none;
+  width: var(--space-64);
+  flex-shrink: 0;
+  flex-direction: column;
+  border-right: 1px solid var(--theme-border);
+  background-color: var(--theme-surface-secondary);
+
+  @include responsive.media('md-up') {
+    display: flex;
+  }
+}
+
+.header {
+  border-bottom: 1px solid var(--theme-border);
+  padding: var(--space-4) var(--space-5);
+}
+
+.back {
+  @include type.type-default;
+  @include anim.transition-colors;
+  display: flex;
+  align-items: center;
+  gap: var(--space-1-5);
+  color: var(--theme-text-tertiary);
+
+  @include responsive.hover {
+    color: var(--theme-text-primary);
+  }
+}
+
+.back-icon {
+  height: var(--space-3);
+  width: var(--space-3);
+  transition: transform var(--duration-base);
+
+  // group-hover:-translate-x-0.5 — nudge the chevron when the Back button is hovered
+  .back:hover & {
+    transform: translateX(-2px);
+  }
+}
+
+.title {
+  @include type.type-large(600);
+  margin-top: var(--space-3);
+  color: var(--theme-text-primary);
+}
+
+.list {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--space-3);
+
+  > * + * {
+    margin-top: 1px;
+  }
+}
+
+.item {
+  @include type.type-body;
+  @include anim.transition-colors;
+  display: flex;
+  width: 100%;
+  align-items: center;
+  gap: var(--space-2-5);
+  border-radius: var(--radius-md);
+  padding: var(--space-1-5) var(--space-2);
+  color: var(--theme-text-secondary);
+
+  &:not([aria-selected='true']) {
+    @include responsive.hover {
+      background-color: var(--theme-surface-hover);
+      color: var(--theme-text-primary);
+    }
+  }
+
+  &[aria-selected='true'] {
+    background-color: var(--theme-surface-active);
+    color: var(--theme-text-primary);
+    font-weight: 500;
+  }
+}
+
+.item-icon {
+  @include anim.transition-colors;
+  height: var(--space-4);
+  width: var(--space-4);
+  flex-shrink: 0;
+  color: var(--theme-text-tertiary);
+
+  .item[aria-selected='true'] & {
+    color: var(--theme-text-primary);
+  }
+}
+
+.footer {
+  flex-shrink: 0;
+  border-top: 1px solid var(--theme-border);
+  padding: var(--space-2-5) var(--space-3);
+}

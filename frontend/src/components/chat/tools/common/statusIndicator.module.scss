@@ -1,0 +1,19 @@
+@use '@/styles/globals/animations' as anim;
+
+.icon {
+  height: var(--space-3);
+  width: var(--space-3);
+}
+
+.icon--completed {
+  color: var(--theme-success-text);
+}
+
+.icon--failed {
+  color: var(--theme-error-text);
+}
+
+.icon--started {
+  @include anim.pulse;
+  color: var(--theme-text-quaternary);
+}

@@ -1,0 +1,99 @@
+@use '@/styles/globals/colors' as colors;
+@use '@/styles/globals/typography' as type;
+@use '@/styles/globals/animations' as anim;
+@use '@/styles/globals/responsive' as responsive;
+@use '@/styles/globals/zlayer' as z;
+
+.toggle-dropdown {
+  position: relative;
+}
+
+.trigger {
+  @include type.type-meta;
+  @include anim.transition-colors;
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  gap: var(--space-1-5);
+  border-radius: var(--radius-md);
+  padding: var(--space-1) var(--space-1-5);
+  color: var(--theme-text-tertiary);
+
+  @include responsive.hover {
+    background-color: var(--theme-surface-hover);
+    color: var(--theme-text-primary);
+  }
+
+  &:disabled {
+    cursor: not-allowed;
+    opacity: 0.5;
+  }
+}
+
+.trigger-icon {
+  height: var(--space-3);
+  width: var(--space-3);
+  flex-shrink: 0;
+  color: var(--theme-text-quaternary);
+}
+
+// The label stays visible at every breakpoint (the icon alone doesn't convey
+// state like Worktree); it truncates when the row gets tight.
+.trigger-label {
+  @include type.type-overflow;
+  min-width: 0;
+}
+
+.chevron {
+  height: var(--space-3);
+  width: var(--space-3);
+  flex-shrink: 0;
+  color: var(--theme-text-quaternary);
+}
+
+.panel {
+  @include z.z('dropdown');
+  position: absolute;
+  left: 0;
+  top: 100%;
+  margin-top: var(--space-1);
+  border: 1px solid var(--theme-border);
+  border-radius: var(--radius-xl);
+  background-color: colors.theme-color('surface-secondary', 0.95);
+  padding: var(--space-1);
+  box-shadow: var(--shadow-medium);
+  backdrop-filter: blur(24px) saturate(1.5);
+}
+
+.option {
+  @include type.type-default;
+  @include anim.transition-colors(var(--duration-fast));
+  display: flex;
+  width: 100%;
+  align-items: center;
+  gap: var(--space-2);
+  border-radius: var(--radius-md);
+  padding: var(--space-1-5) var(--space-2);
+  text-align: left;
+  color: var(--theme-text-secondary);
+
+  @include responsive.hover {
+    background-color: var(--theme-surface-hover);
+    color: var(--theme-text-primary);
+  }
+
+  &--selected {
+    color: var(--theme-text-primary);
+  }
+}
+
+.option-check {
+  height: var(--space-3);
+  width: var(--space-3);
+  flex-shrink: 0;
+  opacity: 0;
+
+  &--selected {
+    opacity: 1;
+  }
+}

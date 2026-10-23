@@ -1,0 +1,170 @@
+// Motion tokens + shared keyframes. Transitions always reference --duration-* / --easing-*
+// vars — never literal ms values or cubic-beziers in modules. A global reduced-motion
+// kill-switch lives in _rules.scss.
+
+@mixin animation-tokens {
+  :root {
+    --duration-fast: 150ms;
+    --duration-base: 200ms;
+    --duration-slow: 300ms;
+    --duration-slower: 500ms;
+
+    --easing-out: cubic-bezier(0, 0, 0.2, 1);
+    --easing-in: cubic-bezier(0.4, 0, 1, 1);
+    --easing-in-out: cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  @keyframes fade-out {
+    from {
+      opacity: 1;
+    }
+    to {
+      opacity: 0;
+    }
+  }
+
+  @keyframes fade-in-rise {
+    from {
+      opacity: 0;
+      transform: translateY(10px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  @keyframes slide-in {
+    from {
+      transform: translateX(-100%);
+    }
+    to {
+      transform: translateX(0);
+    }
+  }
+
+  @keyframes slide-out {
+    from {
+      transform: translateX(0);
+    }
+    to {
+      transform: translateX(-100%);
+    }
+  }
+
+  @keyframes shimmer {
+    from {
+      left: -33%;
+    }
+    to {
+      left: 100%;
+    }
+  }
+
+  @keyframes progress-bar {
+    from {
+      width: 0%;
+    }
+    to {
+      width: 100%;
+    }
+  }
+}
+
+// The ubiquitous hover/focus color transition (old `transition-colors duration-200`)
+@mixin transition-colors($duration: var(--duration-base)) {
+  transition-property: color, background-color, border-color, fill, stroke;
+  transition-duration: $duration;
+  transition-timing-function: var(--easing-in-out);
+}
+
+// CSS modules hash animation names, so these mixins re-emit their @keyframes into the
+// consuming module (Sass hoists them to root) so the name and @keyframes share one hash.
+@mixin fade-in($duration: var(--duration-slow), $fill: null) {
+  @keyframes fade-in {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+  animation: fade-in $duration var(--easing-out) $fill;
+}
+
+@mixin spin {
+  @keyframes spin {
+    to {
+      transform: rotate(360deg);
+    }
+  }
+  animation: spin 1s linear infinite;
+}
+
+@mixin pulse {
+  @keyframes pulse {
+    0%,
+    100% {
+      opacity: 1;
+    }
+    50% {
+      opacity: 0.5;
+    }
+  }
+  animation: pulse 2s var(--easing-in-out) infinite;
+}
+
+@mixin bounce {
+  @keyframes bounce {
+    0%,
+    100% {
+      transform: translateY(-25%);
+      animation-timing-function: var(--easing-in);
+    }
+    50% {
+      transform: translateY(0);
+      animation-timing-function: var(--easing-out);
+    }
+  }
+  animation: bounce 1s infinite;
+}
+
+@mixin caret-blink {
+  @keyframes caret-blink {
+    0%,
+    100% {
+      opacity: 1;
+    }
+    50% {
+      opacity: 0;
+    }
+  }
+  animation: caret-blink 1.1s step-end infinite;
+}
+
+// "Working" text: a soft highlight sweeps across the glyphs, then rests.
+// Clipped to the text, so ellipsis truncation still works on the same element.
+@mixin text-shimmer($base: var(--theme-text-tertiary), $highlight: var(--theme-text-primary)) {
+  @keyframes text-shimmer {
+    0% {
+      background-position: 100% 0;
+    }
+    65%,
+    100% {
+      background-position: 0 0;
+    }
+  }
+  background-image: linear-gradient(
+    90deg,
+    $base 0%,
+    $base 44%,
+    $highlight 50%,
+    $base 56%,
+    $base 100%
+  );
+  background-size: 300% 100%;
+  background-clip: text;
+  -webkit-background-clip: text;
+  color: transparent;
+  animation: text-shimmer 2.6s ease-in-out infinite;
+}

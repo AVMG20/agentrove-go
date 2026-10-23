@@ -1,0 +1,74 @@
+@use '@/styles/globals/colors' as colors;
+@use '@/styles/globals/controls' as controls;
+
+.switch {
+  @include controls.focus-ring;
+  position: relative;
+  display: inline-flex;
+  flex-shrink: 0;
+  cursor: pointer;
+  border: 1px solid transparent;
+  border-radius: var(--radius-full);
+  background-color: var(--theme-surface-active);
+  box-shadow: var(--shadow-xs);
+  transition:
+    background-color var(--duration-base),
+    border-color var(--duration-base);
+
+  // px on purpose — control art that must never rescale
+  &--md {
+    height: 20px;
+    width: 36px;
+    padding-inline: 1px;
+  }
+
+  &--sm {
+    height: 16px;
+    width: 28px;
+    padding-inline: 1px;
+  }
+
+  &[data-state='checked'] {
+    background-color: var(--theme-text-primary);
+
+    .switch-track {
+      justify-content: flex-end;
+    }
+
+    .switch-thumb {
+      background-color: var(--theme-surface);
+    }
+  }
+
+  &:disabled {
+    cursor: not-allowed;
+    opacity: 0.5;
+  }
+}
+
+.switch-track {
+  display: flex;
+  height: 100%;
+  width: 100%;
+  align-items: center;
+  justify-content: flex-start;
+  border-radius: var(--radius-full);
+}
+
+.switch-thumb {
+  border-radius: var(--radius-full);
+  box-shadow: var(--shadow-sm);
+  background-color: var(--theme-surface);
+  transition: background-color var(--duration-base);
+
+  // px on purpose — sized to the px track above
+  &--md {
+    height: 16px;
+    width: 16px;
+  }
+
+  &--sm {
+    height: 12px;
+    width: 12px;
+  }
+}

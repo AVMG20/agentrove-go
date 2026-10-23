@@ -1,0 +1,613 @@
+package chat
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"log/slog"
+	"regexp"
+	"strings"
+	"sync"
+	"sync/atomic"
+	"time"
+
+	"agentrove/internal/claude"
+	"agentrove/internal/db"
+	"agentrove/internal/events"
+	"agentrove/internal/models"
+
+	"github.com/google/uuid"
+)
+
+// Event kinds folded into the message's render snapshot (and batched).
+var snapshotKinds = map[string]bool{
+	"assistant_text": true, "user_steering": true, "assistant_thinking": true, "tool_started": true,
+	"tool_completed": true, "tool_failed": true, "prompt_suggestions": true, "system": true, "plan": true,
+}
+
+const (
+	flushInterval      = 200 * time.Millisecond
+	flushBatch         = 24
+	checkpointInterval = 2 * time.Second
+	interruptGrace     = 20 * time.Second
+	memberPermTimeout  = 5 * time.Minute
+)
+
+var promptSuggestionsRE = regexp.MustCompile(`(?s)<prompt_suggestions>\s*(.*?)\s*</prompt_suggestions>`)
+
+type turnRequest struct {
+	chat           *models.Chat
+	ws             *models.Workspace
+	userID         string
+	prompt         string // the user's text, already wrapped for Claude
+	modelID        string
+	permissionMode string
+	effort         string
+	personaName    string
+	systemPrompt   string
+	fullReplace    bool
+	attachments    []models.Attachment
+	messageID      string
+	isNewChat      bool
+	rawPrompt      string // for titling
+	followup       *claude.Message
+	member         func(kind string, payload map[string]any)
+	onDone         func(status, content string)
+	unattended     bool
+}
+
+type pendingPerm struct {
+	controlID string
+	req       claude.CanUseTool
+	timer     *time.Timer
+}
+
+type pendingElicit struct {
+	controlID string
+	req       claude.CanUseTool
+	payload   map[string]any
+}
+
+type bufferedEvent struct {
+	kind    string
+	payload map[string]any
+}
+
+type turn struct {
+	m        *Module
+	req      *turnRequest
+	chatID   string
+	streamID string
+	publish  string // user id to publish envelopes to; "" for channel members
+
+	ctx       context.Context
+	cancel    context.CancelFunc
+	cancelled atomic.Bool
+	done      chan struct{}
+
+	msgs chan claude.Message
+	tr   *claude.Translator
+	sess *claude.Session
+
+	mu             sync.Mutex
+	buf            []bufferedEvent
+	render         []map[string]any
+	textParts      []string
+	lastSeq        int64
+	lastFlush      time.Time
+	lastCheckpoint time.Time
+	perms          map[string]*pendingPerm
+	elicits        map[string]*pendingElicit
+	elicitOrder    []string
+	elicitSeq      int
+	lastTokens     int
+	lastWindow     int
+	costUSD        *float64
+}
+
+func newTurn(m *Module, req *turnRequest) *turn {
+	ctx, cancel := context.WithCancel(context.Background())
+	t := &turn{
+		m: m, req: req, chatID: req.chat.ID, streamID: uuid.NewString(),
+		ctx: ctx, cancel: cancel, done: make(chan struct{}),
+		msgs: make(chan claude.Message, 4096), tr: claude.NewTranslator(),
+		perms: map[string]*pendingPerm{}, elicits: map[string]*pendingElicit{},
+		lastFlush: time.Now(), lastCheckpoint: time.Now(),
+	}
+	if req.member == nil {
+		t.publish = req.userID
+	}
+	t.tr.SetContextWindow(claude.ContextWindow(req.modelID))
+	return t
+}
+
+// emit records one stream event. Snapshot kinds are buffered and flushed in
+// batches; everything else is persisted and published immediately.
+func (t *turn) emit(kind string, payload map[string]any) int64 {
+	if t.req.member != nil {
+		t.req.member(kind, payload)
+	}
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if snapshotKinds[kind] {
+		t.buf = append(t.buf, bufferedEvent{kind, payload})
+		t.applySnapshot(kind, payload)
+		if len(t.buf) >= flushBatch || time.Since(t.lastFlush) >= flushInterval {
+			t.flushLocked()
+		}
+		return 0
+	}
+	t.buf = append(t.buf, bufferedEvent{kind, payload})
+	return t.flushLocked()
+}
+
+func (t *turn) applySnapshot(kind string, payload map[string]any) {
+	key := map[string]string{"assistant_text": "text", "assistant_thinking": "thinking"}[kind]
+	if kind == "assistant_text" {
+		if s, _ := payload["text"].(string); s != "" {
+			t.textParts = append(t.textParts, s)
+		}
+	}
+	if key != "" && len(t.render) > 0 && t.render[len(t.render)-1]["type"] == kind {
+		last := t.render[len(t.render)-1]
+		prev, _ := last[key].(string)
+		add, _ := payload[key].(string)
+		t.render[len(t.render)-1] = map[string]any{"type": kind, key: prev + add}
+		return
+	}
+	ev := map[string]any{"type": kind}
+	for k, v := range payload {
+		ev[k] = v
+	}
+	t.render = append(t.render, ev)
+}
+
+func (t *turn) flushLocked() int64 {
+	if len(t.buf) == 0 {
+		return t.lastSeq
+	}
+	batch := t.buf
+	t.buf = nil
+	kinds := make([]string, len(batch))
+	payloads := make([]map[string]any, len(batch))
+	for i, e := range batch {
+		kinds[i], payloads[i] = e.kind, e.payload
+	}
+	end, err := t.m.st.appendEvents(context.Background(), t.chatID, t.req.messageID, t.streamID, kinds, payloads, false)
+	if err != nil {
+		slog.Error("persist stream events", "chat", t.chatID, "err", err)
+		return t.lastSeq
+	}
+	t.lastSeq = end
+	t.lastFlush = time.Now()
+	start := end - int64(len(batch)) + 1
+	if t.publish != "" {
+		for i := range batch {
+			t.m.publishEnvelope(t.publish, t.chatID, t.req.messageID, t.streamID, start+int64(i), kinds[i], payloads[i])
+		}
+	}
+	if time.Since(t.lastCheckpoint) >= checkpointInterval {
+		t.checkpointLocked("")
+	}
+	return end
+}
+
+func (t *turn) contentText() string {
+	raw := strings.Join(t.textParts, "")
+	if !strings.Contains(raw, "<prompt_suggestions>") {
+		return raw
+	}
+	return strings.TrimSpace(promptSuggestionsRE.ReplaceAllString(raw, ""))
+}
+
+func (t *turn) renderCopy() map[string]any {
+	events := make([]any, len(t.render))
+	for i, e := range t.render {
+		events[i] = e
+	}
+	return map[string]any{"events": events}
+}
+
+func (t *turn) checkpointLocked(status string) *int64 {
+	var active *string
+	if status == "" || status == StatusInProgress {
+		active = &t.streamID
+	}
+	dur, err := t.m.st.updateSnapshot(context.Background(), t.req.messageID, snapshot{
+		ContentText: t.contentText(), Render: t.renderCopy(), LastSeq: t.lastSeq,
+		ActiveStreamID: active, Status: status, TotalCostUSD: t.costUSD, RecordActivity: true,
+	})
+	if err != nil {
+		slog.Error("persist message snapshot", "chat", t.chatID, "err", err)
+	}
+	t.lastCheckpoint = time.Now()
+	return dur
+}
+
+// run executes the turn to a terminal state, then hands off to any queued
+// follow-up. It always finalizes the assistant message.
+func (t *turn) run() {
+	defer close(t.done)
+	start := t.emit("stream_started", map[string]any{"status": "started", "message_id": t.req.messageID})
+	t.mu.Lock()
+	t.lastSeq = start
+	t.checkpointLocked(StatusInProgress)
+	t.mu.Unlock()
+	if wt := db.Deref(t.req.chat.WorktreeCwd); wt != "" {
+		t.emit("system", map[string]any{"data": map[string]any{"worktree_cwd": wt}})
+	}
+	if t.req.isNewChat && t.req.member == nil && t.req.rawPrompt != "" {
+		go t.m.generateTitle(t.req.userID, t.req.chat, t.req.rawPrompt)
+	}
+
+	res, err := t.execute()
+	switch {
+	case t.cancelled.Load():
+		t.finish(StatusInterrupted, "")
+	case err != nil:
+		t.finish(StatusFailed, err.Error())
+	case res != nil && res.IsError && !t.tr.SawOutput():
+		t.finish(StatusFailed, res.ErrorText)
+	case res != nil && res.IsError:
+		// Partial output then an error (e.g. max turns): keep the output, show why.
+		t.finish(StatusFailed, res.ErrorText)
+	default:
+		t.finish(StatusCompleted, "")
+	}
+}
+
+func (t *turn) execute() (*claude.Result, error) {
+	sb, err := t.m.a.Sandboxes.For(t.req.ws)
+	if err != nil {
+		return nil, err
+	}
+	release := sb.Acquire()
+	defer release()
+
+	cfg := t.m.sessionConfig(sb, t.req)
+	sess, err := t.m.sessions.acquire(t.ctx, sb, t.chatID, cfg, t.m.wireSession)
+	if err != nil {
+		if t.cancelled.Load() {
+			return nil, nil
+		}
+		return nil, err
+	}
+	t.sess = sess
+	if t.req.followup == nil {
+		if err := sess.SetModel(t.ctx, t.req.modelID); err != nil && !t.cancelled.Load() {
+			return nil, fmt.Errorf("switch model: %w", err)
+		}
+		if err := sess.SetPermissionMode(t.ctx, t.req.permissionMode); err != nil && !t.cancelled.Load() {
+			return nil, fmt.Errorf("switch permission mode: %w", err)
+		}
+	}
+	t.m.attach(t.chatID, t)
+	defer t.m.detach(t.chatID, t)
+
+	if sid := sess.SessionID(); sid != "" {
+		t.m.persistSessionID(t.chatID, sid)
+	}
+	if t.req.followup != nil {
+		t.msgs <- *t.req.followup
+	} else {
+		blocks, err := t.m.promptBlocks(sb, t.req)
+		if err != nil {
+			return nil, err
+		}
+		if err := sess.SendUser(blocks); err != nil {
+			return nil, err
+		}
+	}
+
+	var interruptDeadline <-chan time.Time
+	ctxDone := t.ctx.Done()
+	for {
+		select {
+		case msg := <-t.msgs:
+			evs, res := t.tr.Handle(msg)
+			for _, e := range evs {
+				t.process(e)
+			}
+			if res != nil {
+				t.mu.Lock()
+				cost := res.TotalCostUSD
+				t.costUSD = &cost
+				t.mu.Unlock()
+				if res.ContextWindow > 0 {
+					t.tr.SetContextWindow(res.ContextWindow)
+				}
+				sess.Touch()
+				return res, nil
+			}
+		case <-sess.Done():
+			if t.cancelled.Load() {
+				return nil, nil
+			}
+			return nil, sess.Err()
+		case <-ctxDone:
+			ctxDone = nil
+			t.denyPending("The user interrupted this turn.")
+			go func() {
+				ictx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+				defer cancel()
+				_ = sess.Interrupt(ictx)
+			}()
+			interruptDeadline = time.After(interruptGrace)
+		case <-interruptDeadline:
+			slog.Warn("claude did not stop after interrupt; killing", "chat", t.chatID)
+			t.m.sessions.drop(t.chatID, sess)
+			return nil, nil
+		}
+	}
+}
+
+// process handles one translated event.
+func (t *turn) process(e claude.Event) {
+	switch e.Kind {
+	case "usage":
+		data, _ := e.Payload["data"].(map[string]any)
+		tokens, _ := data["input_tokens"].(int)
+		window, _ := data["context_window"].(int)
+		t.contextUsage(tokens, window)
+		return
+	case "system":
+		if data, ok := e.Payload["data"].(map[string]any); ok {
+			if sid, _ := data["session_id"].(string); sid != "" {
+				t.m.persistSessionID(t.chatID, sid)
+			}
+		}
+	case "tool_completed":
+		if tool, ok := e.Payload["tool"].(map[string]any); ok && t.sess != nil {
+			if tool["name"] == "EnterPlanMode" {
+				t.sess.NoteMode("plan")
+			}
+		}
+	}
+	t.emit(e.Kind, e.Payload)
+}
+
+func (t *turn) contextUsage(tokens, window int) {
+	if window <= 0 {
+		window = claude.ContextWindow(t.req.modelID)
+	}
+	if tokens <= 0 || (tokens == t.lastTokens && window == t.lastWindow) {
+		return
+	}
+	t.lastTokens, t.lastWindow = tokens, window
+	pct := 0.0
+	if window > 0 {
+		pct = float64(tokens) / float64(window) * 100
+		if pct > 100 {
+			pct = 100
+		}
+	}
+	_, _ = t.m.a.DB.ExecContext(context.Background(), `UPDATE chats SET context_token_usage = ?, context_window = ? WHERE id = ?`, tokens, window, t.chatID)
+	t.emit("system", map[string]any{"context_usage": map[string]any{"tokens_used": tokens, "context_window": window, "percentage": pct}, "chat_id": t.chatID})
+}
+
+// handleControl receives the CLI's control requests (permission prompts).
+// It must not block: the answer arrives later from an HTTP handler.
+func (t *turn) handleControl(controlID string, raw json.RawMessage) {
+	subtype, req := claude.ParseControl(raw)
+	if subtype != "can_use_tool" {
+		t.sess.RespondControl(controlID, map[string]any{})
+		return
+	}
+	if req.ToolName == "AskUserQuestion" {
+		if t.req.unattended || t.req.member != nil {
+			t.sess.RespondControl(controlID, map[string]any{"behavior": "deny", "message": "No user is available to answer questions. Proceed with your best judgment and state your assumptions.", "interrupt": false})
+			return
+		}
+		t.askQuestion(controlID, req)
+		return
+	}
+	if t.req.unattended {
+		t.sess.RespondControl(controlID, map[string]any{"behavior": "allow", "updatedInput": orEmpty(req.Input)})
+		return
+	}
+	requestID := req.ToolUseID
+	if requestID == "" {
+		requestID = controlID
+	}
+	p := &pendingPerm{controlID: controlID, req: req}
+	t.mu.Lock()
+	t.perms[requestID] = p
+	t.mu.Unlock()
+	if t.req.member != nil {
+		p.timer = time.AfterFunc(memberPermTimeout, func() { t.resolvePermission(requestID, "") })
+	}
+	t.emit("permission_request", map[string]any{
+		"request_id": requestID, "tool_name": req.ToolName, "tool_input": orEmpty(req.Input),
+		"data": map[string]any{"options": claude.PermissionOptions(req.ToolName)},
+	})
+}
+
+func orEmpty(m map[string]any) map[string]any {
+	if m == nil {
+		return map[string]any{}
+	}
+	return m
+}
+
+func (t *turn) resolvePermission(requestID, optionID string) bool {
+	t.mu.Lock()
+	p := t.perms[requestID]
+	delete(t.perms, requestID)
+	t.mu.Unlock()
+	if p == nil {
+		return false
+	}
+	if p.timer != nil {
+		p.timer.Stop()
+	}
+	resp, mode := claude.PermissionDecision(p.req, optionID)
+	if mode != "" {
+		t.sess.NoteMode(mode)
+		if p.req.ToolUseID != "" {
+			t.tr.ResolvedModes[p.req.ToolUseID] = mode
+		}
+	}
+	t.sess.RespondControl(p.controlID, resp)
+	if t.req.member != nil {
+		t.emit("permission_resolved", map[string]any{"request_id": requestID})
+	}
+	return true
+}
+
+func (t *turn) askQuestion(controlID string, req claude.CanUseTool) {
+	msg, schema := claude.QuestionSchema(req.Input)
+	t.mu.Lock()
+	t.elicitSeq++
+	id := fmt.Sprintf("elicit-%d", t.elicitSeq)
+	payload := map[string]any{"message": msg, "tool_call_id": nilIfEmpty(req.ToolUseID), "requested_schema": schema}
+	t.elicits[id] = &pendingElicit{controlID: controlID, req: req, payload: payload}
+	t.elicitOrder = append(t.elicitOrder, id)
+	t.mu.Unlock()
+	t.emit("elicitation_request", map[string]any{"request_id": id, "data": payload})
+}
+
+func nilIfEmpty(s string) any {
+	if s == "" {
+		return nil
+	}
+	return s
+}
+
+func (t *turn) resolveElicitation(id, action string, content map[string]any) bool {
+	t.mu.Lock()
+	e := t.elicits[id]
+	delete(t.elicits, id)
+	t.mu.Unlock()
+	if e == nil {
+		return false
+	}
+	if action == "accept" {
+		t.sess.RespondControl(e.controlID, map[string]any{"behavior": "allow", "updatedInput": claude.QuestionAnswers(e.req.Input, content)})
+	} else {
+		msg := "The user declined to answer. Proceed with your best judgment."
+		if action == "cancel" {
+			msg = "The user dismissed the question."
+		}
+		t.sess.RespondControl(e.controlID, map[string]any{"behavior": "deny", "message": msg, "interrupt": false})
+	}
+	return true
+}
+
+func (t *turn) pendingElicitations() []map[string]any {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	out := []map[string]any{}
+	for _, id := range t.elicitOrder {
+		e, ok := t.elicits[id]
+		if !ok {
+			continue
+		}
+		item := map[string]any{"request_id": id}
+		for k, v := range e.payload {
+			item[k] = v
+		}
+		out = append(out, item)
+	}
+	return out
+}
+
+func (t *turn) denyPending(msg string) {
+	t.mu.Lock()
+	perms := t.perms
+	elicits := t.elicits
+	t.perms = map[string]*pendingPerm{}
+	t.elicits = map[string]*pendingElicit{}
+	t.mu.Unlock()
+	if t.sess == nil {
+		return
+	}
+	for _, p := range perms {
+		if p.timer != nil {
+			p.timer.Stop()
+		}
+		t.sess.RespondControl(p.controlID, map[string]any{"behavior": "deny", "message": msg, "interrupt": true})
+	}
+	for _, e := range elicits {
+		t.sess.RespondControl(e.controlID, map[string]any{"behavior": "deny", "message": msg, "interrupt": true})
+	}
+}
+
+// finish persists the terminal snapshot and emits the terminal event, unless
+// a queued message takes over the stream.
+func (t *turn) finish(status, errText string) {
+	t.denyPending("The turn ended.")
+	t.emitPromptSuggestions()
+	t.mu.Lock()
+	t.flushLocked()
+	if status == StatusFailed {
+		if errText == "" {
+			errText = "Stream ended unexpectedly"
+		}
+		t.applySnapshot("assistant_text", map[string]any{"text": "\n\nError: " + errText})
+	}
+	dur := t.checkpointLocked(status)
+	content := t.contentText()
+	t.mu.Unlock()
+
+	if t.req.onDone != nil {
+		defer t.req.onDone(status, content)
+	}
+	switch status {
+	case StatusCompleted:
+		if t.req.member == nil && t.m.startQueued(t, false, dur) {
+			return
+		}
+		t.emit("complete", map[string]any{"status": "completed", "duration_ms": dur})
+	case StatusInterrupted:
+		if t.req.member == nil && t.m.startQueued(t, true, dur) {
+			return
+		}
+		t.emit("cancelled", map[string]any{"status": StatusInterrupted, "duration_ms": dur})
+	default:
+		t.emit("error", map[string]any{"error": errText})
+	}
+}
+
+func (t *turn) emitPromptSuggestions() {
+	t.mu.Lock()
+	raw := strings.Join(t.textParts, "")
+	t.mu.Unlock()
+	m := promptSuggestionsRE.FindStringSubmatch(raw)
+	if m == nil {
+		return
+	}
+	var list []string
+	if json.Unmarshal([]byte(m[1]), &list) != nil {
+		return
+	}
+	out := make([]string, 0, len(list))
+	for _, s := range list {
+		if s = strings.TrimSpace(s); s != "" {
+			out = append(out, s)
+		}
+	}
+	if len(out) > 0 {
+		t.emit("prompt_suggestions", map[string]any{"suggestions": out})
+	}
+}
+
+// envelope is the SSE wire shape (StreamEnvelope in the frontend).
+func envelope(chatID, messageID, streamID string, seq int64, kind string, payload map[string]any) []byte {
+	if payload == nil {
+		payload = map[string]any{}
+	}
+	b, _ := json.Marshal(map[string]any{"chatId": chatID, "messageId": messageID, "streamId": streamID, "seq": seq, "kind": kind, "payload": payload})
+	return b
+}
+
+func (m *Module) publishEnvelope(userID, chatID, messageID, streamID string, seq int64, kind string, payload map[string]any) {
+	m.a.Hub.Publish(events.UserStreams(userID), envelope(chatID, messageID, streamID, seq, kind, payload))
+}
+
+func (m *Module) publishChatEvent(userID string, payload map[string]any) {
+	b, _ := json.Marshal(payload)
+	m.a.Hub.Publish(events.UserChats(userID), b)
+}
+
+var errBusy = errors.New("A response is already streaming for this chat. Wait for it to finish or queue the message instead.")

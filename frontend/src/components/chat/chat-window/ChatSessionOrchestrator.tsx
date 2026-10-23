@@ -1,0 +1,298 @@
+import { useEffect, useMemo, useRef, type ReactNode } from 'react';
+import { useShallow } from 'zustand/react/shallow';
+import { useQueryClient } from '@tanstack/react-query';
+import { ChatSessionProvider } from '@/contexts/ChatSessionContext';
+import { ChatInputMessageProvider } from '@/contexts/ChatInputMessageContext';
+import { ChatCopiedMessageProvider } from '@/contexts/ChatCopiedMessageContext';
+import type { ChatSessionState, ChatSessionActions } from '@/contexts/ChatSessionContextDefinition';
+import { useChatStore } from '@/store/chatStore';
+import {
+  useChatSettingsStore,
+  DEFAULT_PERMISSION_MODE,
+  DEFAULT_THINKING_MODE,
+  DEFAULT_WORKTREE,
+} from '@/store/chatSettingsStore';
+import { useChatStreaming } from '@/hooks/useChatStreaming';
+import { usePermissionRequest } from '@/hooks/usePermissionRequest';
+import { useElicitationRequest } from '@/hooks/useElicitationRequest';
+import { useInitialPrompt } from '@/hooks/useInitialPrompt';
+import { useContextUsageState } from '@/hooks/useContextUsageState';
+import { useMessageInitialization } from '@/hooks/useMessageInitialization';
+import { useModelSelection } from '@/hooks/queries/useModelQueries';
+import type { Chat, Message } from '@/types/chat.types';
+import type { useInfiniteMessagesQuery } from '@/hooks/queries/useChatQueries';
+
+const EMPTY_FILES: File[] = [];
+
+interface ChatSessionOrchestratorProps {
+  chatId: string;
+  currentChat: Chat | undefined;
+  fetchedMessages: Message[];
+  hasFetchedMessages: boolean;
+  messagesQuery: ReturnType<typeof useInfiniteMessagesQuery>;
+  useRouteInitialPrompt?: boolean;
+  children: ReactNode;
+}
+
+export function ChatSessionOrchestrator({
+  chatId,
+  currentChat,
+  fetchedMessages,
+  hasFetchedMessages,
+  messagesQuery,
+  useRouteInitialPrompt = true,
+  children,
+}: ChatSessionOrchestratorProps) {
+  const queryClient = useQueryClient();
+
+  const { attachedFiles, clearAttachedFilesForChat } = useChatStore(
+    useShallow((state) => ({
+      attachedFiles: state.attachedFilesByChat[chatId] ?? EMPTY_FILES,
+      clearAttachedFilesForChat: state.clearAttachedFilesForChat,
+    })),
+  );
+
+  const permissionMode = useChatSettingsStore(
+    (state) => state.permissionModeByChat[chatId] ?? DEFAULT_PERMISSION_MODE,
+  );
+  const thinkingMode = useChatSettingsStore(
+    (state) => state.thinkingModeByChat[chatId] ?? DEFAULT_THINKING_MODE,
+  );
+  const worktree = useChatSettingsStore(
+    (state) => state.worktreeByChat[chatId] ?? DEFAULT_WORKTREE,
+  );
+  const baseBranch = useChatSettingsStore((state) => state.worktreeBaseBranchByChat[chatId]);
+  // Adopt the server-recorded last-turn settings when this client has no local
+  // choice for the chat — turns started out-of-band (MCP, automations) would
+  // otherwise display and re-send the client defaults instead of what ran.
+  useEffect(() => {
+    if (!currentChat) return;
+    const settings = useChatSettingsStore.getState();
+    if (settings.thinkingModeByChat[chatId] === undefined && currentChat.last_thinking_mode) {
+      settings.setThinkingMode(chatId, currentChat.last_thinking_mode);
+    }
+    if (settings.personaByChat[chatId] === undefined && currentChat.last_persona_name) {
+      settings.setPersona(chatId, currentChat.last_persona_name);
+    }
+  }, [chatId, currentChat]);
+  const lastAssistantModelId = useMemo((): string | null | undefined => {
+    if (messagesQuery.isLoading) return null;
+    for (let i = fetchedMessages.length - 1; i >= 0; i--) {
+      if (fetchedMessages[i].role === 'assistant' && fetchedMessages[i].model_id) {
+        return fetchedMessages[i].model_id;
+      }
+    }
+    return undefined;
+  }, [fetchedMessages, messagesQuery.isLoading]);
+
+  const { selectedModelId, selectedModel, selectModel } = useModelSelection({
+    chatId,
+    initialModelId: lastAssistantModelId,
+  });
+
+  const {
+    initialPrompt,
+    setInitialPrompt,
+    initialPromptSent,
+    setInitialPromptSent,
+    initialPromptFromRoute,
+  } = useInitialPrompt();
+  const effectiveInitialPrompt = useRouteInitialPrompt ? initialPrompt : null;
+  const effectiveInitialPromptFromRoute = useRouteInitialPrompt ? initialPromptFromRoute : null;
+
+  const { contextUsage, updateContextUsage } = useContextUsageState(
+    chatId,
+    currentChat,
+    selectedModel?.context_window,
+  );
+
+  const {
+    pendingRequest,
+    isLoading: isPermissionLoading,
+    error: permissionError,
+    handlePermissionRequest,
+    handleApprove,
+    handleReject,
+  } = usePermissionRequest(chatId);
+
+  const {
+    pendingRequest: pendingElicitation,
+    isLoading: isElicitationLoading,
+    error: elicitationError,
+    handleElicitationRequest,
+    handleElicitationDismissed,
+    handleSubmit: handleElicitationSubmit,
+    handleSkip: handleElicitationSkip,
+    handleCancel: handleElicitationCancel,
+  } = useElicitationRequest(chatId);
+
+  const streamingState = useChatStreaming({
+    chatId,
+    currentChat,
+    fetchedMessages,
+    hasFetchedMessages,
+    isInitialLoading: messagesQuery.isLoading,
+    queryClient,
+    onContextUsageUpdate: updateContextUsage,
+    selectedModelId,
+    permissionMode,
+    thinkingMode,
+    worktree,
+    baseBranch,
+    onPermissionRequest: handlePermissionRequest,
+    onElicitationRequest: handleElicitationRequest,
+    onElicitationDismissed: handleElicitationDismissed,
+  });
+
+  const { messages, sendMessage, isLoading, isStreaming, wasAborted, setMessages } = streamingState;
+
+  useMessageInitialization({
+    fetchedMessages,
+    chatId,
+    selectedModelId,
+    initialPromptFromRoute: effectiveInitialPromptFromRoute,
+    initialPromptSent,
+    wasAborted,
+    attachedFiles,
+    isLoading,
+    isStreaming,
+    setMessages,
+    setInitialPrompt,
+  });
+
+  const initialPromptActionsRef = useRef({
+    sendMessage,
+    chatId,
+    attachedFiles,
+    setInitialPromptSent,
+    clearAttachedFilesForChat,
+  });
+  initialPromptActionsRef.current = {
+    sendMessage,
+    chatId,
+    attachedFiles,
+    setInitialPromptSent,
+    clearAttachedFilesForChat,
+  };
+
+  useEffect(() => {
+    if (
+      effectiveInitialPrompt &&
+      messages.length === 1 &&
+      !isLoading &&
+      !isStreaming &&
+      !initialPromptSent &&
+      !messagesQuery.isLoading &&
+      !hasFetchedMessages
+    ) {
+      const {
+        sendMessage: send,
+        chatId: cid,
+        attachedFiles: files,
+        setInitialPromptSent: setSent,
+        clearAttachedFilesForChat: clearFiles,
+      } = initialPromptActionsRef.current;
+      const userMessage = messages[0];
+      send(effectiveInitialPrompt, cid, userMessage, files);
+      setSent(true);
+      clearFiles(cid);
+    }
+  }, [
+    effectiveInitialPrompt,
+    messages,
+    isLoading,
+    isStreaming,
+    initialPromptSent,
+    messagesQuery.isLoading,
+    hasFetchedMessages,
+  ]);
+
+  const prevChatIdForPromptRef = useRef(chatId);
+  if (prevChatIdForPromptRef.current !== chatId) {
+    prevChatIdForPromptRef.current = chatId;
+    setInitialPromptSent(false);
+  }
+
+  const chatSessionState = useMemo<ChatSessionState>(
+    () => ({
+      messages,
+      isLoading,
+      isStreaming,
+      isInitialLoading: messagesQuery.isLoading || (hasFetchedMessages && messages.length === 0),
+      pendingUserMessageId: streamingState.pendingUserMessageId,
+      attachedFiles: streamingState.inputFiles,
+      selectedModelId,
+      contextUsage,
+      hasNextPage: messagesQuery.hasNextPage,
+      isFetchingNextPage: messagesQuery.isFetchingNextPage,
+      pendingPermissionRequest: pendingRequest,
+      isPermissionLoading,
+      permissionError,
+      pendingElicitationRequest: pendingElicitation,
+      isElicitationLoading,
+      elicitationError,
+    }),
+    [
+      messages,
+      streamingState.pendingUserMessageId,
+      streamingState.inputFiles,
+      isLoading,
+      isStreaming,
+      messagesQuery.isLoading,
+      hasFetchedMessages,
+      messagesQuery.hasNextPage,
+      messagesQuery.isFetchingNextPage,
+      selectedModelId,
+      contextUsage,
+      pendingRequest,
+      isPermissionLoading,
+      permissionError,
+      pendingElicitation,
+      isElicitationLoading,
+      elicitationError,
+    ],
+  );
+
+  const chatSessionActions = useMemo<ChatSessionActions>(
+    () => ({
+      onSubmit: streamingState.handleMessageSend,
+      onStopStream: streamingState.handleStop,
+      onAttach: streamingState.setInputFiles,
+      onModelChange: selectModel,
+      fetchNextPage: messagesQuery.fetchNextPage,
+      onPermissionApprove: handleApprove,
+      onPermissionReject: handleReject,
+      onElicitationSubmit: handleElicitationSubmit,
+      onElicitationSkip: handleElicitationSkip,
+      onElicitationCancel: handleElicitationCancel,
+    }),
+    [
+      streamingState.handleMessageSend,
+      streamingState.handleStop,
+      streamingState.setInputFiles,
+      selectModel,
+      messagesQuery.fetchNextPage,
+      handleApprove,
+      handleReject,
+      handleElicitationSubmit,
+      handleElicitationSkip,
+      handleElicitationCancel,
+    ],
+  );
+
+  return (
+    <ChatSessionProvider state={chatSessionState} actions={chatSessionActions}>
+      <ChatCopiedMessageProvider
+        copiedMessageId={streamingState.copiedMessageId}
+        onCopy={streamingState.handleCopy}
+      >
+        <ChatInputMessageProvider
+          inputMessage={streamingState.inputMessage}
+          setInputMessage={streamingState.setInputMessage}
+        >
+          {children}
+        </ChatInputMessageProvider>
+      </ChatCopiedMessageProvider>
+    </ChatSessionProvider>
+  );
+}

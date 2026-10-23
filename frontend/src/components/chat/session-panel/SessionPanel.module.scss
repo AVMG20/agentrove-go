@@ -1,0 +1,228 @@
+@use '@/styles/globals/colors' as colors;
+@use '@/styles/globals/typography' as type;
+@use '@/styles/globals/animations' as anim;
+@use '@/styles/globals/responsive' as responsive;
+
+.panel {
+  display: flex;
+  width: 280px;
+  flex-shrink: 0;
+  flex-direction: column;
+  gap: var(--space-3);
+  overflow-y: auto;
+  border-left: 1px solid colors.theme-color('border', 0.5);
+  background-color: var(--theme-surface);
+  padding: var(--space-3);
+}
+
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-0-5);
+  border: 1px solid colors.theme-color('border', 0.6);
+  border-radius: var(--radius-xl);
+  padding: var(--space-2);
+}
+
+.card-header {
+  display: flex;
+  min-height: var(--space-6);
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 var(--space-1);
+}
+
+.card-title {
+  @include type.type-default(500);
+  color: var(--theme-text-primary);
+}
+
+.header-button {
+  @include anim.transition-colors;
+  display: flex;
+  border-radius: var(--radius-md);
+  padding: var(--space-1);
+  color: var(--theme-text-tertiary);
+
+  @include responsive.hover {
+    background-color: var(--theme-surface-hover);
+    color: var(--theme-text-primary);
+  }
+}
+
+.row,
+.thread-row {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: var(--space-2);
+  border-radius: var(--radius-lg);
+  padding: var(--space-1) var(--space-1);
+  color: var(--theme-text-secondary);
+}
+
+.thread-row {
+  @include anim.transition-colors;
+  width: 100%;
+  text-align: left;
+
+  @include responsive.hover {
+    background-color: colors.theme-color('surface-hover', 0.5);
+    color: var(--theme-text-primary);
+  }
+}
+
+.row-icon {
+  position: relative;
+  display: flex;
+  height: var(--space-4);
+  width: var(--space-4);
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  color: var(--theme-text-tertiary);
+}
+
+.row-text {
+  @include type.type-default;
+  @include type.type-overflow;
+  display: block;
+  min-width: 0;
+  flex: 1;
+}
+
+.glyph {
+  height: var(--space-3-5);
+  width: var(--space-3-5);
+}
+
+.secondary {
+  color: var(--theme-text-quaternary);
+}
+
+.timestamp {
+  @include type.type-meta;
+  flex-shrink: 0;
+  font-variant-numeric: tabular-nums;
+  color: var(--theme-text-quaternary);
+}
+
+.spinner {
+  @include type.type-large;
+  line-height: 1;
+}
+
+.status-corner {
+  position: absolute;
+  right: calc(var(--space-0-5) * -1);
+  top: calc(var(--space-0-5) * -1);
+}
+
+.status-ring {
+  box-shadow: 0 0 0 1px var(--theme-surface);
+}
+
+.empty {
+  @include type.type-meta;
+  padding: var(--space-1);
+  color: var(--theme-text-quaternary);
+}
+
+.context-value {
+  @include type.type-meta(500);
+  font-variant-numeric: tabular-nums;
+  color: var(--theme-text-secondary);
+}
+
+.context-track {
+  margin: var(--space-1);
+  height: var(--space-1);
+  overflow: hidden;
+  border-radius: var(--radius-full);
+  background-color: var(--theme-border);
+}
+
+.context-fill {
+  height: 100%;
+  border-radius: inherit;
+  transition: width var(--duration-base);
+
+  &--normal {
+    background-color: var(--theme-text-primary);
+  }
+
+  &--warning {
+    background-color: var(--theme-warning-text);
+  }
+
+  &--danger {
+    background-color: var(--theme-error-text);
+  }
+}
+
+.changes-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.diff-stats {
+  @include anim.transition-colors;
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-0-5);
+  border-radius: var(--radius-lg);
+  padding: var(--space-1);
+
+  @include responsive.hover {
+    background-color: colors.theme-color('surface-hover', 0.5);
+  }
+}
+
+.changes-label {
+  @include type.type-meta;
+  color: var(--theme-text-tertiary);
+}
+
+.changes-numbers {
+  @include type.type-default;
+  display: flex;
+  flex-wrap: wrap;
+  column-gap: var(--space-1-5);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.stat-add {
+  color: var(--theme-success-text);
+}
+
+.stat-del {
+  color: var(--theme-error-text);
+}
+
+.pr-button {
+  @include anim.transition-colors;
+  @include type.type-meta(500);
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: var(--space-1);
+  border-radius: var(--radius-md);
+  background-color: var(--theme-surface-hover);
+  padding: var(--space-1) var(--space-2);
+  color: var(--theme-text-primary);
+
+  @include responsive.hover {
+    background-color: var(--theme-surface-active);
+  }
+}
+
+.pr-icon {
+  height: var(--space-3);
+  width: var(--space-3);
+}

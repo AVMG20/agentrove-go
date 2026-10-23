@@ -1,0 +1,186 @@
+@use '@/styles/globals/colors' as colors;
+@use '@/styles/globals/typography' as type;
+@use '@/styles/globals/animations' as anim;
+@use '@/styles/globals/responsive' as responsive;
+
+.trigger {
+  @include anim.transition-colors;
+  @include type.type-meta;
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  gap: var(--space-1-5);
+  border-radius: var(--radius-md);
+  padding: var(--space-1) var(--space-1-5);
+  color: var(--theme-text-tertiary);
+
+  @include responsive.hover {
+    background-color: var(--theme-surface-hover);
+    color: var(--theme-text-primary);
+  }
+
+  &:disabled {
+    cursor: not-allowed;
+    opacity: 0.5;
+  }
+}
+
+.trigger-icon {
+  height: var(--space-3);
+  width: var(--space-3);
+  flex-shrink: 0;
+  color: var(--theme-text-quaternary);
+}
+
+.trigger-label {
+  @include type.type-overflow;
+  // Tighter cap on phones: the label keeps the selected workspace visible while
+  // leaving the rest of the selector row room to fit on one line.
+  max-width: var(--space-24);
+
+  @include responsive.media('sm-up') {
+    max-width: var(--space-64);
+  }
+}
+
+.body {
+  display: flex;
+  min-height: 0;
+  flex-direction: column;
+}
+
+.search-section {
+  padding: var(--space-3) var(--space-3) var(--space-2);
+}
+
+.search-field {
+  position: relative;
+}
+
+.search-icon {
+  position: absolute;
+  left: var(--space-2-5);
+  top: 50%;
+  transform: translateY(-50%);
+  height: var(--space-3-5);
+  width: var(--space-3-5);
+  color: var(--theme-text-quaternary);
+}
+
+.clear-search {
+  @include anim.transition-colors;
+  position: absolute;
+  top: 50%;
+  right: var(--space-1-5);
+  display: flex;
+  height: var(--space-6);
+  width: var(--space-6);
+  transform: translateY(-50%);
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-md);
+  color: var(--theme-text-quaternary);
+
+  svg {
+    height: var(--space-3);
+    width: var(--space-3);
+  }
+
+  @include responsive.hover {
+    background-color: var(--theme-surface-hover);
+    color: var(--theme-text-primary);
+  }
+}
+
+.search-input {
+  @include type.type-default;
+  height: var(--space-8);
+  width: 100%;
+  border: 1px solid colors.theme-color('border', 0.5);
+  border-radius: var(--radius-lg);
+  background-color: var(--theme-surface-tertiary);
+  padding: var(--space-2) var(--space-8);
+  color: var(--theme-text-primary);
+  box-shadow: var(--shadow-inset);
+
+  &::-webkit-search-cancel-button {
+    appearance: none;
+  }
+
+  &::placeholder {
+    color: var(--theme-text-quaternary);
+  }
+
+  &:focus-visible {
+    outline: none;
+    border-color: var(--theme-border-hover);
+    box-shadow:
+      var(--shadow-inset),
+      0 0 0 3px colors.theme-color('text-quaternary', 0.15);
+  }
+
+  // Light reads surface-tertiary, dark reads one step lighter — asymmetric pairing
+  // from the original Tailwind classes, not a plain light/dark token resolution.
+  :global([data-theme='dark']) & {
+    background-color: var(--theme-surface-secondary);
+  }
+}
+
+.list {
+  max-height: var(--space-80);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 0 var(--space-3) var(--space-2);
+}
+
+.empty {
+  display: flex;
+  min-height: var(--space-32);
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-6) var(--space-4);
+  text-align: center;
+}
+
+.empty-icon {
+  height: var(--space-5);
+  width: var(--space-5);
+  margin-bottom: var(--space-2);
+  color: var(--theme-text-quaternary);
+}
+
+.empty-title {
+  @include type.type-default(500);
+  color: var(--theme-text-secondary);
+}
+
+.empty-description {
+  @include type.type-meta;
+  margin-top: var(--space-1);
+  color: var(--theme-text-quaternary);
+}
+
+.list-heading {
+  @include type.type-section-header;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-1-5) var(--space-2-5) var(--space-2);
+  color: var(--theme-text-quaternary);
+
+  span:last-child {
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+.list-items {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-0-5);
+}
+
+.footer {
+  border-top: 1px solid colors.theme-color('border', 0.5);
+  padding: var(--space-2) var(--space-3);
+}

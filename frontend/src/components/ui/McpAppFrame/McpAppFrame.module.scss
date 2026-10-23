@@ -1,0 +1,15 @@
+@use '@/styles/globals/colors' as colors;
+@use '@/styles/globals/animations' as anim;
+
+.frame {
+  @include anim.fade-in;
+  overflow: hidden;
+  border-radius: var(--radius-lg);
+  border: 1px solid colors.theme-color('border', 0.5);
+}
+
+.iframe {
+  display: block;
+  width: 100%;
+  border: 0;
+}

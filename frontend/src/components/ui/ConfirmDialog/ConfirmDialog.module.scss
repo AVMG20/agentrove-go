@@ -1,0 +1,56 @@
+@use '@/styles/globals/typography' as type;
+@use '@/styles/globals/colors' as colors;
+
+.body {
+  padding: var(--space-5);
+}
+
+.row {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+}
+
+.icon-badge {
+  display: flex;
+  height: var(--space-8);
+  width: var(--space-8);
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-full);
+  background-color: var(--theme-surface-tertiary);
+}
+
+.icon {
+  height: var(--space-4);
+  width: var(--space-4);
+  color: var(--theme-text-tertiary);
+}
+
+.text {
+  min-width: 0;
+  flex: 1;
+  padding-top: var(--space-0-5);
+}
+
+.title {
+  @include type.type-large(600);
+  color: var(--theme-text-primary);
+}
+
+.message {
+  @include type.type-body;
+  margin-top: var(--space-1-5);
+  line-height: 1.5;
+  color: var(--theme-text-secondary);
+}
+
+.footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  border-top: 1px solid var(--theme-border);
+  background-color: var(--theme-surface-secondary);
+  padding: var(--space-3) var(--space-5);
+}

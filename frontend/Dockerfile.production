@@ -1,0 +1,22 @@
+FROM node:20-alpine AS build
+
+WORKDIR /app
+
+COPY package*.json ./
+RUN npm ci --legacy-peer-deps
+
+COPY . .
+
+ENV VITE_API_BASE_URL=/api/v1
+ENV VITE_WS_URL=/api/v1/ws
+
+RUN npm run build
+
+FROM nginx:1.27-alpine
+
+# Official nginx image runs envsubst on templates/*.template at start.
+ENV API_HOST=api
+COPY nginx-production.conf /etc/nginx/templates/default.conf.template
+COPY --from=build /app/dist /usr/share/nginx/html
+
+EXPOSE 80

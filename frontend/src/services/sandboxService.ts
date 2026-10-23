@@ -1,0 +1,328 @@
+import { apiClient } from '@/lib/api';
+import { buildQueryString, ensureResponse, serviceCall } from '@/services/base/BaseService';
+import { NotFoundError, ValidationError } from '@/services/base/ServiceError';
+import type {
+  DiffMode,
+  FileContent,
+  FileMetadata,
+  GitBranchesData,
+  GitChangedPathsData,
+  GitDiffStatsData,
+  GitFetchBaseData,
+  GitCheckoutData,
+  GitCommitResult,
+  GitCreateBranchResult,
+  GitDiffData,
+  GitFileBaselineData,
+  GitPushPullResult,
+  GitRemoteUrlData,
+  SearchParams,
+  SearchResponse,
+  UpdateFileResult,
+} from '@/types/sandbox.types';
+import { validateRequired } from '@/utils/validation';
+
+async function getSandboxFilesMetadata(sandboxId: string, cwd?: string): Promise<FileMetadata[]> {
+  validateRequired(sandboxId, 'Sandbox ID');
+
+  return serviceCall(async () => {
+    const qs = buildQueryString({ cwd });
+    const url = `/sandbox/${sandboxId}/files/metadata${qs}`;
+    const response = await apiClient.get<{ files: FileMetadata[] }>(url);
+
+    if (!response || !response.files) {
+      return [];
+    }
+
+    return response.files;
+  });
+}
+
+async function getFileContent(sandboxId: string, filePath: string): Promise<FileContent> {
+  validateRequired(sandboxId, 'Sandbox ID');
+  validateRequired(filePath, 'File path');
+
+  return serviceCall(async () => {
+    const url = `/sandbox/${sandboxId}/files/content/${filePath}`;
+    const response = await apiClient.get<FileContent>(url);
+
+    if (!response) {
+      throw new NotFoundError('File not found');
+    }
+
+    return response;
+  });
+}
+
+async function updateFile(
+  sandboxId: string,
+  filePath: string,
+  content: string,
+): Promise<UpdateFileResult> {
+  validateRequired(sandboxId, 'Sandbox ID');
+  validateRequired(filePath, 'File path');
+  if (content === null || content === undefined) {
+    throw new ValidationError('Content is required');
+  }
+
+  return serviceCall(async () => {
+    const response = await apiClient.put<UpdateFileResult>(`/sandbox/${sandboxId}/files`, {
+      file_path: filePath,
+      content,
+    });
+
+    return ensureResponse(response, 'Update file operation returned no response');
+  });
+}
+
+async function downloadZip(sandboxId: string): Promise<Blob> {
+  validateRequired(sandboxId, 'Sandbox ID');
+
+  return serviceCall(async () => {
+    const response = await apiClient.getBlob(`/sandbox/${sandboxId}/download-zip`);
+    return ensureResponse(response, 'Download failed: No response received');
+  });
+}
+
+async function getGitDiff(
+  sandboxId: string,
+  mode: DiffMode = 'all',
+  fullContext: boolean = false,
+  cwd?: string,
+): Promise<GitDiffData> {
+  validateRequired(sandboxId, 'Sandbox ID');
+
+  return serviceCall(async () => {
+    const qs = buildQueryString({
+      mode,
+      full_context: fullContext || undefined,
+      cwd,
+    });
+    const response = await apiClient.get<GitDiffData>(`/sandbox/${sandboxId}/git/diff${qs}`);
+    return ensureResponse(response, 'Failed to get git diff');
+  });
+}
+
+async function getGitChangedPaths(sandboxId: string, cwd?: string): Promise<GitChangedPathsData> {
+  validateRequired(sandboxId, 'Sandbox ID');
+
+  return serviceCall(async () => {
+    const qs = buildQueryString({ cwd });
+    const response = await apiClient.get<GitChangedPathsData>(
+      `/sandbox/${sandboxId}/git/changed-paths${qs}`,
+    );
+    return ensureResponse(response, 'Failed to get changed paths');
+  });
+}
+
+async function getGitDiffStats(sandboxId: string, cwd?: string): Promise<GitDiffStatsData> {
+  validateRequired(sandboxId, 'Sandbox ID');
+
+  return serviceCall(async () => {
+    const qs = buildQueryString({ cwd });
+    const response = await apiClient.get<GitDiffStatsData>(
+      `/sandbox/${sandboxId}/git/diff-stats${qs}`,
+    );
+    return ensureResponse(response, 'Failed to get diff stats');
+  });
+}
+
+async function fetchGitBase(sandboxId: string, cwd?: string): Promise<GitFetchBaseData> {
+  validateRequired(sandboxId, 'Sandbox ID');
+
+  return serviceCall(async () => {
+    const qs = buildQueryString({ cwd });
+    const response = await apiClient.post<GitFetchBaseData>(
+      `/sandbox/${sandboxId}/git/fetch-base${qs}`,
+    );
+    return ensureResponse(response, 'Failed to fetch base branch');
+  });
+}
+
+async function getGitFileBaseline(
+  sandboxId: string,
+  path: string,
+  cwd?: string,
+): Promise<GitFileBaselineData> {
+  validateRequired(sandboxId, 'Sandbox ID');
+  validateRequired(path, 'File path');
+
+  return serviceCall(async () => {
+    const qs = buildQueryString({ path, cwd });
+    const response = await apiClient.get<GitFileBaselineData>(
+      `/sandbox/${sandboxId}/git/file-baseline${qs}`,
+    );
+    return ensureResponse(response, 'Failed to get file baseline');
+  });
+}
+
+async function getGitBranches(sandboxId: string, cwd?: string): Promise<GitBranchesData> {
+  validateRequired(sandboxId, 'Sandbox ID');
+
+  return serviceCall(async () => {
+    const qs = buildQueryString({ cwd });
+    const response = await apiClient.get<GitBranchesData>(
+      `/sandbox/${sandboxId}/git/branches${qs}`,
+    );
+    return ensureResponse(response, 'Failed to get git branches');
+  });
+}
+
+async function checkoutGitBranch(
+  sandboxId: string,
+  branch: string,
+  cwd?: string,
+): Promise<GitCheckoutData> {
+  validateRequired(sandboxId, 'Sandbox ID');
+  validateRequired(branch, 'Branch name');
+
+  return serviceCall(async () => {
+    const response = await apiClient.post<GitCheckoutData>(`/sandbox/${sandboxId}/git/checkout`, {
+      branch,
+      cwd: cwd ?? null,
+    });
+    return ensureResponse(response, 'Checkout failed');
+  });
+}
+
+async function gitCommit(
+  sandboxId: string,
+  message: string,
+  cwd?: string,
+): Promise<GitCommitResult> {
+  validateRequired(sandboxId, 'Sandbox ID');
+  validateRequired(message, 'Commit message');
+
+  return serviceCall(async () => {
+    const response = await apiClient.post<GitCommitResult>(`/sandbox/${sandboxId}/git/commit`, {
+      message,
+      cwd: cwd ?? null,
+    });
+    return ensureResponse(response, 'Commit failed');
+  });
+}
+
+async function gitPush(sandboxId: string, cwd?: string): Promise<GitPushPullResult> {
+  validateRequired(sandboxId, 'Sandbox ID');
+
+  return serviceCall(async () => {
+    const qs = buildQueryString({ cwd });
+    const response = await apiClient.post<GitPushPullResult>(`/sandbox/${sandboxId}/git/push${qs}`);
+    return ensureResponse(response, 'Push failed');
+  });
+}
+
+async function gitPull(sandboxId: string, cwd?: string): Promise<GitPushPullResult> {
+  validateRequired(sandboxId, 'Sandbox ID');
+
+  return serviceCall(async () => {
+    const qs = buildQueryString({ cwd });
+    const response = await apiClient.post<GitPushPullResult>(`/sandbox/${sandboxId}/git/pull${qs}`);
+    return ensureResponse(response, 'Pull failed');
+  });
+}
+
+async function gitRestoreFile(
+  sandboxId: string,
+  filePath: string,
+  oldPath?: string,
+  cwd?: string,
+): Promise<GitCommitResult> {
+  validateRequired(sandboxId, 'Sandbox ID');
+  validateRequired(filePath, 'File path');
+
+  return serviceCall(async () => {
+    const response = await apiClient.post<GitCommitResult>(
+      `/sandbox/${sandboxId}/git/restore-file`,
+      {
+        file_path: filePath,
+        old_path: oldPath ?? null,
+        cwd: cwd ?? null,
+      },
+    );
+    return ensureResponse(response, 'Restore file failed');
+  });
+}
+
+async function gitRestoreAll(sandboxId: string, cwd?: string): Promise<GitCommitResult> {
+  validateRequired(sandboxId, 'Sandbox ID');
+
+  return serviceCall(async () => {
+    const qs = buildQueryString({ cwd });
+    const response = await apiClient.post<GitCommitResult>(
+      `/sandbox/${sandboxId}/git/restore-all${qs}`,
+    );
+    return ensureResponse(response, 'Restore all failed');
+  });
+}
+
+async function gitCreateBranch(
+  sandboxId: string,
+  name: string,
+  baseBranch?: string,
+  cwd?: string,
+): Promise<GitCreateBranchResult> {
+  validateRequired(sandboxId, 'Sandbox ID');
+  validateRequired(name, 'Branch name');
+
+  return serviceCall(async () => {
+    const response = await apiClient.post<GitCreateBranchResult>(
+      `/sandbox/${sandboxId}/git/create-branch`,
+      { name, base_branch: baseBranch ?? null, cwd: cwd ?? null },
+    );
+    return ensureResponse(response, 'Failed to create branch');
+  });
+}
+
+async function getGitRemoteUrl(sandboxId: string, cwd?: string): Promise<GitRemoteUrlData> {
+  validateRequired(sandboxId, 'Sandbox ID');
+
+  return serviceCall(async () => {
+    const qs = buildQueryString({ cwd });
+    const response = await apiClient.get<GitRemoteUrlData>(
+      `/sandbox/${sandboxId}/git/remote-url${qs}`,
+    );
+    return ensureResponse(response, 'Failed to get remote URL');
+  });
+}
+
+async function searchInFiles(sandboxId: string, params: SearchParams): Promise<SearchResponse> {
+  validateRequired(sandboxId, 'Sandbox ID');
+  validateRequired(params.query, 'Search query');
+
+  return serviceCall(async () => {
+    const qs = buildQueryString({
+      q: params.query,
+      cwd: params.cwd,
+      case_sensitive: params.caseSensitive || undefined,
+      regex: params.regex || undefined,
+      whole_word: params.wholeWord || undefined,
+      include: params.include || undefined,
+      exclude: params.exclude || undefined,
+    });
+    const response = await apiClient.get<SearchResponse>(`/sandbox/${sandboxId}/search${qs}`);
+    return ensureResponse(response, 'Failed to search files');
+  });
+}
+
+export const sandboxService = {
+  getSandboxFilesMetadata,
+  getFileContent,
+  updateFile,
+  downloadZip,
+  getGitDiff,
+  getGitChangedPaths,
+  getGitDiffStats,
+  fetchGitBase,
+  getGitFileBaseline,
+  getGitBranches,
+  checkoutGitBranch,
+  gitCommit,
+  gitPush,
+  gitPull,
+  gitCreateBranch,
+  gitRestoreFile,
+  gitRestoreAll,
+  getGitRemoteUrl,
+  searchInFiles,
+};

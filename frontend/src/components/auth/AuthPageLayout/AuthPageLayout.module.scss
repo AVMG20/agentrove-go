@@ -1,0 +1,82 @@
+@use '@/styles/globals/colors' as colors;
+@use '@/styles/globals/typography' as type;
+@use '@/styles/globals/animations' as anim;
+@use '@/styles/globals/zlayer' as z;
+
+.page {
+  display: flex;
+  height: 100%;
+  flex-direction: column;
+  background-color: var(--theme-surface-secondary);
+}
+
+.container {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-4);
+}
+
+.content {
+  @include z.z('raised');
+  position: relative;
+  width: 100%;
+  max-width: var(--space-96);
+
+  > * + * {
+    margin-top: var(--space-5);
+  }
+}
+
+.header {
+  text-align: center;
+
+  > * + * {
+    margin-top: var(--space-1-5);
+  }
+}
+
+.logo {
+  height: var(--space-7);
+  width: var(--space-7);
+  margin: 0 auto var(--space-3);
+
+  // Two variants swap by theme — the dark glyph shows on light surfaces and
+  // vice versa, same convention as the landing greeting and message avatars.
+  &--on-light {
+    display: block;
+
+    :global([data-theme='dark']) & {
+      display: none;
+    }
+  }
+
+  &--on-dark {
+    display: none;
+
+    :global([data-theme='dark']) & {
+      display: block;
+    }
+  }
+}
+
+.title {
+  @include type.type-page-title;
+  @include anim.fade-in;
+  color: var(--theme-text-primary);
+}
+
+.subtitle {
+  @include type.type-body;
+  color: var(--theme-text-tertiary);
+}
+
+.card {
+  border: 1px solid colors.theme-color('border', 0.5);
+  border-radius: var(--radius-xl);
+  background-color: var(--theme-surface-tertiary);
+  padding: var(--space-6);
+  box-shadow: var(--shadow-medium);
+}

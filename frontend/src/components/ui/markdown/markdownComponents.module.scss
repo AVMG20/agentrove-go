@@ -1,0 +1,210 @@
+@use '@/styles/globals/typography' as type;
+@use '@/styles/globals/animations' as anim;
+@use '@/styles/globals/responsive' as responsive;
+
+.table-wrap {
+  margin: var(--space-5) 0;
+  overflow-x: auto;
+  border: 1px solid var(--theme-border);
+  border-radius: var(--radius-lg);
+}
+
+.table {
+  min-width: 100%;
+
+  > * + * {
+    border-top: 1px solid var(--theme-border);
+  }
+}
+
+.thead {
+  background-color: var(--theme-surface-secondary);
+}
+
+.tbody {
+  background-color: var(--theme-surface);
+
+  > * + * {
+    border-top: 1px solid var(--theme-border);
+  }
+}
+
+.tr {
+  @include anim.transition-colors;
+
+  @include responsive.hover {
+    background-color: var(--theme-surface-secondary);
+  }
+}
+
+.th {
+  @include type.type-default(500);
+  padding: var(--space-2) var(--space-3);
+  text-align: left;
+  color: var(--theme-text-tertiary);
+}
+
+.td {
+  @include type.type-body;
+  padding: var(--space-2) var(--space-3);
+  color: var(--theme-text-secondary);
+}
+
+.h1 {
+  @include type.type-title(600);
+  margin: var(--space-6) 0 var(--space-3);
+  color: var(--theme-text-primary);
+
+  &:first-child {
+    margin-top: 0;
+  }
+}
+
+.h2 {
+  @include type.type-large(600);
+  margin: var(--space-5) 0 var(--space-2);
+  color: var(--theme-text-primary);
+}
+
+.h3 {
+  @include type.type-prose(600);
+  margin: var(--space-4) 0 var(--space-1-5);
+  color: var(--theme-text-primary);
+}
+
+.p {
+  margin-bottom: var(--space-3);
+  white-space: pre-wrap;
+  color: var(--theme-text-secondary);
+  overflow-wrap: anywhere;
+
+  &:last-child {
+    margin-bottom: 0;
+  }
+}
+
+.image-paragraph {
+  margin-bottom: var(--space-3);
+
+  &:last-child {
+    margin-bottom: 0;
+  }
+}
+
+.strong {
+  font-weight: 600;
+  color: var(--theme-text-primary);
+}
+
+.em {
+  font-style: italic;
+}
+
+.code-inline {
+  @include type.type-mono;
+  border: 1px solid var(--theme-border);
+  border-radius: var(--radius-sm);
+  padding: 0.0625rem var(--space-1);
+  background-color: var(--theme-surface-secondary);
+  font-size: 0.85em;
+  line-height: inherit;
+  color: var(--theme-text-primary);
+}
+
+.plain-code-block {
+  margin: var(--space-4) 0;
+}
+
+.plain-pre {
+  overflow-x: auto;
+  border: 1px solid var(--theme-border);
+  border-radius: var(--radius-lg);
+  background-color: var(--theme-surface-secondary);
+  padding: var(--space-2);
+}
+
+.code-content {
+  @include type.type-mono;
+  color: var(--theme-text-primary);
+}
+
+.ul {
+  margin-bottom: var(--space-3);
+  padding-left: var(--space-5);
+  list-style: disc;
+  color: var(--theme-text-secondary);
+
+  > * + * {
+    margin-top: var(--space-1);
+  }
+}
+
+.ol {
+  margin-bottom: var(--space-3);
+  padding-left: var(--space-5);
+  list-style: decimal;
+  color: var(--theme-text-secondary);
+
+  > * + * {
+    margin-top: var(--space-1);
+  }
+}
+
+.li {
+  padding-left: var(--space-1);
+  color: var(--theme-text-secondary);
+
+  &::marker {
+    color: var(--theme-text-quaternary);
+  }
+}
+
+.blockquote {
+  margin: var(--space-3) 0;
+  border-left: 2px solid var(--theme-border-secondary);
+  padding-left: var(--space-4);
+  font-style: italic;
+  color: var(--theme-text-secondary);
+}
+
+.link {
+  @include anim.transition-colors;
+  color: var(--theme-text-primary);
+  text-decoration: underline;
+  text-decoration-color: var(--theme-border-hover);
+  text-underline-offset: 3px;
+
+  @include responsive.hover {
+    text-decoration-color: currentColor;
+  }
+}
+
+.file-link {
+  @include type.type-mono;
+  border: 1px solid var(--theme-border);
+  border-radius: var(--radius-sm);
+  padding: 0.0625rem var(--space-1);
+  font-size: 0.85em;
+  line-height: inherit;
+  background-color: var(--theme-surface-secondary);
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.img {
+  margin: var(--space-4) 0;
+  height: auto;
+  max-width: 100%;
+  border: 1px solid var(--theme-border);
+  border-radius: var(--radius-lg);
+}
+
+.hr {
+  margin: var(--space-6) 0;
+  border: 0;
+  border-top: 1px solid var(--theme-border);
+}
+
+.pre {
+  overflow-x: auto;
+}
