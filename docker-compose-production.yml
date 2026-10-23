@@ -1,19 +1,36 @@
 name: agentrove
 
+# Production stack (e.g. Coolify): nginx serves the built frontend and proxies
+# /api to the Go API. Point the domain at the "web" service, port 80.
 services:
+  # Builds the sandbox image on the host so the API can start workspace
+  # containers from it; exits immediately.
+  sandbox-image:
+    build:
+      context: .
+      dockerfile: sandbox/docker/Dockerfile
+    image: ${DOCKER_IMAGE:-agentrove-sandbox:latest}
+    command: ["true"]
+    restart: "no"
+
   api:
     build:
       context: ./backend
     restart: unless-stopped
     user: root
+    depends_on:
+      sandbox-image:
+        condition: service_completed_successfully
     volumes:
-      - ${AGENTROVE_STORAGE_SOURCE:-/data/agentrove/storage}:/data/agentrove/storage
+      # Same path on host and in the container: sandbox bind mounts are
+      # resolved by the host's Docker daemon.
+      - ${AGENTROVE_STORAGE_SOURCE:-/data/agentrove-go/storage}:/data/agentrove/storage
       - /var/run/docker.sock:/var/run/docker.sock
     environment:
       ENVIRONMENT: production
       SECRET_KEY: ${SECRET_KEY:?Set SECRET_KEY to a 32+ character value}
       STORAGE_PATH: /data/agentrove/storage
-      HOST_STORAGE_PATH: ${AGENTROVE_STORAGE_SOURCE:-/data/agentrove/storage}
+      HOST_STORAGE_PATH: ${AGENTROVE_STORAGE_SOURCE:-/data/agentrove-go/storage}
       DOCKER_IMAGE: ${DOCKER_IMAGE:-agentrove-sandbox:latest}
       DOCKER_NETWORK: ${DOCKER_NETWORK:-agentrove-sandbox-net}
       # How sandbox agents reach the API's MCP endpoint over the sandbox network.
@@ -28,6 +45,11 @@ services:
       CLAUDE_CODE_OAUTH_TOKEN: ${CLAUDE_CODE_OAUTH_TOKEN:-}
       AGENT_ENV: ${AGENT_ENV:-}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
     networks:
       - default
       - sandbox
@@ -39,8 +61,6 @@ services:
     restart: unless-stopped
     depends_on:
       - api
-    ports:
-      - "${WEB_PORT:-80}:80"
 
 networks:
   sandbox:

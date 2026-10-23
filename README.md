@@ -21,7 +21,7 @@ docker compose up --build
 
 Open http://localhost:3000. The first account you register becomes the superuser. Open a terminal in a workspace and run `claude` once to log in, or set `CLAUDE_CODE_OAUTH_TOKEN` in `.env`.
 
-For production, `docker-compose-production.yml` serves the built frontend through nginx on port 80.
+For production (e.g. Coolify), use `docker-compose-production.yml`. It builds the sandbox image, serves the built frontend through nginx (`web`, port 80) and keeps data in `/data/agentrove-go/storage`. Set `SECRET_KEY` and `APP_URL`.
 
 ## Run locally (host sandboxes, no Docker)
 
