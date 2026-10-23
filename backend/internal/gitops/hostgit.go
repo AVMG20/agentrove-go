@@ -3,11 +3,14 @@ package gitops
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -42,6 +45,9 @@ type HostRepo struct {
 	// set by OpenHost for Docker sandboxes and overridable in tests.
 	boxUp   func(ctx context.Context) bool
 	boxExec func(ctx context.Context, dir string, args []string) (Result, error)
+	// boxCmd runs any command inside the box (batched git calls, see
+	// DiffNewFiles); nil falls back to one boxExec per git call.
+	boxCmd func(ctx context.Context, dir string, cmd []string) (Result, error)
 }
 
 type Result struct {
@@ -123,6 +129,7 @@ func OpenHost(sb *sandbox.Sandbox, rel string) (*HostRepo, error) {
 			return up
 		}
 		r.boxExec = r.execInBox
+		r.boxCmd = r.execCmdInBox
 		// The container can't see above its workspace mount, so neither should we.
 		r.env = append(r.env, "GIT_CEILING_DIRECTORIES="+filepath.Dir(filepath.Clean(sb.WorkspacePath)))
 		if gitDir, workTree, ok := translatedGitDir(sb, dir); ok {
@@ -138,14 +145,21 @@ func OpenHost(sb *sandbox.Sandbox, rel string) (*HostRepo, error) {
 // dir is a host path, mapped back to its container path; worktrees resolve
 // their .git natively, so no --git-dir/--work-tree translation is passed.
 func (r *HostRepo) execInBox(ctx context.Context, dir string, args []string) (Result, error) {
+	return r.execCmdInBox(ctx, dir, append(append([]string{"git"}, boxGitOpts...), args...))
+}
+
+// boxGitOpts are the -c options of every in-box git call.
+var boxGitOpts = []string{"-c", "safe.directory=*", "-c", "core.fsmonitor=false", "-c", "color.ui=false"}
+
+// execCmdInBox runs cmd inside the box as the agent user, in the container
+// path of the host dir.
+func (r *HostRepo) execCmdInBox(ctx context.Context, dir string, cmd []string) (Result, error) {
 	cwd := r.sb.Resolve(r.rel)
 	if dir != "" && dir != r.Dir {
 		if c, err := r.sb.SandboxPath(dir); err == nil {
 			cwd = c
 		}
 	}
-	opts := []string{"-c", "safe.directory=*", "-c", "core.fsmonitor=false", "-c", "color.ui=false"}
-	cmd := append(append([]string{"git"}, opts...), args...)
 	res, err := r.sb.Exec(ctx, sandbox.ExecRequest{
 		Cmd: cmd, Cwd: cwd, Timeout: hostGitTimeout,
 		Env: map[string]string{"GIT_OPTIONAL_LOCKS": "0", "GIT_TERMINAL_PROMPT": "0", "GIT_DISCOVERY_ACROSS_FILESYSTEM": "1"},
@@ -326,10 +340,114 @@ func (r *HostRepo) RunIn(ctx context.Context, dir string, env []string, args ...
 	return res, nil
 }
 
+// newFilesBatch bounds the files of one in-box exec, keeping argv far
+// below ARG_MAX.
+const newFilesBatch = 256
+
+// DiffNewFiles is the concatenated `git diff <extra> --no-index -- /dev/null
+// <f>` of each file (relative to r.Dir), as patches for untracked files.
+// Inside the box the files are batched into a few shell loops: every docker
+// exec costs tens of milliseconds, and a new project can have hundreds of
+// untracked files.
+func (r *HostRepo) DiffNewFiles(ctx context.Context, extra, files []string) (string, error) {
+	var buf strings.Builder
+	if r.boxCmd != nil && r.boxExec != nil && r.boxUp(ctx) {
+		var gitCmd strings.Builder
+		gitCmd.WriteString("git")
+		for _, a := range append(append(append([]string{}, boxGitOpts...), "diff"), extra...) {
+			gitCmd.WriteString(" " + shellQuote(a))
+		}
+		script := `for f do ` + gitCmd.String() + ` --no-index -- /dev/null "$f"; done; exit 0`
+		for start := 0; start < len(files); start += newFilesBatch {
+			batch := files[start:min(start+newFilesBatch, len(files))]
+			res, err := r.boxCmd(ctx, r.Dir, append([]string{"sh", "-c", script, "sh"}, batch...))
+			if err != nil {
+				return "", err
+			}
+			buf.WriteString(res.Stdout)
+		}
+		return buf.String(), nil
+	}
+	for _, f := range files {
+		res, err := r.Run(ctx, append(append(append([]string{"diff"}, extra...), "--no-index", "--", "/dev/null"), f)...)
+		if err != nil {
+			return "", err
+		}
+		buf.WriteString(res.Stdout)
+	}
+	return buf.String(), nil
+}
+
+// RunBatch runs several git commands in dir and returns their results in
+// order. Inside the box they share one docker exec (each exec costs tens of
+// milliseconds, and a diff view needs up to a dozen commands); on the host
+// they run one by one. In the box, Stderr is not collected.
+func (r *HostRepo) RunBatch(ctx context.Context, dir string, cmds ...[]string) ([]Result, error) {
+	if r.boxCmd != nil && r.boxExec != nil && r.boxUp(ctx) {
+		var rnd [16]byte
+		if _, err := rand.Read(rnd[:]); err != nil {
+			return nil, err
+		}
+		// Each command's output ends with NUL, a random token and its exit
+		// code; the repo can't predict the token to forge a boundary.
+		token := "agentrove-" + hex.EncodeToString(rnd[:])
+		var script strings.Builder
+		for _, args := range cmds {
+			script.WriteString("git")
+			for _, a := range append(append([]string{}, boxGitOpts...), args...) {
+				script.WriteString(" " + shellQuote(a))
+			}
+			script.WriteString(" </dev/null; printf '\\000" + token + "%d\\000' \"$?\"\n")
+		}
+		res, err := r.boxCmd(ctx, dir, []string{"sh", "-c", script.String()})
+		if err != nil {
+			return nil, err
+		}
+		return parseBatch(res.Stdout, token, len(cmds))
+	}
+	out := make([]Result, len(cmds))
+	for i, args := range cmds {
+		res, err := r.RunIn(ctx, dir, nil, args...)
+		if err != nil {
+			return nil, err
+		}
+		out[i] = res
+	}
+	return out, nil
+}
+
+// parseBatch splits RunBatch's in-box output into n results.
+func parseBatch(out, token string, n int) ([]Result, error) {
+	sep := "\x00" + token
+	res := make([]Result, n)
+	for i := range res {
+		j := strings.Index(out, sep)
+		if j < 0 {
+			return nil, errors.New("in-box git output was cut short")
+		}
+		res[i].Stdout, out = out[:j], out[j+len(sep):]
+		k := strings.IndexByte(out, 0)
+		if k < 0 {
+			return nil, errors.New("in-box git output was cut short")
+		}
+		code, err := strconv.Atoi(out[:k])
+		if err != nil {
+			return nil, errors.New("in-box git output is malformed")
+		}
+		res[i].Exit, out = code, out[k+1:]
+	}
+	return res, nil
+}
+
+// isRepoCmd and isRepoResult are IsRepo, for batches.
+var isRepoCmd = []string{"rev-parse", "--is-inside-work-tree"}
+
+func isRepoResult(res Result) bool { return res.Exit == 0 && strings.TrimSpace(res.Stdout) == "true" }
+
 // IsRepo reports whether r.Dir is inside a git work tree.
 func (r *HostRepo) IsRepo(ctx context.Context) bool {
-	res, err := r.Run(ctx, "rev-parse", "--is-inside-work-tree")
-	return err == nil && res.Exit == 0 && strings.TrimSpace(res.Stdout) == "true"
+	res, err := r.Run(ctx, isRepoCmd...)
+	return err == nil && isRepoResult(res)
 }
 
 // TopLevel is the work tree root as a host path. When git ran inside the box,
@@ -340,7 +458,18 @@ func (r *HostRepo) TopLevel(ctx context.Context) string {
 		return r.WorkTree
 	}
 	res, err := r.Run(ctx, "rev-parse", "--show-toplevel")
-	if err != nil || res.Exit != 0 {
+	if err != nil {
+		return r.Dir
+	}
+	return r.topLevelFrom(res)
+}
+
+// topLevelFrom maps a `rev-parse --show-toplevel` result to a host path.
+func (r *HostRepo) topLevelFrom(res Result) string {
+	if r.WorkTree != "" {
+		return r.WorkTree
+	}
+	if res.Exit != 0 {
 		return r.Dir
 	}
 	top := strings.TrimSpace(res.Stdout)

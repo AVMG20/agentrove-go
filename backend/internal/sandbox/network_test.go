@@ -226,8 +226,18 @@ func TestBoxNetworkFallsBack(t *testing.T) {
 			t.Errorf("%s: network = %q", name, got)
 		}
 	}
+	// A hostname that isn't the id: found through Docker's /etc/hostname mount.
+	d, f := newNetProvider(true, "", "api")
+	f.containers[apiID] = apiID
+	f.containers["api"] = "0000ffff" + apiID[8:] // another container named like our hostname
+	d.mountinfo = func() ([]byte, error) {
+		return []byte("266 227 254:0 /var/lib/docker/containers/" + apiID + "/hostname /etc/hostname rw,relatime - ext4 /dev/vda rw\n"), nil
+	}
+	if got := d.boxNetwork(context.Background(), netUser); got != UserNetworkName(netUser) || d.self != apiID {
+		t.Fatalf("mountinfo: network = %q, self = %q", got, d.self)
+	}
 	// An explicit container name works even when the hostname isn't the id.
-	d, f := newNetProvider(true, "agentrove-api-1", "custom-host")
+	d, f = newNetProvider(true, "agentrove-api-1", "custom-host")
 	f.containers["agentrove-api-1"] = apiID
 	if got := d.boxNetwork(context.Background(), netUser); got != UserNetworkName(netUser) {
 		t.Fatalf("explicit: network = %q", got)

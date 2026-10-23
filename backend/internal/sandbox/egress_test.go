@@ -478,6 +478,8 @@ type fakeHelperAPI struct {
 	exit    int64
 	stdout  string
 	removed int
+	// keptVolumes counts removals that would leak the image's anonymous volume.
+	keptVolumes int
 }
 
 func (f *fakeHelperAPI) ContainerCreate(_ context.Context, c *container.Config, h *container.HostConfig, _ *network.NetworkingConfig, _ *ocispec.Platform, _ string) (container.CreateResponse, error) {
@@ -497,8 +499,11 @@ func (f *fakeHelperAPI) ContainerLogs(context.Context, string, container.LogsOpt
 	_, _ = stdcopy.NewStdWriter(&buf, stdcopy.Stdout).Write([]byte(f.stdout))
 	return io.NopCloser(&buf), nil
 }
-func (f *fakeHelperAPI) ContainerRemove(context.Context, string, container.RemoveOptions) error {
+func (f *fakeHelperAPI) ContainerRemove(_ context.Context, _ string, o container.RemoveOptions) error {
 	f.removed++
+	if !o.RemoveVolumes {
+		f.keptVolumes++
+	}
 	return nil
 }
 
@@ -518,6 +523,9 @@ func TestRunEgressHelper(t *testing.T) {
 	}
 	if f.removed < 2 {
 		t.Fatal("helper container not cleaned up")
+	}
+	if f.keptVolumes != 0 {
+		t.Fatal("helper removal leaks the image's anonymous volume (VOLUME in the API image)")
 	}
 	f.exit = 127
 	if _, err := runEgressHelper(context.Background(), f, "img", "n", "x", "echo", nil); err == nil {

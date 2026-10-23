@@ -7,6 +7,7 @@ import (
 	"net/netip"
 	"net/url"
 	"os"
+	"regexp"
 	"sort"
 	"strings"
 	"time"
@@ -89,10 +90,33 @@ func (d *DockerProvider) selfContainer() string {
 				return
 			}
 		}
+		// A hostname set by the orchestrator (compose `hostname:`) isn't the
+		// id; Docker's own bind mount of /etc/hostname still names it.
+		if !explicit && d.mountinfo != nil {
+			if data, err := d.mountinfo(); err == nil {
+				if id := containerIDFromMountinfo(data); id != "" {
+					if info, err := d.net.ContainerInspect(ctx, id); err == nil && info.ID == id {
+						d.self = info.ID
+						return
+					}
+				}
+			}
+		}
 		slog.Warn("per-user box networks off: the API's own container was not found (set AGENTROVE_API_CONTAINER); boxes share DOCKER_NETWORK",
 			"network", d.cfg.DockerNetwork, "ref", ref)
 	})
 	return d.self
+}
+
+var mountinfoIDRe = regexp.MustCompile(`/containers/([0-9a-f]{64})/hostname\s`)
+
+// containerIDFromMountinfo finds the container id in /proc/self/mountinfo:
+// Docker bind-mounts /var/lib/docker/containers/<id>/hostname at /etc/hostname.
+func containerIDFromMountinfo(data []byte) string {
+	if m := mountinfoIDRe.FindSubmatch(data); m != nil {
+		return string(m[1])
+	}
+	return ""
 }
 
 // boxNetwork is the network a user's box should be on, set up and joined

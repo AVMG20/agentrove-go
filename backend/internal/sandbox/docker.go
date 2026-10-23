@@ -33,8 +33,10 @@ type DockerProvider struct {
 	cfg *config.Config
 	cli *client.Client
 	net dockerNetAPI
-	// hostname is os.Hostname, swappable in tests.
-	hostname func() (string, error)
+	// hostname is os.Hostname and mountinfo reads /proc/self/mountinfo,
+	// swappable in tests (nil mountinfo: no such source).
+	hostname  func() (string, error)
+	mountinfo func() ([]byte, error)
 
 	netOnce  sync.Once
 	selfOnce sync.Once
@@ -60,7 +62,8 @@ func NewDockerProvider(cfg *config.Config, subnets *httpx.PrefixSet) (*DockerPro
 		cli.Close()
 		return nil, fmt.Errorf("docker daemon unreachable: %w", err)
 	}
-	return &DockerProvider{cfg: cfg, cli: cli, net: cli, hostname: os.Hostname, joined: map[string]bool{}, subnets: subnets}, nil
+	return &DockerProvider{cfg: cfg, cli: cli, net: cli, hostname: os.Hostname,
+		mountinfo: func() ([]byte, error) { return os.ReadFile("/proc/self/mountinfo") }, joined: map[string]bool{}, subnets: subnets}, nil
 }
 
 func (d *DockerProvider) Kind() string { return KindDocker }

@@ -80,36 +80,63 @@ func strPtr(s string) *string { return &s }
 
 // ---- read-only operations (host) ----
 
-// DetectBase finds the default branch to diff against: the remote HEAD
+// baseCandidates are the default branch names DetectBase tries, in order.
+var baseCandidates = []string{"main", "master", "develop", "trunk"}
+
+// detectBaseCmds are DetectBase's probes, for a batch: the remote HEAD
 // symref, then origin/{main,master,develop,trunk}, then the local ones.
-func DetectBase(ctx context.Context, r *HostRepo) string {
-	if res, err := r.Run(ctx, "symbolic-ref", "refs/remotes/origin/HEAD"); err == nil && res.Exit == 0 {
-		if ref := strings.TrimPrefix(strings.TrimSpace(res.Stdout), "refs/remotes/"); ref != "" {
+func detectBaseCmds() [][]string {
+	cmds := [][]string{{"symbolic-ref", "refs/remotes/origin/HEAD"}}
+	for _, b := range baseCandidates {
+		cmds = append(cmds, []string{"rev-parse", "--verify", "-q", "refs/remotes/origin/" + b})
+	}
+	for _, b := range baseCandidates {
+		cmds = append(cmds, []string{"rev-parse", "--verify", b})
+	}
+	return cmds
+}
+
+// pickBase reads the results of detectBaseCmds.
+func pickBase(rs []Result) string {
+	if len(rs) != 1+2*len(baseCandidates) {
+		return ""
+	}
+	if rs[0].Exit == 0 {
+		if ref := strings.TrimPrefix(strings.TrimSpace(rs[0].Stdout), "refs/remotes/"); ref != "" {
 			return ref
 		}
 	}
-	candidates := []string{"main", "master", "develop", "trunk"}
-	for _, b := range candidates {
-		if res, err := r.Run(ctx, "rev-parse", "--verify", "-q", "refs/remotes/origin/"+b); err == nil && res.Exit == 0 {
+	for i, b := range baseCandidates {
+		if rs[1+i].Exit == 0 {
 			return "origin/" + b
 		}
 	}
-	for _, b := range candidates {
-		if res, err := r.Run(ctx, "rev-parse", "--verify", b); err == nil && res.Exit == 0 {
+	for i, b := range baseCandidates {
+		if rs[1+len(baseCandidates)+i].Exit == 0 {
 			return b
 		}
 	}
 	return ""
 }
 
-func mergeBase(ctx context.Context, r *HostRepo, base string) string {
-	res, err := r.Run(ctx, "merge-base", base, "HEAD")
-	if err == nil && res.Exit == 0 {
-		if mb := strings.TrimSpace(res.Stdout); mb != "" {
-			return mb
-		}
+// DetectBase finds the default branch to diff against: the remote HEAD
+// symref, then origin/{main,master,develop,trunk}, then the local ones.
+func DetectBase(ctx context.Context, r *HostRepo) string {
+	rs, err := r.RunBatch(ctx, r.Dir, detectBaseCmds()...)
+	if err != nil {
+		return ""
 	}
-	return base
+	return pickBase(rs)
+}
+
+// branchDiff runs `git diff <args> <merge-base of base and HEAD> HEAD`,
+// falling back to base itself when there is no merge base.
+func branchDiff(ctx context.Context, r *HostRepo, base string, args ...string) (Result, error) {
+	res, err := r.Run(ctx, append(append([]string{"diff"}, args...), base+"...HEAD")...)
+	if err != nil || res.Exit == 0 {
+		return res, err
+	}
+	return r.Run(ctx, append(append([]string{"diff"}, args...), base, "HEAD")...)
 }
 
 func emptyTree(ctx context.Context, r *HostRepo) string {
@@ -122,22 +149,30 @@ func emptyTree(ctx context.Context, r *HostRepo) string {
 	return "4b825dc642cb6eb9a060e54bf8d69288fbee4904"
 }
 
+// untrackedCmd lists untracked, non-ignored files relative to the cwd.
+var untrackedCmd = []string{"ls-files", "--others", "--exclude-standard", "-z"}
+
 // Diff returns the patch for "all" (working tree + untracked vs HEAD) or
-// "branch" (HEAD vs merge-base with the default branch).
+// "branch" (HEAD vs merge-base with the default branch). Commands are
+// batched: in a running box each docker exec costs tens of milliseconds.
 func Diff(ctx context.Context, r *HostRepo, mode string, fullContext bool) (DiffResponse, error) {
-	if !r.IsRepo(ctx) {
-		return DiffResponse{}, nil
-	}
 	var ctxArgs []string
 	if fullContext {
 		ctxArgs = []string{"-U99999"}
 	}
 	if mode == "branch" {
-		base := DetectBase(ctx, r)
+		rs, err := r.RunBatch(ctx, r.Dir, append([][]string{isRepoCmd}, detectBaseCmds()...)...)
+		if err != nil {
+			return DiffResponse{}, err
+		}
+		if !isRepoResult(rs[0]) {
+			return DiffResponse{}, nil
+		}
+		base := pickBase(rs[1:])
 		if base == "" {
 			return DiffResponse{IsGitRepo: true, Error: strPtr("Could not determine base branch")}, nil
 		}
-		res, err := r.Run(ctx, append(append([]string{"diff"}, ctxArgs...), mergeBase(ctx, r, base), "HEAD")...)
+		res, err := branchDiff(ctx, r, base, ctxArgs...)
 		if err != nil {
 			return DiffResponse{}, err
 		}
@@ -148,11 +183,15 @@ func Diff(ctx context.Context, r *HostRepo, mode string, fullContext bool) (Diff
 		return DiffResponse{Diff: out, HasChanges: strings.TrimSpace(out) != "", IsGitRepo: true}, nil
 	}
 
-	var buf strings.Builder
-	res, err := r.Run(ctx, append(append([]string{"diff"}, ctxArgs...), "HEAD")...)
+	rs, err := r.RunBatch(ctx, r.Dir, isRepoCmd, append(append([]string{"diff"}, ctxArgs...), "HEAD"), untrackedCmd)
 	if err != nil {
 		return DiffResponse{}, err
 	}
+	if !isRepoResult(rs[0]) {
+		return DiffResponse{}, nil
+	}
+	var buf strings.Builder
+	res := rs[1]
 	if res.Exit != 0 {
 		// Unborn branch: diff against the empty tree for the same combined view.
 		res, err = r.Run(ctx, append(append([]string{"diff"}, ctxArgs...), emptyTree(ctx, r))...)
@@ -161,21 +200,18 @@ func Diff(ctx context.Context, r *HostRepo, mode string, fullContext bool) (Diff
 		}
 	}
 	buf.WriteString(res.Stdout)
-	for _, f := range untrackedFiles(ctx, r, r.Dir) {
-		res, err := r.Run(ctx, append(append([]string{"diff"}, ctxArgs...), "--no-index", "--", "/dev/null", f)...)
-		if err != nil {
-			return DiffResponse{}, err
-		}
-		buf.WriteString(res.Stdout)
+	added, err := r.DiffNewFiles(ctx, ctxArgs, parseNulList(rs[2]))
+	if err != nil {
+		return DiffResponse{}, err
 	}
+	buf.WriteString(added)
 	out := buf.String()
 	return DiffResponse{Diff: out, HasChanges: strings.TrimSpace(out) != "", IsGitRepo: true}, nil
 }
 
-// untrackedFiles lists untracked, non-ignored files relative to dir.
-func untrackedFiles(ctx context.Context, r *HostRepo, dir string) []string {
-	res, err := r.RunIn(ctx, dir, nil, "ls-files", "--others", "--exclude-standard", "-z")
-	if err != nil || res.Exit != 0 {
+// parseNulList splits a successful -z listing.
+func parseNulList(res Result) []string {
+	if res.Exit != 0 {
 		return nil
 	}
 	var out []string
@@ -191,28 +227,33 @@ func untrackedFiles(ctx context.Context, r *HostRepo, dir string) []string {
 // the branch vs its merge-base. Untracked files are counted directly instead
 // of via `git add -N` on a temp index so the host never writes git objects.
 func DiffStats(ctx context.Context, r *HostRepo) (DiffStatsResponse, error) {
-	if !r.IsRepo(ctx) {
+	// Untracked files repo-wide, relative to the top level, from any cwd.
+	untrackedAll := append(append([]string{}, untrackedCmd...), "--full-name", "--", ":/")
+	cmds := append([][]string{isRepoCmd, {"rev-parse", "--show-toplevel"}, {"rev-parse", "--verify", "-q", "HEAD"},
+		{"diff", "--numstat", "HEAD"}, untrackedAll}, detectBaseCmds()...)
+	rs, err := r.RunBatch(ctx, r.Dir, cmds...)
+	if err != nil || !isRepoResult(rs[0]) {
 		return DiffStatsResponse{}, nil
 	}
-	top := r.TopLevel(ctx)
-	run := func(args ...string) string {
-		res, err := r.RunIn(ctx, top, nil, args...)
+	top := r.topLevelFrom(rs[1])
+	out := DiffStatsResponse{IsGitRepo: true}
+	numstat := func(res Result, err error) string {
 		if err != nil || res.Exit != 0 {
 			return ""
 		}
 		return res.Stdout
 	}
-	out := DiffStatsResponse{IsGitRepo: true}
-	head := strings.TrimSpace(run("rev-parse", "--verify", "-q", "HEAD"))
+	head := ""
+	if rs[2].Exit == 0 {
+		head = strings.TrimSpace(rs[2].Stdout)
+	}
 	if head != "" {
 		out.HeadSHA = &head
+		out.Uncommitted = SumNumstat(numstat(rs[3], nil))
+	} else {
+		out.Uncommitted = SumNumstat(numstat(r.Run(ctx, "diff", "--numstat", emptyTree(ctx, r))))
 	}
-	against := head
-	if against == "" {
-		against = emptyTree(ctx, r)
-	}
-	out.Uncommitted = SumNumstat(run("diff", "--numstat", against))
-	for _, f := range untrackedFiles(ctx, r, top) {
+	for _, f := range parseNulList(rs[4]) {
 		if strings.HasSuffix(f, "/") {
 			continue
 		}
@@ -223,8 +264,8 @@ func DiffStats(ctx context.Context, r *HostRepo) (DiffStatsResponse, error) {
 		out.Uncommitted.FilesChanged++
 		out.Uncommitted.Additions += lines
 	}
-	if base := DetectBase(ctx, r); base != "" {
-		out.Branch = SumNumstat(run("diff", "--numstat", mergeBase(ctx, r, base), "HEAD"))
+	if base := pickBase(rs[5:]); base != "" {
+		out.Branch = SumNumstat(numstat(branchDiff(ctx, r, base, "--numstat")))
 	}
 	return out, nil
 }
@@ -315,13 +356,14 @@ func FileBaseline(ctx context.Context, r *HostRepo, p string) (FileBaselineRespo
 	if err := ValidateRelativePath(p); err != nil {
 		return FileBaselineResponse{}, err
 	}
-	if !r.IsRepo(ctx) {
-		return FileBaselineResponse{Path: p, IsGitRepo: false}, nil
-	}
-	res, err := r.Run(ctx, "show", "HEAD:./"+p)
+	rs, err := r.RunBatch(ctx, r.Dir, isRepoCmd, []string{"show", "HEAD:./" + p})
 	if err != nil {
 		return FileBaselineResponse{}, err
 	}
+	if !isRepoResult(rs[0]) {
+		return FileBaselineResponse{Path: p, IsGitRepo: false}, nil
+	}
+	res := rs[1]
 	content := ""
 	if res.Exit == 0 {
 		content = strings.ToValidUTF8(res.Stdout, "�")
@@ -331,17 +373,15 @@ func FileBaseline(ctx context.Context, r *HostRepo, p string) (FileBaselineRespo
 
 // ChangedPaths lists paths with uncommitted changes, relative to the cwd.
 func ChangedPaths(ctx context.Context, r *HostRepo) (ChangedPathsResponse, error) {
-	if !r.IsRepo(ctx) {
+	rs, err := r.RunBatch(ctx, r.Dir, isRepoCmd, []string{"rev-parse", "--show-prefix"},
+		[]string{"status", "--porcelain", "--no-renames", "--untracked-files=all", "-z"})
+	if err != nil {
+		return ChangedPathsResponse{}, err
+	}
+	if !isRepoResult(rs[0]) {
 		return ChangedPathsResponse{Paths: []string{}}, nil
 	}
-	prefix, err := r.Run(ctx, "rev-parse", "--show-prefix")
-	if err != nil {
-		return ChangedPathsResponse{}, err
-	}
-	status, err := r.Run(ctx, "status", "--porcelain", "--no-renames", "--untracked-files=all", "-z")
-	if err != nil {
-		return ChangedPathsResponse{}, err
-	}
+	prefix, status := rs[1], rs[2]
 	return ChangedPathsResponse{Paths: ParseStatusPaths(strings.TrimSpace(prefix.Stdout), status.Stdout), IsGitRepo: true}, nil
 }
 
@@ -369,21 +409,16 @@ func ParseStatusPaths(prefix, statusOut string) []string {
 // Branches lists local branches plus origin-only ones.
 func Branches(ctx context.Context, r *HostRepo) (BranchesResponse, error) {
 	empty := BranchesResponse{Branches: []string{}}
-	if !r.IsRepo(ctx) {
+	rs, err := r.RunBatch(ctx, r.Dir, isRepoCmd, []string{"rev-parse", "--abbrev-ref", "HEAD"},
+		[]string{"for-each-ref", "--format=%(refname:short)", "refs/heads"},
+		[]string{"for-each-ref", "--format=%(refname:short)", "refs/remotes/origin"})
+	if err != nil {
+		return empty, err
+	}
+	if !isRepoResult(rs[0]) {
 		return empty, nil
 	}
-	cur, err := r.Run(ctx, "rev-parse", "--abbrev-ref", "HEAD")
-	if err != nil {
-		return empty, err
-	}
-	local, err := r.Run(ctx, "for-each-ref", "--format=%(refname:short)", "refs/heads")
-	if err != nil {
-		return empty, err
-	}
-	remote, err := r.Run(ctx, "for-each-ref", "--format=%(refname:short)", "refs/remotes/origin")
-	if err != nil {
-		return empty, err
-	}
+	cur, local, remote := rs[1], rs[2], rs[3]
 	current := ""
 	if cur.Exit == 0 {
 		current = strings.TrimSpace(cur.Stdout)

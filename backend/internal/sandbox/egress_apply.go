@@ -412,7 +412,10 @@ func (d *DockerProvider) startEgressFirewall(ctx context.Context) {
 func runEgressHelper(ctx context.Context, cli egressDockerAPI, image, name, instance, script string, env []string) (string, error) {
 	ctx, cancel := context.WithTimeout(ctx, egressHelperTimeout)
 	defer cancel()
-	_ = cli.ContainerRemove(ctx, name, container.RemoveOptions{Force: true})
+	// RemoveVolumes: the API image declares VOLUME /data/agentrove/storage,
+	// so every helper run gets an anonymous volume that would otherwise leak
+	// (one per apply, every egressRepairInterval).
+	_ = cli.ContainerRemove(ctx, name, container.RemoveOptions{Force: true, RemoveVolumes: true})
 	cc := &container.Config{
 		Image:      image,
 		User:       "0:0",
@@ -436,7 +439,7 @@ func runEgressHelper(ctx context.Context, cli egressDockerAPI, image, name, inst
 	defer func() {
 		rctx, rcancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer rcancel()
-		_ = cli.ContainerRemove(rctx, created.ID, container.RemoveOptions{Force: true})
+		_ = cli.ContainerRemove(rctx, created.ID, container.RemoveOptions{Force: true, RemoveVolumes: true})
 	}()
 	waitC, errC := cli.ContainerWait(ctx, created.ID, container.WaitConditionNextExit)
 	if err := cli.ContainerStart(ctx, created.ID, container.StartOptions{}); err != nil {
