@@ -485,8 +485,8 @@ func boxPrompt(cwd string) string {
 	return "\n<environment>\nYou work in the user's personal Linux box (Ubuntu 24.04, passwordless sudo). " +
 		"This project is at " + cwd + "; the user's other projects sit next to it in " + sandbox.ContainerProjects + ".\n" +
 		"- HOME (" + sandbox.ContainerHome + ") is persistent and shared by all projects: install toolchains there " +
-		"(rustup, sdkman, nvm, go) and they stay. apt packages work too (run `sudo apt-get update` first) but are reset when the box image is updated.\n" +
-		"- Preinstalled: git, gh, Node 22, Python 3 with uv, JDK 21, build-essential.\n" +
+		"(e.g. rustup for Rust, sdkman for Java/Gradle, nvm, go) and they stay. apt packages work too (run `sudo apt-get update` first) but are reset when the box image is updated.\n" +
+		"- Preinstalled: git, gh, Node 22, Python 3 with uv, build-essential. Install other toolchains when a project needs them.\n" +
 		"- git and gh are authenticated with the user's GitHub token when one is set (GITHUB_TOKEN). If it is missing, " +
 		"ask the user to add a GitHub token in Settings. To deliver work: commit on a new branch, push, and open a PR with `gh pr create`.\n" +
 		"- Commits use the git identity in ~/.gitconfig (default: Claude <noreply@anthropic.com>); don't ask the user for one.\n" +

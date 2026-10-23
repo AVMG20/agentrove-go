@@ -16,8 +16,8 @@ ENV DEBIAN_FRONTEND=noninteractive \
     DISABLE_AUTOUPDATER=1
 
 # git from the git-core PPA: worktrees use `git worktree add --relative-paths` (git >= 2.48).
-# A JDK is included for Gradle/Maven projects (e.g. Minecraft mods); Rust, Go
-# and other toolchains install into the persistent home on demand.
+# Language toolchains (Java, Rust, Go, ...) are installed by the agent into
+# the persistent home on demand.
 RUN apt-get update && apt-get install -y --no-install-recommends \
         ca-certificates curl gnupg software-properties-common \
     && add-apt-repository -y ppa:git-core/ppa \
@@ -28,7 +28,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         git gh nodejs tmux ripgrep fd-find jq less tree file vim nano wget unzip zip \
         build-essential pkg-config libssl-dev python3 python3-venv python3-pip pipx sudo openssh-client \
         procps psmisc lsof rsync patch iproute2 netcat-openbsd dnsutils \
-        openjdk-21-jdk-headless \
     && ln -sf "$(command -v fdfind)" /usr/local/bin/fd \
     && rm -rf /var/lib/apt/lists/*
 
