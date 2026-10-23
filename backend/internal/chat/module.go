@@ -314,6 +314,14 @@ func (m *Module) cancelTurn(chatID string, timeout time.Duration) {
 	}
 }
 
+// sessionEnv is the per-session env. It includes the profile env vars so the
+// session fingerprint changes (and the CLI restarts) when they are edited.
+func (m *Module) sessionEnv(req *turnRequest) map[string]string {
+	env := m.a.Store.UserEnv(context.Background(), req.userID)
+	env["AGENTROVE_CHAT_ID"] = req.chat.ID
+	return env
+}
+
 // sessionConfig builds the CLI launch config for a turn.
 func (m *Module) sessionConfig(sb *sandbox.Sandbox, req *turnRequest) claude.Config {
 	cfg := claude.Config{
@@ -325,7 +333,7 @@ func (m *Module) sessionConfig(sb *sandbox.Sandbox, req *turnRequest) claude.Con
 		FullReplace:    req.fullReplace,
 		ResumeID:       db.Deref(req.chat.SessionID),
 		Settings:       map[string]any{"outputStyle": "Concise"},
-		Env:            map[string]string{"AGENTROVE_CHAT_ID": req.chat.ID},
+		Env:            m.sessionEnv(req),
 		Binary:         m.a.Cfg.ClaudeBinary,
 	}
 	if sb.Kind == sandbox.KindDocker {
@@ -691,7 +699,12 @@ func (m *Module) hookStartTurn(r app.ChatTurnRequest) (app.ChatTurnResult, error
 // oneShot returns a text-generation runner using the user's Claude login.
 func (m *Module) oneShot(userID string) claude.OneShot {
 	home := m.a.Cfg.AgentHomeDir(userID)
-	return claude.OneShot{Binary: m.a.Cfg.ClaudeBinary, Env: m.a.Cfg.AgentGlobalEnv(),
+	// Profile env vars (e.g. ANTHROPIC_BASE_URL/AUTH_TOKEN) override the global env.
+	env := m.a.Cfg.AgentGlobalEnv()
+	for k, v := range m.a.Store.UserEnv(context.Background(), userID) {
+		env[k] = v
+	}
+	return claude.OneShot{Binary: m.a.Cfg.ClaudeBinary, Env: env,
 		HomeDir: home, ConfigDir: claude.ConfigDirFor(home), AsUID: sandbox.ContainerUID}
 }
 
