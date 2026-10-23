@@ -13,6 +13,9 @@ import (
 	"github.com/coder/websocket"
 )
 
+// Queued control messages beyond this mean the client stopped reading.
+var maxQueuedTextBytes = 1 << 20
+
 // Close codes besides the terminal's 4001 (auth) and 4004 (not found).
 const (
 	CloseUnavailable websocket.StatusCode = 4006 // the box has no working browser
@@ -23,8 +26,6 @@ const (
 	pingInterval  = 30 * time.Second
 	writeTimeout  = 30 * time.Second
 	textQueueSize = 256
-	// Queued control messages beyond this mean the client stopped reading.
-	maxQueuedTextBytes = 1 << 20
 	// Client messages are small; text input is capped at maxTextInput.
 	clientReadSize = 256 << 10
 	// A browser that keeps dying isn't retried forever.
@@ -88,15 +89,25 @@ func Serve(ctx context.Context, c *websocket.Conn, box Box) {
 	}()
 
 	restarts := 0
+	// Tabs shown when a connection ended: the next session starts elsewhere.
+	avoid := map[string]bool{}
 	for {
 		started := time.Now()
-		err := session(ctx, box, w, in)
+		tried, err := session(ctx, box, w, in, avoid)
 		if time.Since(started) > time.Minute {
 			restarts = 0
+		}
+		if w.overflowed() {
+			// Not a clean end: the client should come back.
+			_ = c.Close(websocket.StatusTryAgainLater, "Client too slow")
+			return
 		}
 		if ctx.Err() != nil || err == nil {
 			_ = c.Close(websocket.StatusNormalClosure, "")
 			return
+		}
+		if errors.Is(err, errBrowserGone) && tried != "" {
+			avoid[tried] = true
 		}
 		switch {
 		case errors.Is(err, errReset):
@@ -122,28 +133,31 @@ func Serve(ctx context.Context, c *websocket.Conn, box Box) {
 	}
 }
 
-// session connects to the browser once and runs a viewer on it.
-func session(ctx context.Context, box Box, w *writer, in <-chan clientMsg) error {
+// session connects to the browser once and runs a viewer on it. It returns
+// the tab it last tried to show.
+func session(ctx context.Context, box Box, w *writer, in <-chan clientMsg, avoid map[string]bool) (string, error) {
 	w.Text(map[string]any{"type": "status", "state": "starting"})
 	sctx, cancel := context.WithTimeout(ctx, 90*time.Second)
 	path, err := box.Ensure(sctx)
 	if err != nil {
 		cancel()
-		return err
+		return "", err
 	}
 	stream, err := box.Dial(sctx)
 	if err != nil {
 		cancel()
-		return err
+		return "", err
 	}
 	t, err := DialCDP(sctx, stream, path)
 	cancel()
 	if err != nil {
-		return err
+		return "", err
 	}
 	cdp := NewConn(t)
 	defer cdp.Close()
-	return newViewer(cdp, w, box.Touch).run(ctx, in)
+	v := newViewer(cdp, w, box.Touch, avoid)
+	err = v.run(ctx, in)
+	return v.attaching, err
 }
 
 // closeReason fits an error into a close frame (123 bytes max).
@@ -163,10 +177,11 @@ type writer struct {
 	cancel context.CancelFunc
 	text   chan []byte
 
-	mu     sync.Mutex
-	queued int // bytes in text
-	frame  []byte
-	ready  chan struct{}
+	mu       sync.Mutex
+	queued   int // bytes in text
+	overflow bool
+	frame    []byte
+	ready    chan struct{}
 }
 
 func newWriter(ctx context.Context, c *websocket.Conn, cancel context.CancelFunc) *writer {
@@ -187,15 +202,28 @@ func (w *writer) Text(v any) {
 	}
 	w.mu.Unlock()
 	if over {
-		// The client stopped reading.
-		w.cancel()
+		w.stalled()
 		return
 	}
 	select {
 	case w.text <- b:
 	default:
-		w.cancel()
+		w.stalled()
 	}
+}
+
+// stalled drops a client that stopped reading.
+func (w *writer) stalled() {
+	w.mu.Lock()
+	w.overflow = true
+	w.mu.Unlock()
+	w.cancel()
+}
+
+func (w *writer) overflowed() bool {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return w.overflow
 }
 
 func (w *writer) sent(b []byte) {

@@ -30,20 +30,26 @@ const (
 )
 
 // hangingBox never gets its browser started, so a viewer stays in Ensure.
-type hangingBox struct{}
+type hangingBox struct{ resets *atomic.Int32 }
 
 func (hangingBox) Ensure(ctx context.Context) (string, error) {
 	<-ctx.Done()
 	return "", ctx.Err()
 }
 func (hangingBox) Dial(context.Context) (io.ReadWriteCloser, error) { return nil, errors.New("no") }
-func (hangingBox) Reset(context.Context) error                      { return nil }
-func (hangingBox) Touch()                                           {}
+func (b hangingBox) Reset(context.Context) error {
+	if b.resets != nil {
+		b.resets.Add(1)
+	}
+	return nil
+}
+func (hangingBox) Touch() {}
 
 type browserFixture struct {
-	m   *Module
-	srv *httptest.Server
-	a   *app.App
+	m      *Module
+	srv    *httptest.Server
+	a      *app.App
+	resets atomic.Int32
 }
 
 func newBrowserFixture(t *testing.T) *browserFixture {
@@ -69,12 +75,16 @@ func newBrowserFixture(t *testing.T) *browserFixture {
 		t.Fatal(err)
 	}
 	m := &Module{a: a}
-	m.browserBox = func(*models.Workspace) (browserview.Box, string, error) { return hangingBox{}, "box-1", nil }
+	f := &browserFixture{m: m, a: a}
+	m.browserBox = func(*models.Workspace) (browserview.Box, string, error) {
+		return hangingBox{resets: &f.resets}, "box-1", nil
+	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/v1/sandbox/{sandbox_id}/browser/ws", m.browserWS)
-	srv := httptest.NewServer(mux)
-	t.Cleanup(srv.Close)
-	return &browserFixture{m: m, srv: srv, a: a}
+	mux.HandleFunc("POST /api/v1/sandbox/{sandbox_id}/browser/reset", a.Auth.Require(m.browserReset))
+	f.srv = httptest.NewServer(mux)
+	t.Cleanup(f.srv.Close)
+	return f
 }
 
 func (f *browserFixture) token(t *testing.T, userID string) string {
@@ -249,5 +259,34 @@ func TestExecStreamClose(t *testing.T) {
 	waitRelease(released)
 	if !p.killed.Load() {
 		t.Fatal("hung socat not killed")
+	}
+}
+
+// Reset works without a viewer session, so a viewer that can't connect can
+// still recover.
+func TestBrowserResetEndpoint(t *testing.T) {
+	f := newBrowserFixture(t)
+	post := func(sb, token string) int {
+		req, _ := http.NewRequest(http.MethodPost, f.srv.URL+"/api/v1/sandbox/"+sb+"/browser/reset", nil)
+		req.Header.Set("Authorization", "Bearer "+token)
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp.Body.Close()
+		return resp.StatusCode
+	}
+	if code := post("sb1", f.token(t, ownerID)); code != http.StatusNoContent || f.resets.Load() != 1 {
+		t.Fatalf("owner: %d, resets %d", code, f.resets.Load())
+	}
+	if code := post("sb1", f.token(t, otherID)); code != http.StatusNotFound || f.resets.Load() != 1 {
+		t.Fatalf("other user: %d, resets %d", code, f.resets.Load())
+	}
+	if code := post("sb1", "nope"); code != http.StatusUnauthorized {
+		t.Fatalf("no auth: %d", code)
+	}
+	f.a.Cfg.BrowserEnabled = false
+	if code := post("sb1", f.token(t, ownerID)); code != http.StatusBadRequest || f.resets.Load() != 1 {
+		t.Fatalf("disabled: %d", code)
 	}
 }

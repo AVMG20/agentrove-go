@@ -235,8 +235,21 @@ const (
 	maxKeptBytes = 200 << 20
 )
 
+// changed is the later of a file's modification and status-change times: a
+// file moved or copied in with an old mtime still counts as new.
+func changed(info fs.FileInfo) time.Time {
+	t := info.ModTime()
+	if st, ok := info.Sys().(*syscall.Stat_t); ok {
+		if c := time.Unix(st.Ctim.Sec, st.Ctim.Nsec); c.After(t) {
+			t = c
+		}
+	}
+	return t
+}
+
 // pruneDir deletes the oldest regular files under dir beyond the newest
-// maxFiles or maxBytes. Errors are ignored: another session may be pruning.
+// maxFiles or maxBytes, by changed. Errors are ignored: another session may
+// be pruning.
 func pruneDir(dir string, maxFiles int, maxBytes int64) {
 	type file struct {
 		path string
@@ -249,7 +262,7 @@ func pruneDir(dir string, maxFiles int, maxBytes int64) {
 			return nil
 		}
 		if info, err := d.Info(); err == nil {
-			files = append(files, file{path, info.Size(), info.ModTime()})
+			files = append(files, file{path, info.Size(), changed(info)})
 		}
 		return nil
 	})

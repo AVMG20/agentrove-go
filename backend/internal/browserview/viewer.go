@@ -7,7 +7,7 @@ import (
 	"errors"
 	"log/slog"
 	"slices"
-	"sync/atomic"
+	"sync"
 	"time"
 )
 
@@ -36,6 +36,13 @@ const (
 	maxViewerTabs = 30
 )
 
+// No CDP reply the viewer asks for may grow with page content beyond what
+// Chromium caps (URLs at 2MB, titles at 4KB, dialog text at about 10KB): a
+// reply over cdpReadLimit would end the connection. So the viewer never
+// calls Target.getTargets or Page.getNavigationHistory (a page can pushState
+// any number of 2MB URLs); tabs come from target events and per-target
+// getTargetInfo, history from an isolated world.
+
 var (
 	errReset       = errors.New("browser reset requested")
 	errBrowserGone = errors.New("browser connection closed")
@@ -56,6 +63,12 @@ type viewer struct {
 	cdp   *Conn
 	out   sink
 	touch func()
+	// avoid are tabs whose earlier sessions ended with the connection; they
+	// aren't picked to show first, so one hostile tab can't keep the viewer
+	// down.
+	avoid map[string]bool
+	// attaching is the tab the viewer last tried to show.
+	attaching string
 
 	pages         []tab
 	opening       int    // tabs the viewer asked for that haven't appeared yet
@@ -73,20 +86,24 @@ type viewer struct {
 
 	ackTimer  *time.Timer
 	castTimer *time.Timer
-	// work runs input and navigation in order; control runs everything else
-	// that mustn't block the loop (tab commands, dialogs, polling), so a page
-	// stuck in a dialog doesn't hold up the dialog's answer.
-	work    chan func()
-	control chan func()
-	results chan func()
-	polling atomic.Bool
+	// work runs input and navigation in order; control runs the other user
+	// commands that mustn't block the loop (tabs, dialogs), so a page stuck
+	// in a dialog doesn't hold up the dialog's answer. Internal refreshes
+	// (titles, history) run single-flight on their own.
+	work      chan func()
+	control   chan func()
+	results   chan func()
+	titles    refresher
+	nav       refresher
+	titleTurn int // round-robin over background tabs
+	busySent  time.Time
 }
 
-func newViewer(cdp *Conn, out sink, touch func()) *viewer {
+func newViewer(cdp *Conn, out sink, touch func(), avoid map[string]bool) *viewer {
 	if touch == nil {
 		touch = func() {}
 	}
-	v := &viewer{cdp: cdp, out: out, touch: touch, work: make(chan func(), 256), control: make(chan func(), 32), results: make(chan func(), 64)}
+	v := &viewer{cdp: cdp, out: out, touch: touch, avoid: avoid, work: make(chan func(), 1024), control: make(chan func(), 64), results: make(chan func(), 64)}
 	v.ackTimer = time.NewTimer(time.Hour)
 	v.ackTimer.Stop()
 	v.castTimer = time.NewTimer(time.Hour)
@@ -100,21 +117,57 @@ func (v *viewer) call(ctx context.Context, timeout time.Duration, session, metho
 	return v.cdp.Call(ctx, session, method, params)
 }
 
-// enqueue runs f on the ordered worker; when it's backed up (a hung page)
-// the input is dropped rather than blocking the loop.
-func (v *viewer) enqueue(f func()) {
+// enqueue runs a user command on the ordered worker and background on the
+// control worker. Neither blocks the loop: when a worker is backed up (a hung
+// page), the command is refused and the user told, never dropped silently.
+func (v *viewer) enqueue(f func()) bool { return v.submit(v.work, f) }
+
+func (v *viewer) background(f func()) bool { return v.submit(v.control, f) }
+
+func (v *viewer) submit(ch chan func(), f func()) bool {
 	select {
-	case v.work <- f:
+	case ch <- f:
+		return true
 	default:
 	}
+	if time.Since(v.busySent) > 2*time.Second {
+		v.busySent = time.Now()
+		v.out.Text(map[string]any{"type": "error", "message": "The page isn't responding; try again"})
+	}
+	return false
 }
 
-// background runs f on the control worker, dropping it when that is backed up.
-func (v *viewer) background(f func()) {
-	select {
-	case v.control <- f:
-	default:
+// refresher runs one internal refresh at a time; requests made while one
+// runs collapse into a single run of the latest afterwards.
+type refresher struct {
+	mu      sync.Mutex
+	running bool
+	next    func()
+}
+
+func (r *refresher) run(f func()) {
+	r.mu.Lock()
+	r.next = f
+	if r.running {
+		r.mu.Unlock()
+		return
 	}
+	r.running = true
+	r.mu.Unlock()
+	go func() {
+		for {
+			r.mu.Lock()
+			f := r.next
+			r.next = nil
+			if f == nil {
+				r.running = false
+				r.mu.Unlock()
+				return
+			}
+			r.mu.Unlock()
+			f()
+		}
+	}()
 }
 
 // post hands a result back to the loop goroutine.
@@ -175,28 +228,30 @@ func (v *viewer) run(ctx context.Context, in <-chan clientMsg) error {
 }
 
 func (v *viewer) start(ctx context.Context) error {
-	raw, err := v.call(ctx, callTimeout, "", "Target.getTargets", nil)
-	if err != nil {
-		return errBrowserGone
-	}
-	var res struct {
-		TargetInfos []targetInfo `json:"targetInfos"`
-	}
-	_ = json.Unmarshal(raw, &res)
-	for _, t := range res.TargetInfos {
-		v.addPage(t)
-	}
-	// Created, changed and destroyed targets arrive as events from here on.
+	// Chromium sends targetCreated for every existing target before it
+	// answers, one small event each; then created, changed and destroyed
+	// targets keep arriving as events.
 	if _, err := v.call(ctx, callTimeout, "", "Target.setDiscoverTargets", map[string]any{"discover": true}); err != nil {
 		return errBrowserGone
 	}
+	for _, ev := range v.cdp.Events() {
+		if ev.Method != "Target.targetCreated" {
+			continue
+		}
+		var p struct {
+			TargetInfo targetInfo `json:"targetInfo"`
+		}
+		_ = json.Unmarshal(ev.Params, &p)
+		v.addPage(p.TargetInfo)
+	}
 	v.out.Text(map[string]any{"type": "status", "state": "ready"})
-	if id := initialPage(v.pages); id != "" {
+	if id := initialPage(v.pages, v.avoid); id != "" {
 		v.attach(ctx, id)
 		return nil
 	}
-	// Nothing open (the agent closed every tab): give the viewer one, which
-	// targetCreated then attaches to.
+	// Nothing open (the agent closed every tab), or only tabs that broke
+	// earlier sessions: give the viewer a fresh one, which targetCreated then
+	// attaches to.
 	if _, err := v.call(ctx, callTimeout, "", "Target.createTarget", map[string]any{"url": "about:blank"}); err != nil {
 		return errBrowserGone
 	}
@@ -204,18 +259,23 @@ func (v *viewer) start(ctx context.Context) error {
 	return nil
 }
 
-// initialPage picks the tab to show first: the last one with something
-// loaded (agents open new tabs for new work), else the last one.
-func initialPage(pages []tab) string {
+// initialPage picks the tab to show first, skipping those in avoid: the
+// last one with something loaded (agents open new tabs for new work), else
+// the last one.
+func initialPage(pages []tab, avoid map[string]bool) string {
+	last := ""
 	for i := len(pages) - 1; i >= 0; i-- {
+		if avoid[pages[i].ID] {
+			continue
+		}
 		if pages[i].URL != "about:blank" && pages[i].URL != "" {
 			return pages[i].ID
 		}
+		if last == "" {
+			last = pages[i].ID
+		}
 	}
-	if len(pages) > 0 {
-		return pages[len(pages)-1].ID
-	}
-	return ""
+	return last
 }
 
 type targetInfo struct {
@@ -248,6 +308,7 @@ func (v *viewer) sendTabs() {
 
 func (v *viewer) attach(ctx context.Context, id string) {
 	v.detach()
+	v.attaching = id
 	raw, err := v.call(ctx, callTimeout, "", "Target.attachToTarget", map[string]any{"targetId": id, "flatten": true})
 	if err != nil {
 		slog.Debug("browser viewer attach", "target", id, "err", err)
@@ -335,47 +396,91 @@ func (v *viewer) maybeAck(ctx context.Context) {
 	}()
 }
 
+// evalIsolated evaluates a script in a fresh isolated world of the page's
+// main frame: the page can't patch what it sees (history, navigation), and
+// the script returns only small values, so the reply stays small.
+func (v *viewer) evalIsolated(ctx context.Context, sid, frameID, expression string, timeout time.Duration) (json.RawMessage, error) {
+	raw, err := v.call(ctx, callTimeout, sid, "Page.createIsolatedWorld", map[string]any{"frameId": frameID, "worldName": "agentrove-viewer"})
+	if err != nil {
+		return nil, err
+	}
+	var world struct {
+		ExecutionContextID int `json:"executionContextId"`
+	}
+	_ = json.Unmarshal(raw, &world)
+	raw, err = v.call(ctx, timeout, sid, "Runtime.evaluate", map[string]any{
+		"contextId": world.ExecutionContextID, "expression": expression, "returnByValue": true,
+	})
+	if err != nil {
+		return nil, err
+	}
+	var res struct {
+		Result struct {
+			Value json.RawMessage `json:"value"`
+		} `json:"result"`
+	}
+	_ = json.Unmarshal(raw, &res)
+	return res.Result.Value, nil
+}
+
+// navStateScript reports whether the tab can go back or forward, as two
+// booleans whatever happens.
+const navStateScript = `(() => { try { return [!!navigation.canGoBack, !!navigation.canGoForward] } catch (e) { return [history.length > 1, false] } })()`
+
+// refreshNav updates the back/forward buttons for the active tab.
 func (v *viewer) refreshNav(ctx context.Context) {
-	sid := v.session
+	sid, target := v.session, v.active
 	if sid == "" {
 		return
 	}
-	v.background(func() {
-		raw, err := v.call(context.WithoutCancel(ctx), callTimeout, sid, "Page.getNavigationHistory", nil)
-		if err != nil {
+	v.nav.run(func() {
+		raw, err := v.evalIsolated(context.WithoutCancel(ctx), sid, target, navStateScript, callTimeout)
+		var state [2]bool
+		if err != nil || json.Unmarshal(raw, &state) != nil {
 			return
 		}
-		var h navHistory
-		_ = json.Unmarshal(raw, &h)
 		v.post(func() {
 			if v.session == sid {
-				v.out.Text(map[string]any{"type": "nav", "canGoBack": h.CurrentIndex > 0, "canGoForward": h.CurrentIndex < len(h.Entries)-1})
+				v.out.Text(map[string]any{"type": "nav", "canGoBack": state[0], "canGoForward": state[1]})
 			}
 		})
 	})
 }
 
-// refreshTitles re-reads every tab's title and URL. Headless Chromium sends
-// targetInfoChanged for navigations, but not for document.title changes, and
-// mid-navigation it reports the host as the title, so the tab strip polls.
+// refreshTitles re-reads titles and URLs: the active tab's every time, and
+// one other tab's in turn. Headless Chromium sends targetInfoChanged for
+// navigations, but not for document.title changes, and mid-navigation it
+// reports the host as the title, so the tab strip polls.
 func (v *viewer) refreshTitles(ctx context.Context) {
-	// One poll at a time: a slow browser mustn't pile them up.
-	if !v.polling.CompareAndSwap(false, true) {
+	ids := []string{}
+	if v.active != "" {
+		ids = append(ids, v.active)
+	}
+	if n := len(v.pages); n > 0 {
+		v.titleTurn = (v.titleTurn + 1) % n
+		if id := v.pages[v.titleTurn].ID; id != v.active {
+			ids = append(ids, id)
+		}
+	}
+	if len(ids) == 0 {
 		return
 	}
-	v.background(func() {
-		raw, err := v.call(context.WithoutCancel(ctx), callTimeout, "", "Target.getTargets", nil)
-		v.polling.Store(false)
-		if err != nil {
-			return
+	v.titles.run(func() {
+		var infos []targetInfo
+		for _, id := range ids {
+			raw, err := v.call(context.WithoutCancel(ctx), callTimeout, "", "Target.getTargetInfo", map[string]any{"targetId": id})
+			if err != nil {
+				continue
+			}
+			var res struct {
+				TargetInfo targetInfo `json:"targetInfo"`
+			}
+			_ = json.Unmarshal(raw, &res)
+			infos = append(infos, res.TargetInfo)
 		}
-		var res struct {
-			TargetInfos []targetInfo `json:"targetInfos"`
-		}
-		_ = json.Unmarshal(raw, &res)
 		v.post(func() {
 			changed := false
-			for _, t := range res.TargetInfos {
+			for _, t := range infos {
 				changed = v.updatePage(t) || changed
 			}
 			if changed {
@@ -395,13 +500,6 @@ func (v *viewer) updatePage(t targetInfo) bool {
 	}
 	v.pages[i].Title, v.pages[i].URL = t.Title, t.URL
 	return true
-}
-
-type navHistory struct {
-	CurrentIndex int `json:"currentIndex"`
-	Entries      []struct {
-		ID int `json:"id"`
-	} `json:"entries"`
 }
 
 func (v *viewer) onEvent(ctx context.Context, ev Event) {
@@ -540,6 +638,10 @@ func (v *viewer) inputCall(method string, params map[string]any) {
 	})
 }
 
+// historyScripts go back and forward from an isolated world, where the page
+// can't have replaced history.
+var historyScripts = map[int]string{-1: "history.back()", 1: "history.forward()"}
+
 // navCall runs a navigation command and reports its failure to the client.
 func (v *viewer) navCall(method string, params map[string]any) {
 	sid := v.session
@@ -569,19 +671,10 @@ func (v *viewer) historyStep(delta int) {
 	if sid == "" {
 		return
 	}
+	target := v.active
 	v.touch()
 	v.enqueue(func() {
-		raw, err := v.call(context.Background(), callTimeout, sid, "Page.getNavigationHistory", nil)
-		if err != nil {
-			return
-		}
-		var h navHistory
-		_ = json.Unmarshal(raw, &h)
-		i := h.CurrentIndex + delta
-		if i < 0 || i >= len(h.Entries) {
-			return
-		}
-		_, _ = v.call(context.Background(), navigationTimeout, sid, "Page.navigateToHistoryEntry", map[string]any{"entryId": h.Entries[i].ID})
+		_, _ = v.evalIsolated(context.Background(), sid, target, historyScripts[delta], callTimeout)
 	})
 }
 
@@ -643,13 +736,14 @@ func (v *viewer) onClient(ctx context.Context, m clientMsg) error {
 				u = nu
 			}
 		}
-		v.opening++
 		v.touch()
-		v.background(func() {
+		if v.background(func() {
 			if _, err := v.call(context.Background(), callTimeout, "", "Target.createTarget", map[string]any{"url": u}); err != nil {
 				v.post(func() { v.opening = max(0, v.opening-1) })
 			}
-		})
+		}) {
+			v.opening++
+		}
 	case "tab.switch":
 		if m.ID != v.active && v.pageIndex(m.ID) >= 0 {
 			v.touch()

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"slices"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -24,6 +25,9 @@ type fakeBrowser struct {
 	failScreencast int
 	// hold makes these methods never answer (a page stuck in a dialog).
 	hold map[string]bool
+	// poison is a URL whose tab sends more than cdpReadLimit when attached
+	// (like a hostile page's history used to).
+	poison string
 
 	toClient  chan []byte
 	closed    chan struct{}
@@ -109,14 +113,33 @@ func (f *fakeBrowser) handle(m wireMessage, params map[string]any) (any, *CDPErr
 	case "Target.getTargets":
 		return map[string]any{"targetInfos": f.targets}, nil
 	case "Target.setDiscoverTargets":
-		// Chromium reports the existing targets too.
+		// Chromium reports the existing targets too, before it answers.
 		for _, t := range f.targets {
-			go f.emit("", "Target.targetCreated", map[string]any{"targetInfo": t})
+			f.emit("", "Target.targetCreated", map[string]any{"targetInfo": t})
 		}
+	case "Target.getTargetInfo":
+		for _, t := range f.targets {
+			if t.TargetID == params["targetId"] {
+				return map[string]any{"targetInfo": t}, nil
+			}
+		}
+		return nil, &CDPError{Code: -32602, Message: "No target with given id found"}
+	case "Page.createIsolatedWorld":
+		return map[string]any{"executionContextId": 1}, nil
+	case "Runtime.evaluate":
+		if params["expression"] == navStateScript {
+			return map[string]any{"result": map[string]any{"type": "object", "value": []bool{true, true}}}, nil
+		}
+		return map[string]any{"result": map[string]any{"type": "undefined"}}, nil
 	case "Target.attachToTarget":
 		f.nextID++
 		sid := fmt.Sprintf("S%d", f.nextID)
 		f.sessions[sid] = params["targetId"].(string)
+		for _, t := range f.targets {
+			if t.TargetID == params["targetId"] && f.poison != "" && t.URL == f.poison {
+				go f.emit(sid, "Page.huge", map[string]any{"data": strings.Repeat("a", cdpReadLimit+1)})
+			}
+		}
 		return map[string]any{"sessionId": sid}, nil
 	case "Target.createTarget":
 		f.nextID++
@@ -133,8 +156,6 @@ func (f *fakeBrowser) handle(m wireMessage, params map[string]any) (any, *CDPErr
 			f.failScreencast--
 			return nil, &CDPError{Code: -32000, Message: "Not attached to an active page"}
 		}
-	case "Page.getNavigationHistory":
-		return map[string]any{"currentIndex": 1, "entries": []map[string]any{{"id": 11}, {"id": 12}, {"id": 13}}}, nil
 	case "Browser.getWindowForTarget":
 		return map[string]any{"windowId": 7}, nil
 	}
@@ -244,7 +265,12 @@ func (s *fakeSink) waitText(t *testing.T, typ string, ok func(map[string]any) bo
 
 func waitUntil(t *testing.T, what string, cond func() bool) {
 	t.Helper()
-	deadline := time.Now().Add(2 * time.Second)
+	waitUntilFor(t, 2*time.Second, what, cond)
+}
+
+func waitUntilFor(t *testing.T, timeout time.Duration, what string, cond func() bool) {
+	t.Helper()
+	deadline := time.Now().Add(timeout)
 	for !cond() {
 		if time.Now().After(deadline) {
 			t.Fatalf("timed out waiting for %s", what)

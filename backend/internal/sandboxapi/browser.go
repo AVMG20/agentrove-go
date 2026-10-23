@@ -10,7 +10,9 @@ import (
 	"sync"
 	"time"
 
+	"agentrove/internal/auth"
 	"agentrove/internal/browserview"
+	"agentrove/internal/httpx"
 	"agentrove/internal/models"
 	"agentrove/internal/sandbox"
 
@@ -52,6 +54,28 @@ func (m *Module) browserWS(w http.ResponseWriter, r *http.Request) {
 	}
 	defer m.viewers.done(boxID)
 	browserview.Serve(ctx, c, box)
+}
+
+// browserReset stops the box browser and wipes its profile without a
+// viewer session, so the viewer can recover even when it can't connect.
+func (m *Module) browserReset(w http.ResponseWriter, r *http.Request) error {
+	ws, err := m.a.Store.GetWorkspaceBySandbox(r.Context(), auth.UserFrom(r.Context()).ID, r.PathValue("sandbox_id"))
+	if err != nil {
+		return err
+	}
+	if !m.a.Cfg.BrowserEnabled {
+		return httpx.BadRequest("The browser is turned off on this server")
+	}
+	box, _, err := m.browserBox(ws)
+	if err != nil {
+		return httpx.BadRequest("This project has no box browser")
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 90*time.Second)
+	defer cancel()
+	if err := box.Reset(ctx); err != nil {
+		return err
+	}
+	return httpx.NoContent(w)
 }
 
 // dockerBrowser is the browser of the workspace's Docker box (Module.browserBox).

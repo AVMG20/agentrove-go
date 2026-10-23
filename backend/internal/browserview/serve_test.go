@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net"
 	"net/http"
@@ -149,6 +150,9 @@ type fakeBox struct {
 	browsers  []*fakeBrowser
 	resets    int
 	ensureErr error
+	// pages and poison set up each new browser (default: one dev server tab).
+	pages  []string
+	poison string
 }
 
 func (b *fakeBox) Ensure(context.Context) (string, error) {
@@ -159,7 +163,12 @@ func (b *fakeBox) Ensure(context.Context) (string, error) {
 }
 
 func (b *fakeBox) Dial(context.Context) (io.ReadWriteCloser, error) {
-	f := newFakeBrowser("http://localhost:3000/")
+	pages := b.pages
+	if pages == nil {
+		pages = []string{"http://localhost:3000/"}
+	}
+	f := newFakeBrowser(pages...)
+	f.poison = b.poison
 	b.mu.Lock()
 	b.browsers = append(b.browsers, f)
 	b.mu.Unlock()
@@ -177,7 +186,7 @@ func (b *fakeBox) Touch() {}
 
 func (b *fakeBox) browser(t *testing.T, i int) *fakeBrowser {
 	t.Helper()
-	waitUntil(t, "browser dialed", func() bool {
+	waitUntilFor(t, 10*time.Second, "browser dialed", func() bool {
 		b.mu.Lock()
 		defer b.mu.Unlock()
 		return len(b.browsers) > i
@@ -307,10 +316,81 @@ func TestWriterBoundsQueuedBytes(t *testing.T) {
 	for i := 0; i < 20 && ctx.Err() == nil; i++ {
 		w.Text(map[string]any{"type": "tabs", "url": big})
 	}
-	if ctx.Err() == nil {
+	if ctx.Err() == nil || !w.overflowed() {
 		t.Fatal("writer kept queueing for a client that doesn't read")
 	}
 	if w.queued > maxQueuedTextBytes {
 		t.Fatalf("queued %d bytes", w.queued)
+	}
+}
+
+// One hostile tab (here: one that floods the connection when attached) must
+// not keep the viewer down: the next session shows another tab.
+func TestServeRecoversFromPoisonedTab(t *testing.T) {
+	box := &fakeBox{t: t, pages: []string{"http://evil/"}, poison: "http://evil/"}
+	c := serveViewer(t, box)
+	// The first session attaches to the hostile tab and loses its connection.
+	box.browser(t, 0).waitCall(t, "Target.attachToTarget", 0)
+	f := box.browser(t, 1)
+	// The second avoids it and opens a fresh tab instead of re-attaching.
+	if p := params(f.waitCall(t, "Target.createTarget", 0)); p["url"] != "about:blank" {
+		t.Fatalf("create = %v", p)
+	}
+	att := f.waitCall(t, "Target.attachToTarget", 0)
+	if params(att)["targetId"] == "T1" {
+		t.Fatal("re-attached the hostile tab")
+	}
+	f.waitCall(t, "Page.startScreencast", 0)
+	// And it stays up.
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	for {
+		_, _, err := c.Read(ctx)
+		if err == nil {
+			continue
+		}
+		if ctx.Err() == nil {
+			t.Fatalf("viewer closed: %v", err)
+		}
+		break
+	}
+	box.mu.Lock()
+	n := len(box.browsers)
+	box.mu.Unlock()
+	if n != 2 {
+		t.Fatalf("%d sessions, want 2", n)
+	}
+}
+
+// A client too slow to read is closed with a code the frontend retries on.
+func TestServeClosesStalledClientRetryably(t *testing.T) {
+	old := maxQueuedTextBytes
+	maxQueuedTextBytes = 64 << 10
+	t.Cleanup(func() { maxQueuedTextBytes = old })
+	box := &fakeBox{t: t}
+	c := serveViewer(t, box)
+	readUntil(t, c, textOf("tabs"))
+	f := box.browser(t, 0)
+	// Flood tab updates (each clipped to 2KB) past the socket buffers without
+	// reading.
+	big := strings.Repeat("u", 4000)
+	for i := range 6000 {
+		f.emit("", "Target.targetInfoChanged", map[string]any{"targetInfo": targetInfo{TargetID: "T1", Type: "page", URL: fmt.Sprintf("http://x/%d%s", i, big)}})
+	}
+	time.Sleep(time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	for {
+		_, _, err := c.Read(ctx)
+		if err == nil {
+			continue
+		}
+		if ctx.Err() != nil {
+			t.Fatal("stalled client never dropped")
+		}
+		if websocket.CloseStatus(err) == websocket.StatusNormalClosure {
+			t.Fatalf("stalled client closed as normal: %v", err)
+		}
+		return
 	}
 }

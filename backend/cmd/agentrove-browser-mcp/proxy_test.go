@@ -415,3 +415,30 @@ func TestPruneDir(t *testing.T) {
 		t.Fatalf("left %v", left)
 	}
 }
+
+// A file moved in with an old mtime is new by its ctime and survives.
+func TestPruneDirKeepsMovedInFiles(t *testing.T) {
+	dir := t.TempDir()
+	old := time.Now().Add(-time.Hour)
+	for i := range 3 {
+		path := filepath.Join(dir, fmt.Sprintf("f%d", i))
+		if err := os.WriteFile(path, []byte("x"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		_ = os.Chtimes(path, old, old.Add(time.Duration(i)*time.Minute))
+	}
+	time.Sleep(20 * time.Millisecond)
+	moved := filepath.Join(dir, "moved")
+	src := filepath.Join(t.TempDir(), "moved")
+	if err := os.WriteFile(src, []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	_ = os.Chtimes(src, old, old.Add(-24*time.Hour)) // oldest mtime of all
+	if err := os.Rename(src, moved); err != nil {
+		t.Fatal(err)
+	}
+	pruneDir(dir, 1, 1<<20)
+	if _, err := os.Stat(moved); err != nil {
+		t.Fatalf("moved-in file pruned: %v", err)
+	}
+}

@@ -154,7 +154,16 @@ Nothing browser-related runs until it is used.
   JS dialogs, reset. It follows tabs the agent opens. The CDP peer runs in
   the box, so it is untrusted: messages are capped at 8MB, the event backlog
   and the client's queued messages by bytes, and page-controlled strings (tab
-  titles and URLs, dialog text) are clipped. The socat process holds a
+  titles and URLs, dialog text) are clipped. No reply it asks for grows with
+  page content beyond Chromium's own caps (URLs 2MB, titles 4KB): tabs come
+  from target events and per-target `getTargetInfo` (never
+  `Target.getTargets`), back/forward state and moves from an isolated world
+  (never `Page.getNavigationHistory`). A tab shown when a connection broke
+  isn't picked first by the next session, so one hostile tab can't keep the
+  viewer down, and `POST .../browser/reset` resets without a session. A
+  client too slow to read is closed with 1013 (the frontend retries).
+  Internal refreshes are single-flight; user commands a hung page backs up
+  are refused with a message, never dropped silently. The socat process holds a
   sandbox lease, so a watched box isn't idle-stopped. At most 4 viewers per
   box, and 30 tabs opened through a viewer. Settings report
   `browser_available` (`SANDBOX_BROWSER_ENABLED`) so the UI can hide it.

@@ -7,10 +7,11 @@ import { BrowserTab } from './BrowserTab';
 
 const mocks = vi.hoisted(() => ({
   getValidToken: vi.fn().mockResolvedValue('browser-token'),
+  post: vi.fn().mockResolvedValue(undefined),
 }));
 
 vi.mock('@/lib/api', () => ({
-  apiClient: { getValidToken: mocks.getValidToken },
+  apiClient: { getValidToken: mocks.getValidToken, post: mocks.post },
   API_WS_URL: 'wss://app.example.test/api/v1',
 }));
 
@@ -162,7 +163,10 @@ describe('BrowserTab', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Reset browser' }));
     fireEvent.click(screen.getByRole('button', { name: 'Reset' }));
-    expect(ws.sent()).toContainEqual({ type: 'reset' });
+    await flush();
+    expect(mocks.post).toHaveBeenCalledWith('/sandbox/box-1/browser/reset');
+    // Then a fresh connection.
+    expect(FakeWebSocket.instances).toHaveLength(2);
   });
 
   it('forwards keys typed into the page but leaves paste to the paste event', async () => {
@@ -259,6 +263,39 @@ describe('BrowserTab', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Reconnect' }));
     await flush();
     expect(FakeWebSocket.instances).toHaveLength(5);
+  });
+
+  it('offers a reset when the viewer cannot connect', async () => {
+    const ws = await connect();
+    act(() => ws.drop(4006, 'Browser unavailable: browser connection closed'));
+    // The overlay's own Reset button, next to Reconnect.
+    const overlayReset = screen
+      .getAllByRole('button', { name: 'Reset browser' })
+      .find((b) => b.textContent === 'Reset browser');
+    fireEvent.click(overlayReset!);
+    fireEvent.click(screen.getByRole('button', { name: 'Reset' }));
+    await flush();
+    expect(mocks.post).toHaveBeenCalledWith('/sandbox/box-1/browser/reset');
+    expect(FakeWebSocket.instances).toHaveLength(2);
+  });
+
+  it('sends soft-keyboard Backspace and Enter as keys', async () => {
+    const ws = await connect();
+    act(() => ws.message({ type: 'status', state: 'ready' }));
+    const keyboard = screen.getByLabelText('Browser keyboard');
+    const before = new Event('beforeinput', { cancelable: true }) as InputEvent;
+    Object.defineProperty(before, 'inputType', { value: 'deleteContentBackward' });
+    keyboard.dispatchEvent(before);
+    expect(before.defaultPrevented).toBe(true);
+    expect(ws.sent()).toContainEqual(
+      expect.objectContaining({ type: 'key', event: 'down', key: 'Backspace', keyCode: 8 }),
+    );
+    const enter = new Event('beforeinput', { cancelable: true }) as InputEvent;
+    Object.defineProperty(enter, 'inputType', { value: 'insertParagraph' });
+    keyboard.dispatchEvent(enter);
+    expect(ws.sent()).toContainEqual(
+      expect.objectContaining({ type: 'key', event: 'up', key: 'Enter', keyCode: 13 }),
+    );
   });
 
   it('shows the server reason without retrying when the box has no browser', async () => {

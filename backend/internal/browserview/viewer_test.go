@@ -22,7 +22,7 @@ func startViewer(t *testing.T, f *fakeBrowser) *viewerRun {
 	ctx, cancel := context.WithCancel(context.Background())
 	conn := NewConn(f)
 	r := &viewerRun{f: f, sink: &fakeSink{}, in: make(chan clientMsg, 16), done: make(chan error, 1)}
-	v := newViewer(conn, r.sink, nil)
+	v := newViewer(conn, r.sink, nil, nil)
 	go func() { r.done <- v.run(ctx, r.in) }()
 	t.Cleanup(func() {
 		cancel()
@@ -140,12 +140,14 @@ func TestViewerNavigation(t *testing.T) {
 	r.in <- clientMsg{Type: "navigate", URL: "file:///etc/passwd"}
 	r.sink.waitText(t, "error", nil)
 
+	// History moves from an isolated world the page can't tamper with.
+	evals := f.count("Runtime.evaluate")
 	r.in <- clientMsg{Type: "back"}
-	if p := params(f.waitCall(t, "Page.navigateToHistoryEntry", 0)); p["entryId"] != 11.0 {
+	if p := params(f.waitCall(t, "Runtime.evaluate", evals)); p["expression"] != "history.back()" || p["contextId"] != 1.0 {
 		t.Fatalf("back = %v", p)
 	}
 	r.in <- clientMsg{Type: "forward"}
-	if p := params(f.waitCall(t, "Page.navigateToHistoryEntry", 1)); p["entryId"] != 13.0 {
+	if p := params(f.waitCall(t, "Runtime.evaluate", evals+1)); p["expression"] != "history.forward()" {
 		t.Fatalf("forward = %v", p)
 	}
 	r.in <- clientMsg{Type: "reload"}
@@ -299,5 +301,45 @@ func TestViewerCapsTabsItOpens(t *testing.T) {
 	time.Sleep(200 * time.Millisecond)
 	if n := f.count("Target.createTarget"); n > maxViewerTabs {
 		t.Fatalf("viewer opened %d tabs", n)
+	}
+}
+
+// No reply the viewer asks for may grow with page content: a page can
+// pushState any number of 2MB URLs, which made getNavigationHistory (and
+// getTargets with many tabs) exceed cdpReadLimit and end the connection.
+func TestViewerAvoidsUnboundedReplies(t *testing.T) {
+	f := newFakeBrowser("http://localhost:3000/", "about:blank")
+	r := startViewer(t, f)
+	r.activeSession(t)
+	r.sink.waitText(t, "nav", nil)
+	// Titles still update by polling, without document.title events.
+	f.mu.Lock()
+	f.targets[0].Title = "Renamed"
+	f.mu.Unlock()
+	r.sink.waitText(t, "tabs", func(m map[string]any) bool {
+		return m["tabs"].([]any)[0].(map[string]any)["title"] == "Renamed"
+	})
+	r.in <- clientMsg{Type: "back"}
+	f.waitCall(t, "Runtime.evaluate", 1)
+	for _, m := range []string{"Target.getTargets", "Page.getNavigationHistory", "Page.navigateToHistoryEntry"} {
+		if n := f.count(m); n > 0 {
+			t.Errorf("viewer called %s %d times", m, n)
+		}
+	}
+}
+
+func TestInitialPageAvoidsBrokenTabs(t *testing.T) {
+	pages := []tab{{ID: "A", URL: "http://a/"}, {ID: "B", URL: "about:blank"}, {ID: "C", URL: "http://c/"}}
+	if got := initialPage(pages, nil); got != "C" {
+		t.Fatalf("got %s", got)
+	}
+	if got := initialPage(pages, map[string]bool{"C": true}); got != "A" {
+		t.Fatalf("got %s", got)
+	}
+	if got := initialPage(pages, map[string]bool{"A": true, "C": true}); got != "B" {
+		t.Fatalf("got %s", got)
+	}
+	if got := initialPage(pages, map[string]bool{"A": true, "B": true, "C": true}); got != "" {
+		t.Fatalf("got %s", got)
 	}
 }

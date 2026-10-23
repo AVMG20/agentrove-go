@@ -7,7 +7,7 @@ import type {
   PointerEvent as ReactPointerEvent,
 } from 'react';
 import clsx from 'clsx';
-import { ArrowLeft, ArrowRight, Bot, Plus, RotateCw, Trash2, X } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Bot, Keyboard, Plus, RotateCw, Trash2, X } from 'lucide-react';
 
 import { Button } from '@/components/ui/primitives/Button/Button';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog/ConfirmDialog';
@@ -108,6 +108,7 @@ export function BrowserTab({ isVisible, sandboxId }: BrowserTabProps) {
   const [agentActive, setAgentActive] = useState(false);
   const [pageSize, setPageSize] = useState<{ width: number; height: number } | null>(null);
   const [confirmReset, setConfirmReset] = useState(false);
+  const [resetting, setResetting] = useState(false);
   const longHidden = useLongHidden();
   const connected = isVisible && !longHidden;
 
@@ -414,7 +415,9 @@ export function BrowserTab({ isVisible, sandboxId }: BrowserTabProps) {
     const p = pagePoint(e.clientX, e.clientY);
     if (!p?.inside) return;
     e.preventDefault();
-    keyboardRef.current?.focus({ preventScroll: true });
+    // A tap would pop up the soft keyboard; touch users open it with the
+    // keyboard button instead.
+    if (e.pointerType !== 'touch') keyboardRef.current?.focus({ preventScroll: true });
     e.currentTarget.setPointerCapture?.(e.pointerId);
     markInput();
     flushPointer();
@@ -547,6 +550,47 @@ export function BrowserTab({ isVisible, sandboxId }: BrowserTabProps) {
     send({ type: 'text', text });
   };
 
+  // Soft keyboards often send Backspace and Enter as keyCode 229 with no key;
+  // their beforeinput still says what they mean.
+  useEffect(() => {
+    const keyboard = keyboardRef.current;
+    if (!keyboard) return;
+    const onBeforeInput = (e: InputEvent) => {
+      const key =
+        e.inputType === 'deleteContentBackward'
+          ? { key: 'Backspace', code: 'Backspace', keyCode: 8 }
+          : e.inputType === 'insertLineBreak' || e.inputType === 'insertParagraph'
+            ? { key: 'Enter', code: 'Enter', keyCode: 13 }
+            : null;
+      if (!key) return;
+      e.preventDefault();
+      lastInputRef.current = Date.now();
+      for (const event of ['down', 'up']) {
+        send({ type: 'key', event, ...key, location: 0, repeat: false, modifiers: 0 });
+      }
+    };
+    keyboard.addEventListener('beforeinput', onBeforeInput);
+    return () => keyboard.removeEventListener('beforeinput', onBeforeInput);
+  }, [send]);
+
+  // Reset goes over HTTP, so it works when no viewer session is up (e.g. a
+  // page broke every connection); the viewer then reconnects.
+  const resetBrowser = async () => {
+    if (!sandboxId) return;
+    markInput();
+    setResetting(true);
+    try {
+      await apiClient.post(`/sandbox/${encodeURIComponent(sandboxId)}/browser/reset`);
+    } catch (error) {
+      logger.error('Browser reset failed', 'BrowserTab', error);
+      flashNotice('Could not reset the browser');
+    } finally {
+      setResetting(false);
+      autoReconnectsRef.current = 0;
+      setConnectAttempt((n) => n + 1);
+    }
+  };
+
   const command = (msg: Record<string, unknown>) => {
     markInput();
     send(msg);
@@ -558,8 +602,9 @@ export function BrowserTab({ isVisible, sandboxId }: BrowserTabProps) {
     (p) => p.width === pageSize?.width && p.height === pageSize?.height,
   );
 
-  const overlayMessage =
-    connection === 'connecting'
+  const overlayMessage = resetting
+    ? 'Resetting the browser…'
+    : connection === 'connecting'
       ? 'Connecting to the browser…'
       : connection === 'starting'
         ? 'Starting the browser…'
@@ -698,10 +743,19 @@ export function BrowserTab({ isVisible, sandboxId }: BrowserTabProps) {
           className={styles['icon-button']}
           aria-label="Reset browser"
           title="Reset browser: close it and clear cookies, storage and history"
-          disabled={!ready}
+          disabled={!sandboxId || resetting}
           onClick={() => setConfirmReset(true)}
         >
           <Trash2 className={styles.icon} />
+        </Button>
+        <Button
+          variant="unstyled"
+          className={clsx(styles['icon-button'], styles['keyboard-button'])}
+          aria-label="Show keyboard"
+          disabled={!ready}
+          onClick={() => keyboardRef.current?.focus({ preventScroll: true })}
+        >
+          <Keyboard className={styles.icon} />
         </Button>
       </div>
 
@@ -773,17 +827,24 @@ export function BrowserTab({ isVisible, sandboxId }: BrowserTabProps) {
         {isVisible && overlayMessage && (
           <div className={clsx(styles.overlay, styles['overlay--opaque'])}>
             <div className={styles['overlay-message']}>{overlayMessage}</div>
-            {canReconnect && (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => {
-                  autoReconnectsRef.current = 0;
-                  setConnectAttempt((n) => n + 1);
-                }}
-              >
-                Reconnect
-              </Button>
+            {canReconnect && !resetting && (
+              <div className={styles['overlay-actions']}>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    autoReconnectsRef.current = 0;
+                    setConnectAttempt((n) => n + 1);
+                  }}
+                >
+                  Reconnect
+                </Button>
+                {sandboxId && (
+                  <Button variant="ghost" size="sm" onClick={() => setConfirmReset(true)}>
+                    Reset browser
+                  </Button>
+                )}
+              </div>
             )}
           </div>
         )}
@@ -792,7 +853,7 @@ export function BrowserTab({ isVisible, sandboxId }: BrowserTabProps) {
       <ConfirmDialog
         isOpen={confirmReset}
         onClose={() => setConfirmReset(false)}
-        onConfirm={() => command({ type: 'reset' })}
+        onConfirm={() => void resetBrowser()}
         title="Reset the browser?"
         message="This closes every tab and clears the browser's cookies, logins, storage and history, for you and the agent."
         confirmLabel="Reset"

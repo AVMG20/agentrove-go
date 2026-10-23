@@ -112,6 +112,36 @@ func TestRealBox(t *testing.T) {
 	wait("frames", func() bool { return len(frames) > 0 })
 	t.Logf("first frames after %v: %+v", time.Since(start), frames[len(frames)-1])
 
+	// History: canGoBack comes from an isolated world, back goes through it.
+	navState := func(back bool) func() bool {
+		return func() bool {
+			for i := len(texts) - 1; i >= 0; i-- {
+				if texts[i]["type"] == "nav" {
+					return texts[i]["canGoBack"] == back
+				}
+			}
+			return false
+		}
+	}
+	activeURL := func() string {
+		for i := len(texts) - 1; i >= 0; i-- {
+			if texts[i]["type"] == "tabs" {
+				for _, tb := range texts[i]["tabs"].([]any) {
+					if tb := tb.(map[string]any); tb["id"] == texts[i]["active"] {
+						return tb["url"].(string)
+					}
+				}
+			}
+		}
+		return ""
+	}
+	sendMsg(map[string]any{"type": "navigate", "url": "localhost:3999/?second"})
+	wait("second page", func() bool { return strings.HasSuffix(activeURL(), "?second") })
+	wait("can go back", navState(true))
+	sendMsg(map[string]any{"type": "back"})
+	wait("went back", func() bool { return strings.HasSuffix(activeURL(), ":3999/") })
+	wait("back at the start", titleIs("start"))
+
 	click := func(x, y float64) {
 		sendMsg(map[string]any{"type": "mouse", "event": "move", "x": x, "y": y})
 		sendMsg(map[string]any{"type": "mouse", "event": "down", "x": x, "y": y, "button": "left", "buttons": 1, "clickCount": 1})
@@ -173,6 +203,60 @@ func TestRealBox(t *testing.T) {
 	t.Logf("%d frames in %v", len(frames), time.Since(start))
 }
 
+// TestRealBoxHugeHistory: a page that pushState()s several 2MB URLs used to
+// make every viewer connection fail (getNavigationHistory's reply exceeded
+// cdpReadLimit). The viewer must stay up on it.
+func TestRealBoxHugeHistory(t *testing.T) {
+	name := os.Getenv("AGENTROVE_BROWSER_E2E_CONTAINER")
+	if name == "" {
+		t.Skip("AGENTROVE_BROWSER_E2E_CONTAINER not set")
+	}
+	box := &dockerCLIBox{name: name}
+	page := `<!doctype html><title>hist</title><script>const big="a".repeat(1900000);for(let i=0;i<6;i++)history.pushState(null,"","/?"+i+big);document.title="pushed"</script>`
+	if out, err := box.exec(page, "sh", "-c", "mkdir -p /tmp/h && cat > /tmp/h/index.html && (cd /tmp/h && nohup python3 -m http.server 3998 >/dev/null 2>&1 &) && sleep 1"); err != nil {
+		t.Fatalf("%v %s", err, out)
+	}
+	c := serveViewer(t, box)
+	send(t, c, map[string]any{"type": "navigate", "url": "localhost:3998"})
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	start := time.Now()
+	frames, statuses := 0, []string{}
+	var lastTitle string
+	var nav map[string]any
+	for {
+		typ, b, err := c.Read(ctx)
+		if err != nil {
+			if ctx.Err() == nil {
+				t.Fatalf("after %v: closed: %v (statuses %v)", time.Since(start), err, statuses)
+			}
+			break
+		}
+		if typ == websocket.MessageBinary {
+			frames++
+			continue
+		}
+		var m map[string]any
+		_ = json.Unmarshal(b, &m)
+		switch m["type"] {
+		case "status":
+			statuses = append(statuses, m["state"].(string))
+		case "nav":
+			nav = m
+		case "tabs":
+			for _, tb := range m["tabs"].([]any) {
+				if tb := tb.(map[string]any); tb["id"] == m["active"] {
+					lastTitle = tb["title"].(string)
+				}
+			}
+		}
+	}
+	t.Logf("statuses %v, frames %d, title %q, nav %v", statuses, frames, lastTitle, nav)
+	if len(statuses) != 2 || lastTitle != "pushed" || nav["canGoBack"] != true {
+		t.Fatal("viewer did not stay up on the page")
+	}
+}
+
 // dockerCLIBox reaches a container's browser with the docker CLI.
 type dockerCLIBox struct{ name string }
 
@@ -223,6 +307,7 @@ func (s *cliStream) Read(p []byte) (int, error)  { return s.r.Read(p) }
 func (s *cliStream) Write(p []byte) (int, error) { return s.w.Write(p) }
 func (s *cliStream) Close() error {
 	_ = s.w.Close()
+	go func() { _, _ = io.Copy(io.Discard, s.r) }()
 	go func() { _ = s.cmd.Wait() }()
 	return nil
 }

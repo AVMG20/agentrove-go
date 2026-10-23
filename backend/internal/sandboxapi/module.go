@@ -69,6 +69,7 @@ func (m *Module) Routes(mux *http.ServeMux) {
 	mux.HandleFunc("GET "+p+"/git/remote-url", req(m.gitRemoteURL))
 	mux.HandleFunc("GET "+p+"/search", req(m.search))
 	mux.HandleFunc("GET "+p+"/browser/ws", m.browserWS)
+	mux.HandleFunc("POST "+p+"/browser/reset", req(m.browserReset))
 
 	mux.HandleFunc("GET "+m.a.Cfg.APIPrefix+"/ws/{sandbox_id}/terminal", m.terminalWS)
 }
