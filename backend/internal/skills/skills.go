@@ -49,9 +49,8 @@ var (
 	ErrInvalid  = errors.New("invalid")
 )
 
-// ClaudeConfigDir is the host path of the per-user Claude config dir that
-// Docker mounts at /home/user/.claude and host sandboxes get as
-// CLAUDE_CONFIG_DIR.
+// ClaudeConfigDir is the host path of the per-user Claude config dir, seen
+// in the box as /home/user/claude (CLAUDE_CONFIG_DIR).
 func ClaudeConfigDir(cfg *config.Config, ws *models.Workspace) string {
 	return filepath.Join(cfg.AgentHomeDir(ws.UserID), "claude")
 }

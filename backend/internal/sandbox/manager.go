@@ -44,9 +44,6 @@ func NewManager(cfg *config.Config) *Manager {
 		starting:  map[string]*sync.Mutex{},
 		userEnv:   map[string]map[string]string{},
 	}
-	if cfg.HostSandboxEnabled {
-		m.providers[KindHost] = NewHostProvider(cfg)
-	}
 	if d, err := NewDockerProvider(cfg); err != nil {
 		slog.Warn("docker sandbox provider unavailable", "err", err)
 	} else {
@@ -83,37 +80,25 @@ func (m *Manager) For(ws *models.Workspace) (*Sandbox, error) {
 	if err != nil {
 		return nil, err
 	}
-	s := &Sandbox{ID: ws.SandboxID, Kind: ws.SandboxProvider, UserID: ws.UserID, WorkspacePath: ws.WorkspacePath, provider: p, mgr: m}
-	if ws.SandboxProvider == KindDocker {
-		// Every Docker workspace of a user lives in the user's one box.
-		s.ID = BoxID(ws.UserID)
-		s.Root = path.Join(ContainerProjects, filepath.Base(ws.WorkspacePath))
-		s.Home = ContainerHome
-	} else {
-		s.Root = ws.WorkspacePath
-		s.Home = m.hostHome(ws.UserID)
+	if ws.SandboxProvider != KindDocker {
+		return nil, fmt.Errorf("this project ran on the server itself, which is no longer supported; add it again as a project in your box")
 	}
+	// Every project of a user lives in the user's one box.
+	s := &Sandbox{ID: BoxID(ws.UserID), Kind: KindDocker, UserID: ws.UserID, WorkspacePath: ws.WorkspacePath, provider: p, mgr: m,
+		Root: path.Join(ContainerProjects, filepath.Base(ws.WorkspacePath)), Home: ContainerHome}
 	return s, nil
 }
 
-// Create prepares a workspace whose files are at workspacePath. A Docker
-// workspace is a folder in the user's box, which starts lazily on first use.
+// Create prepares a project whose files are at workspacePath: a folder in
+// the user's box, which starts lazily on first use.
 func (m *Manager) Create(ctx context.Context, kind, sandboxID, workspacePath, userID string) error {
-	p, err := m.Provider(kind)
-	if err != nil {
+	if _, err := m.Provider(kind); err != nil {
 		return err
 	}
-	if kind == KindDocker {
-		if filepath.Dir(workspacePath) != m.cfg.UserWorkspacesDir(userID) {
-			return fmt.Errorf("docker workspaces must live in %s", m.cfg.UserWorkspacesDir(userID))
-		}
-		return chownTree(workspacePath)
+	if filepath.Dir(workspacePath) != m.cfg.UserWorkspacesDir(userID) {
+		return fmt.Errorf("projects must live in %s", m.cfg.UserWorkspacesDir(userID))
 	}
-	if err := p.Create(ctx, CreateOptions{SandboxID: sandboxID, WorkspacePath: workspacePath, UserID: userID}); err != nil {
-		return err
-	}
-	m.Touch(sandboxID)
-	return nil
+	return chownTree(workspacePath)
 }
 
 // Delete releases a workspace's sandbox. The user's box is shared and stays;
@@ -292,22 +277,10 @@ func (m *Manager) mergeEnv(s *Sandbox, extra map[string]string) map[string]strin
 		env["GIT_ASKPASS"] = s.GitAskpassPath()
 	}
 	env["TERM"] = TerminalType
-	if s.Kind == KindHost {
-		env["HOME"] = s.Home
-		// Same per-user Claude login dir Docker sandboxes mount, so one login
-		// covers both sandbox kinds.
-		env["CLAUDE_CONFIG_DIR"] = filepath.Join(s.Home, "claude")
-	}
 	for k, v := range extra {
 		env[k] = v
 	}
 	return env
-}
-
-func (m *Manager) hostHome(userID string) string {
-	home := m.cfg.AgentHomeDir(userID)
-	_ = SeedHome(home)
-	return home
 }
 
 // defaultGitConfig gives commits an author out of the box; the agent or user
@@ -333,13 +306,4 @@ func SeedHome(home string) error {
 		return os.WriteFile(gc, []byte(defaultGitConfig), 0o644)
 	}
 	return nil
-}
-
-func (m *Manager) hostAskpassPath() string {
-	p := filepath.Join(m.cfg.HostSandboxBaseDir, "git-askpass.sh")
-	if _, err := os.Stat(p); err != nil {
-		_ = os.MkdirAll(filepath.Dir(p), 0o755)
-		_ = os.WriteFile(p, []byte("#!/bin/sh\necho \"$GITHUB_TOKEN\"\n"), 0o700)
-	}
-	return p
 }

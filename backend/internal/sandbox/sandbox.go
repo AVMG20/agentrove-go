@@ -25,12 +25,11 @@ import (
 
 const (
 	KindDocker = "docker"
-	KindHost   = "host"
 
 	// Paths inside a Docker box.
 	ContainerHome     = "/home/user"
 	ContainerProjects = "/home/user/projects"
-	// Claude's config dir inside HOME, the same layout host sandboxes use.
+	// Claude's config dir inside HOME.
 	ContainerClaudeDir = ContainerHome + "/claude"
 	ContainerAskpass   = "/usr/local/bin/git-askpass"
 	ContainerUser      = "user"
@@ -95,7 +94,7 @@ type PTY interface {
 
 type CreateOptions struct {
 	SandboxID     string
-	WorkspacePath string // host path of the workspace directory (host sandboxes)
+	WorkspacePath string // host path of the workspace directory
 	UserID        string
 }
 
@@ -250,10 +249,5 @@ func (s *Sandbox) DiskUsage(ctx context.Context) (int64, bool) {
 // Env returns the full environment agent processes and terminals get.
 func (s *Sandbox) Env() map[string]string { return s.mgr.mergeEnv(s, nil) }
 
-// GitAskpassPath is the askpass helper path inside the sandbox.
-func (s *Sandbox) GitAskpassPath() string {
-	if s.Kind == KindDocker {
-		return ContainerAskpass
-	}
-	return s.mgr.hostAskpassPath()
-}
+// GitAskpassPath is the askpass helper path inside the box.
+func (s *Sandbox) GitAskpassPath() string { return ContainerAskpass }

@@ -19,19 +19,22 @@ cp .env.example .env               # set SECRET_KEY (openssl rand -hex 32)
 docker compose up --build
 ```
 
-Open http://localhost:3000. The first account you register becomes the superuser. Open a terminal in a workspace and run `claude` once to log in, or set `CLAUDE_CODE_OAUTH_TOKEN` in `.env`.
+Open http://localhost:3000. The first account you register becomes the superuser. Open a terminal in a project and run `claude` once to log in, or set `CLAUDE_CODE_OAUTH_TOKEN` in `.env`.
 
 For production (e.g. Coolify), use `docker-compose-production.yml`. It builds the sandbox image, serves the built frontend through nginx (`web`, port 80) and keeps data in `/data/agentrove-go/storage`. Set `SECRET_KEY` and `APP_URL`.
 
-## Run locally (host sandboxes, no Docker)
+## Run locally without Compose
+
+Projects always run in the user's box, so Docker is required. Build the box image once, then run the API and the frontend:
 
 ```sh
+sandbox/docker/build.sh
 cd backend
-SECRET_KEY=$(openssl rand -hex 32) STORAGE_PATH=$PWD/../storage DEFAULT_SANDBOX_PROVIDER=host go run ./cmd/agentrove
+SECRET_KEY=$(openssl rand -hex 32) STORAGE_PATH=$PWD/../storage go run ./cmd/agentrove
 cd ../frontend && bun install && API_PROXY_TARGET=http://localhost:8080 bun run dev
 ```
 
-Host-sandbox agents run as the API's OS user, with a per-user HOME under `STORAGE_PATH/agent-homes/<user>`.
+With Docker Desktop on macOS, also set `DOCKER_HOST=unix://$HOME/.docker/run/docker.sock`. Each user's HOME lives in `STORAGE_PATH/agent-homes/<user>` and their projects in `STORAGE_PATH/workspaces/<user>`.
 
 ## Layout
 

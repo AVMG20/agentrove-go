@@ -195,7 +195,7 @@ func TestHostRepoOps(t *testing.T) {
 	ctx := context.Background()
 	write(t, filepath.Join(ws, "a.txt"), "one\nTWO\nthree\n")
 	write(t, filepath.Join(ws, "src", "new.txt"), "x\ny")
-	sb := &sandbox.Sandbox{Kind: sandbox.KindHost, Root: ws, WorkspacePath: ws}
+	sb := &sandbox.Sandbox{Kind: sandbox.KindDocker, Root: ws, WorkspacePath: ws}
 
 	r, err := OpenHost(sb, "")
 	if err != nil {

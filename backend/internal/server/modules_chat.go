@@ -11,7 +11,6 @@ import (
 	"agentrove/internal/app"
 	"agentrove/internal/chat"
 	"agentrove/internal/mcpserver"
-	"agentrove/internal/sandbox"
 )
 
 // chatModules: chat, streaming runtime, Claude driver, models, attachments.
@@ -66,13 +65,9 @@ func (c *mcpConfigs) forChat(userID, chatID, kind string, member bool) map[strin
 	return servers
 }
 
-// baseURL is where an agent in the given sandbox kind reaches this API: host
-// agents share our network namespace; Docker sandboxes use the sandbox
-// network alias (AGENTROVE_INTERNAL_URL) or the public BASE_URL.
+// baseURL is where an agent in a box reaches this API: the sandbox network
+// alias (AGENTROVE_INTERNAL_URL) or the public BASE_URL.
 func (c *mcpConfigs) baseURL(kind string) string {
-	if kind == sandbox.KindHost {
-		return fmt.Sprintf("http://127.0.0.1:%d", c.a.Cfg.Port)
-	}
 	if u := os.Getenv("AGENTROVE_INTERNAL_URL"); u != "" {
 		return strings.TrimRight(u, "/")
 	}

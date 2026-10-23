@@ -7,7 +7,6 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
@@ -89,18 +88,16 @@ func (m *Module) create(w http.ResponseWriter, r *http.Request) error {
 	if body.SourceType != nil {
 		source = *body.SourceType
 	}
-	if source != "git" && source != "local" && source != "empty" {
-		return httpx.Unprocessable("source_type must be one of 'git', 'local', 'empty'")
+	if source != "git" && source != "empty" {
+		return httpx.Unprocessable("source_type must be 'git' or 'empty'")
 	}
 	if (body.WorkspacePath != nil && len(*body.WorkspacePath) > 2048) || (body.GitURL != nil && len(*body.GitURL) > 2048) {
 		return httpx.Unprocessable("workspace_path/git_url must be at most 2048 characters")
 	}
-	provider := body.SandboxProvider
-	if provider != sandbox.KindDocker && provider != sandbox.KindHost {
-		return httpx.Unprocessable("sandbox_provider must be 'docker' or 'host'")
-	}
+	// Projects always run in the user's box.
+	provider := sandbox.KindDocker
 	if !m.a.Sandboxes.HasProvider(provider) {
-		return httpx.BadRequest(fmt.Sprintf("Sandbox provider %q is not available", provider))
+		return httpx.Errorf(http.StatusServiceUnavailable, "Docker isn't available on the server, so projects can't run")
 	}
 
 	// Provisioning shouldn't be abandoned halfway when the client disconnects.
@@ -132,19 +129,6 @@ func (m *Module) create(w http.ResponseWriter, r *http.Request) error {
 			return err
 		}
 		workspacePath, sourceURL, created = dir, &gitURL, true
-	case "local":
-		if body.WorkspacePath == nil || *body.WorkspacePath == "" {
-			return httpx.BadRequest("workspace_path is required for local workspace")
-		}
-		// Never mount/chown arbitrary host dirs into Docker sandboxes.
-		if provider != sandbox.KindHost {
-			return httpx.BadRequest("Local workspaces require the host sandbox provider")
-		}
-		dir, err := resolveLocalDir(*body.WorkspacePath)
-		if err != nil {
-			return err
-		}
-		workspacePath = dir
 	default:
 		dir := filepath.Join(userDir, SafeDirName(*body.Name)+"-"+shortHex())
 		if err := os.MkdirAll(dir, 0o755); err != nil {
@@ -180,26 +164,6 @@ func (m *Module) create(w http.ResponseWriter, r *http.Request) error {
 		return err
 	}
 	return httpx.Created(w, ws)
-}
-
-func resolveLocalDir(raw string) (string, error) {
-	p := raw
-	if p == "~" || strings.HasPrefix(p, "~/") {
-		home, _ := os.UserHomeDir()
-		p = filepath.Join(home, strings.TrimPrefix(p, "~"))
-	}
-	p, err := filepath.Abs(p)
-	if err == nil {
-		p, err = filepath.EvalSymlinks(p)
-	}
-	if err != nil {
-		return "", httpx.BadRequest("workspace_path must be an existing directory")
-	}
-	fi, err := os.Stat(p)
-	if err != nil || !fi.IsDir() {
-		return "", httpx.BadRequest("workspace_path must be an existing directory")
-	}
-	return p, nil
 }
 
 func qualified(prefix, cols string) string {

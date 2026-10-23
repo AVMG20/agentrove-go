@@ -61,12 +61,6 @@ type Config struct {
 	DockerCPUQuota     int64
 	DockerPidsLimit    int64
 	DockerNodeMaxOldMB int
-	HostSandboxBaseDir string
-	HostPreviewBaseURL string
-	// The host provider runs Claude as the API's own user. Off by default when
-	// that is root (e.g. in the production container, next to docker.sock).
-	HostSandboxEnabled   bool
-	DefaultSandboxDriver string
 
 	// How long a Claude CLI process may sit idle before it's closed. The
 	// session id is persisted so the next turn resumes it losslessly.
@@ -122,10 +116,6 @@ func Load() (*Config, error) {
 		DockerCPUQuota:       int64(envInt("DOCKER_CPU_QUOTA", 200000)),
 		DockerPidsLimit:      int64(envInt("DOCKER_PIDS_LIMIT", 512)),
 		DockerNodeMaxOldMB:   envInt("DOCKER_NODE_MAX_OLD_SPACE_MB", 8192),
-		HostSandboxBaseDir:   env("HOST_SANDBOX_BASE_DIR", ""),
-		HostPreviewBaseURL:   env("HOST_PREVIEW_BASE_URL", "http://localhost"),
-		HostSandboxEnabled:   envBool("HOST_SANDBOX_ENABLED", os.Geteuid() != 0),
-		DefaultSandboxDriver: env("DEFAULT_SANDBOX_PROVIDER", ""),
 		ChatProcessIdleTTL:   time.Duration(envInt("CHAT_PROCESS_IDLE_TTL_SECONDS", 600)) * time.Second,
 		SandboxIdleTTL:       time.Duration(envInt("SANDBOX_IDLE_TTL_SECONDS", 900)) * time.Second,
 		ClaudeBinary:         env("CLAUDE_BINARY", "claude"),
@@ -137,12 +127,6 @@ func Load() (*Config, error) {
 	}
 	if c.HostStoragePath == "" {
 		c.HostStoragePath = c.StoragePath
-	}
-	if c.HostSandboxBaseDir == "" {
-		c.HostSandboxBaseDir = filepath.Join(c.StoragePath, "host-sandboxes")
-	}
-	if c.DefaultSandboxDriver == "" {
-		c.DefaultSandboxDriver = "docker"
 	}
 	if len(c.SecretKey) < 32 {
 		return nil, fmt.Errorf("SECRET_KEY must be set and at least 32 characters long")

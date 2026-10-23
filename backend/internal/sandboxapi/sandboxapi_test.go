@@ -149,7 +149,7 @@ func TestHostFileOps(t *testing.T) {
 	if err := os.Symlink(outside, filepath.Join(ws, "link")); err != nil {
 		t.Fatal(err)
 	}
-	sb := &sandbox.Sandbox{Kind: sandbox.KindHost, Root: ws, WorkspacePath: ws}
+	sb := &sandbox.Sandbox{Kind: sandbox.KindDocker, Root: ws, WorkspacePath: ws}
 
 	if err := writeFile(sb, "dir/sub/a.txt", []byte("hi")); err != nil {
 		t.Fatal(err)
