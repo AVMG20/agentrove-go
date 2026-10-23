@@ -583,10 +583,13 @@ func browserMCPConfig(idle time.Duration) map[string]any {
 }
 
 // browserTools are pre-allowed like the artifact tools: they act on a
-// browser inside the box. browser_run_code_unsafe is left out on purpose: it
-// runs arbitrary JavaScript in the box's Node process, so it is as powerful as
-// Bash and gets the same permission prompt. The list follows the tools of the
-// pinned @playwright/mcp (--caps vision); a renamed tool just prompts.
+// browser inside the box, and agentrove-browser-mcp confines the files they
+// read and write to /tmp/playwright-mcp (its only root), so none can write
+// into the project without a prompt. browser_run_code_unsafe is left out on
+// purpose: it runs arbitrary JavaScript in the box's Node process, so it is
+// as powerful as Bash and gets the same permission prompt. The list follows
+// the tools of the pinned @playwright/mcp (--caps vision); a renamed tool
+// just prompts.
 var browserTools = func() []string {
 	names := []string{"navigate", "navigate_back", "click", "hover", "drag", "drop", "type", "press_key",
 		"fill_form", "select_option", "file_upload", "handle_dialog", "snapshot", "find", "take_screenshot",
@@ -602,6 +605,8 @@ var browserTools = func() []string {
 
 const browserPrompt = "<browser>A headless Chromium runs in this box; use the mcp__browser__* tools to test web apps " +
 	"(it starts on first use). Dev servers you run in the box are reachable from it at http://localhost:<port>. " +
+	"Browser tools can only read and write files in /tmp/playwright-mcp: screenshots and saved output land there " +
+	"(copy them elsewhere with Bash if needed), and a file to upload must be copied there first. " +
 	"The user can watch and use the same browser in the Browser tab.</browser>\n"
 
 var artifactTools = []string{"mcp__agentrove__create_artifact", "mcp__agentrove__update_artifact",

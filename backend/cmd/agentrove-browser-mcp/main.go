@@ -20,14 +20,17 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"io/fs"
 	"log"
 	"net"
 	"os"
 	"os/exec"
 	"os/signal"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 )
@@ -58,6 +61,8 @@ func main() {
 	p := newProxy(c, os.Stdout, func() (backend, error) { return startPlaywright(true) })
 	p.browserUp = cdpUp
 	p.idle = time.Duration(envInt("AGENTROVE_BROWSER_MCP_IDLE_SECONDS", 300)) * time.Second
+	p.prune = func() { pruneDir(filesDir, maxKeptFiles, maxKeptBytes) }
+	go p.prune()
 	p.run(ctx, os.Stdin)
 }
 
@@ -85,7 +90,7 @@ func playwrightArgs() []string {
 		"--caps", "vision",
 		// Not the default (.playwright-mcp in the project), which would show
 		// up in the user's git status.
-		"--output-dir", "/tmp/playwright-mcp",
+		"--output-dir", filesDir,
 	}
 }
 
@@ -100,9 +105,10 @@ func cdpUp() bool {
 
 // procBackend is a playwright-mcp child process.
 type procBackend struct {
-	cmd   *exec.Cmd
-	stdin io.WriteCloser
-	lines chan []byte
+	cmd    *exec.Cmd
+	sendMu sync.Mutex
+	stdin  io.WriteCloser
+	lines  chan []byte
 }
 
 func startPlaywright(ensureBrowser bool) (backend, error) {
@@ -116,6 +122,14 @@ func startPlaywright(ensureBrowser bool) (backend, error) {
 	}
 	cmd := exec.Command("playwright-mcp", playwrightArgs()...)
 	cmd.Stderr = os.Stderr
+	// Without client roots, playwright-mcp's workspace is its cwd. Only at
+	// run time: the image build records the cache as root, and a root-owned
+	// dir would lock the box user out of it.
+	if ensureBrowser {
+		if err := os.MkdirAll(filesDir, 0o755); err == nil {
+			cmd.Dir = filesDir
+		}
+	}
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
 		return nil, err
@@ -146,6 +160,8 @@ func startPlaywright(ensureBrowser bool) (backend, error) {
 }
 
 func (b *procBackend) Send(line []byte) error {
+	b.sendMu.Lock()
+	defer b.sendMu.Unlock()
 	_, err := b.stdin.Write(line)
 	return err
 }
@@ -210,4 +226,39 @@ func recordCache(path string) error {
 		return err
 	}
 	return os.WriteFile(path, out, 0o644)
+}
+
+// filesDir keeps the newest files up to these limits: every navigation
+// writes a snapshot there, and all sessions in the box share it.
+const (
+	maxKeptFiles = 300
+	maxKeptBytes = 200 << 20
+)
+
+// pruneDir deletes the oldest regular files under dir beyond the newest
+// maxFiles or maxBytes. Errors are ignored: another session may be pruning.
+func pruneDir(dir string, maxFiles int, maxBytes int64) {
+	type file struct {
+		path string
+		size int64
+		mod  time.Time
+	}
+	var files []file
+	_ = filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
+		if err != nil || !d.Type().IsRegular() {
+			return nil
+		}
+		if info, err := d.Info(); err == nil {
+			files = append(files, file{path, info.Size(), info.ModTime()})
+		}
+		return nil
+	})
+	sort.Slice(files, func(i, j int) bool { return files[i].mod.After(files[j].mod) })
+	var total int64
+	for i, f := range files {
+		total += f.size
+		if i >= maxFiles || total > maxBytes {
+			_ = os.Remove(f.path)
+		}
+	}
 }

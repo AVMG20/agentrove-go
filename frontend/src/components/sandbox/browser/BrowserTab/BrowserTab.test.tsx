@@ -169,15 +169,53 @@ describe('BrowserTab', () => {
     const ws = await connect();
     act(() => ws.message({ type: 'status', state: 'ready' }));
     act(() => ws.message(TABS));
-    const stage = screen.getByLabelText('Browser page');
+    const keyboard = screen.getByLabelText('Browser keyboard');
 
-    fireEvent.keyDown(stage, { key: 'a', code: 'KeyA', keyCode: 65, shiftKey: true });
+    fireEvent.keyDown(keyboard, { key: 'a', code: 'KeyA', keyCode: 65, shiftKey: true });
     expect(ws.sent()).toContainEqual(
       expect.objectContaining({ type: 'key', event: 'down', key: 'a', keyCode: 65, modifiers: 8 }),
     );
     const before = ws.sent().length;
-    fireEvent.keyDown(stage, { key: 'v', code: 'KeyV', ctrlKey: true });
+    fireEvent.keyDown(keyboard, { key: 'v', code: 'KeyV', ctrlKey: true });
     expect(ws.sent()).toHaveLength(before);
+    fireEvent.paste(keyboard, { clipboardData: { getData: () => 'pasted' } });
+    expect(ws.sent()).toContainEqual({ type: 'text', text: 'pasted' });
+  });
+
+  it('sends IME and soft-keyboard text instead of raw keys', async () => {
+    const ws = await connect();
+    act(() => ws.message({ type: 'status', state: 'ready' }));
+    act(() => ws.message(TABS));
+    const keyboard = screen.getByLabelText('Browser keyboard') as HTMLTextAreaElement;
+    const before = ws.sent().length;
+
+    // Keys during composition, and soft keyboards' 229 keys, aren't forwarded.
+    fireEvent.keyDown(keyboard, { key: 'n', code: 'KeyN', keyCode: 78, isComposing: true });
+    fireEvent.keyDown(keyboard, { key: 'Unidentified', keyCode: 229 });
+    expect(ws.sent()).toHaveLength(before);
+
+    fireEvent.compositionEnd(keyboard, { data: '日本' });
+    expect(ws.sent()).toContainEqual({ type: 'text', text: '日本' });
+
+    keyboard.value = 'é';
+    fireEvent.input(keyboard);
+    expect(ws.sent()).toContainEqual({ type: 'text', text: 'é' });
+    expect(keyboard.value).toBe('');
+  });
+
+  it('closes a frame decoded after unmount', async () => {
+    let resolve: (bitmap: ImageBitmap) => void = () => {};
+    vi.stubGlobal(
+      'createImageBitmap',
+      vi.fn(() => new Promise<ImageBitmap>((r) => (resolve = r))),
+    );
+    const ws = await connect();
+    act(() => ws.message({ type: 'status', state: 'ready' }));
+    act(() => ws.message(frame(1)));
+    cleanup();
+    const bitmap = { close: vi.fn() } as unknown as ImageBitmap;
+    await act(async () => resolve(bitmap));
+    expect(bitmap.close).toHaveBeenCalled();
   });
 
   it('shows page dialogs and answers them', async () => {

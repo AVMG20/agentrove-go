@@ -4,6 +4,7 @@ import { Globe, Plus, X } from 'lucide-react';
 import { Button } from '@/components/ui/primitives/Button/Button';
 import { TerminalTab } from '@/components/sandbox/terminal/TerminalTab/TerminalTab';
 import { viewLoadingFallback } from '@/components/ui/shared/ViewLoadingFallback/ViewLoadingFallback';
+import { useSettingsQuery } from '@/hooks/queries/useSettingsQueries';
 import { lazyNamed } from '@/utils/lazyNamed';
 import { terminalStorageKey } from '@/utils/terminal';
 import styles from './Container.module.scss';
@@ -84,7 +85,9 @@ export function Container({
   // Mounted once opened, then kept (hidden) so switching back is instant;
   // it only holds a connection while visible.
   const [browserMounted, setBrowserMounted] = useState(browserActive);
-  const showBrowser = browserActive && Boolean(sandboxId);
+  // Hidden when the server runs no box browsers; shown until settings load.
+  const browserAvailable = useSettingsQuery().data?.browser_available !== false;
+  const showBrowser = browserActive && Boolean(sandboxId) && browserAvailable;
 
   // Restore during render on identity change — effects run too late (would persist old state).
   const restoreKey = `${storageKey}|${defaultTerminalId}`;
@@ -209,7 +212,7 @@ export function Container({
         >
           <Plus className={styles['tab-add-icon']} />
         </Button>
-        {sandboxId && (
+        {sandboxId && browserAvailable && (
           <Button
             variant="unstyled"
             className={clsx(styles.tab, styles['tab-browser'])}
@@ -242,7 +245,7 @@ export function Container({
             />
           </div>
         ))}
-        {browserMounted && sandboxId && (
+        {browserMounted && sandboxId && browserAvailable && (
           <div className={clsx(styles.panel, !showBrowser && styles['panel--hidden'])}>
             <Suspense fallback={viewLoadingFallback}>
               <BrowserTab isVisible={isVisible && showBrowser} sandboxId={sandboxId} />

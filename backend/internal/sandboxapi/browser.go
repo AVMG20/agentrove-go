@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"agentrove/internal/browserview"
+	"agentrove/internal/models"
 	"agentrove/internal/sandbox"
 
 	"github.com/coder/websocket"
@@ -40,17 +41,29 @@ func (m *Module) browserWS(w http.ResponseWriter, r *http.Request) {
 		_ = c.Close(browserview.CloseUnavailable, "The browser is turned off on this server")
 		return
 	}
-	sb, err := m.a.Sandboxes.For(ws)
-	if err != nil || sb.Kind != sandbox.KindDocker {
+	box, boxID, err := m.browserBox(ws)
+	if err != nil {
 		_ = c.Close(browserview.CloseUnavailable, "This project has no box browser")
 		return
 	}
-	if !m.viewers.add(sb.ID) {
+	if !m.viewers.add(boxID) {
 		_ = c.Close(browserview.CloseTooMany, "Too many browser viewers open")
 		return
 	}
-	defer m.viewers.done(sb.ID)
-	browserview.Serve(ctx, c, &boxBrowser{sb: sb, idle: m.a.Cfg.BrowserIdleTTL})
+	defer m.viewers.done(boxID)
+	browserview.Serve(ctx, c, box)
+}
+
+// dockerBrowser is the browser of the workspace's Docker box (Module.browserBox).
+func (m *Module) dockerBrowser(ws *models.Workspace) (browserview.Box, string, error) {
+	sb, err := m.a.Sandboxes.For(ws)
+	if err != nil {
+		return nil, "", err
+	}
+	if sb.Kind != sandbox.KindDocker {
+		return nil, "", fmt.Errorf("not a Docker box")
+	}
+	return &boxBrowser{sb: sb, idle: m.a.Cfg.BrowserIdleTTL}, sb.ID, nil
 }
 
 type viewerCount struct {
@@ -148,6 +161,9 @@ func (b *boxBrowser) Dial(ctx context.Context) (io.ReadWriteCloser, error) {
 	return &execStream{p: p, release: release}, nil
 }
 
+// execStreamKillAfter is how long socat gets to exit after its stdin closes.
+var execStreamKillAfter = 3 * time.Second
+
 type execStream struct {
 	p       sandbox.Process
 	release func()
@@ -168,7 +184,7 @@ func (s *execStream) Close() error {
 			go func() { _ = s.p.Wait(); close(done) }()
 			select {
 			case <-done:
-			case <-time.After(3 * time.Second):
+			case <-time.After(execStreamKillAfter):
 				_ = s.p.Kill()
 			}
 			s.release()

@@ -38,8 +38,16 @@ func (e *CDPError) Error() string { return fmt.Sprintf("cdp: %s (%d)", e.Message
 // ErrClosed is returned by calls on a closed connection.
 var ErrClosed = errors.New("cdp: connection closed")
 
-// maxQueuedEvents bounds the event backlog. Screencast frames are flow
-// controlled by acks, so a backlog this large means a stuck consumer.
+// The CDP peer is in the user's box, so it is untrusted: the event backlog is
+// bounded by bytes (a page can make Chromium send megabytes of
+// targetInfoChanged per second; an agent with sudo can replace Chromium).
+// Past the soft limit, targetInfoChanged is dropped (the viewer polls titles
+// anyway); past the hard one, the connection is closed.
+var (
+	softQueuedEventBytes = 8 << 20
+	maxQueuedEventBytes  = 24 << 20
+)
+
 const maxQueuedEvents = 4096
 
 // Conn is a CDP client on the browser endpoint, using flattened sessions
@@ -53,6 +61,7 @@ type Conn struct {
 	nextID  int64
 	pending map[int64]chan reply
 	events  []Event
+	queued  int // bytes of params in events
 	err     error
 
 	notify chan struct{} // signalled when events are queued
@@ -107,12 +116,18 @@ func (c *Conn) readLoop() {
 			continue
 		}
 		c.mu.Lock()
-		if len(c.events) >= maxQueuedEvents {
+		size := len(m.Params)
+		if c.queued+size > softQueuedEventBytes && m.Method == "Target.targetInfoChanged" {
+			c.mu.Unlock()
+			continue
+		}
+		if len(c.events) >= maxQueuedEvents || c.queued+size > maxQueuedEventBytes {
 			c.mu.Unlock()
 			c.fail(errors.New("cdp: event backlog overflow"))
 			return
 		}
 		c.events = append(c.events, Event{Method: m.Method, SessionID: m.SessionID, Params: m.Params})
+		c.queued += size
 		c.mu.Unlock()
 		select {
 		case c.notify <- struct{}{}:
@@ -191,7 +206,7 @@ func (c *Conn) Events() []Event {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	ev := c.events
-	c.events = nil
+	c.events, c.queued = nil, 0
 	return ev
 }
 

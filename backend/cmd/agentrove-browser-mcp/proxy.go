@@ -13,6 +13,17 @@ import (
 	"time"
 )
 
+// filesDir is where playwright-mcp may read and write files: its output dir,
+// and the only root the proxy gives it. Tool calls that take a filename
+// (screenshots, snapshots, evaluate results, response bodies, uploads)
+// can't reach the project, so a prompt-injected agent can't use pre-allowed
+// browser tools to write e.g. .claude/settings.json.
+const filesDir = "/tmp/playwright-mcp"
+
+// rootsResult answers playwright-mcp's roots/list in place of the client's
+// roots (the project).
+var rootsResult = json.RawMessage(`{"roots":[{"uri":"file://` + filesDir + `","name":"Browser files"}]}`)
+
 // replayID is the id of the initialize the proxy sends a new playwright-mcp
 // on the client's behalf; its response is swallowed.
 const replayID = `"agentrove-browser-mcp-init"`
@@ -43,6 +54,8 @@ type proxy struct {
 	start     func() (backend, error)
 	browserUp func() bool
 	idle      time.Duration
+	// prune trims filesDir; run when a backend stops.
+	prune func()
 
 	outMu sync.Mutex
 	out   io.Writer
@@ -50,12 +63,23 @@ type proxy struct {
 	mu         sync.Mutex
 	be         backend
 	initParams json.RawMessage
-	pending    map[string]bool // client request ids the backend hasn't answered
+	pending    map[string]json.RawMessage // client requests the backend hasn't answered, by idKey
 	lastUse    time.Time
 }
 
 func newProxy(c *cache, out io.Writer, start func() (backend, error)) *proxy {
-	return &proxy{cache: c, out: out, start: start, pending: map[string]bool{}}
+	return &proxy{cache: c, out: out, start: start, pending: map[string]json.RawMessage{}}
+}
+
+// idKey normalizes a JSON-RPC id so a response matches its request however
+// the backend re-encodes it.
+func idKey(id json.RawMessage) string {
+	var v any
+	if json.Unmarshal(id, &v) != nil {
+		return string(id)
+	}
+	b, _ := json.Marshal(v)
+	return string(b)
 }
 
 // run serves client messages from in until EOF or ctx ends.
@@ -118,8 +142,9 @@ func (p *proxy) handle(line []byte) {
 	if err := json.Unmarshal(line, &m); err != nil {
 		return
 	}
-	if m.Method == "notifications/initialized" {
-		// Every backend gets its own from spawn.
+	if m.Method == "notifications/initialized" || m.Method == "notifications/roots/list_changed" {
+		// Every backend gets its own initialized from spawn, and its roots
+		// from the proxy, never the client's.
 		return
 	}
 	p.mu.Lock()
@@ -223,7 +248,7 @@ func (p *proxy) forward(m message, line []byte) {
 		return
 	}
 	if m.isRequest() {
-		p.pending[string(m.ID)] = true
+		p.pending[idKey(m.ID)] = m.ID
 	}
 	p.lastUse = time.Now()
 	p.mu.Unlock()
@@ -304,27 +329,42 @@ func awaitResponse(lines <-chan []byte, id string, timeout time.Duration, other 
 func (p *proxy) pump(be backend) {
 	for line := range be.Lines() {
 		var m message
-		if json.Unmarshal(line, &m) == nil && len(m.ID) > 0 && m.Method == "" {
-			p.mu.Lock()
-			delete(p.pending, string(m.ID))
-			p.lastUse = time.Now()
-			p.mu.Unlock()
+		if json.Unmarshal(line, &m) != nil {
+			continue
 		}
-		p.writeLine(line)
+		if m.isRequest() && m.Method == "roots/list" {
+			resp, _ := json.Marshal(map[string]any{"jsonrpc": "2.0", "id": m.ID, "result": rootsResult})
+			_ = be.Send(append(resp, '\n'))
+			continue
+		}
+		p.mu.Lock()
+		current := p.be == be
+		if current && len(m.ID) > 0 && m.Method == "" {
+			// A response for a call the client no longer waits on (already
+			// failed when its backend was replaced) is dropped.
+			key := idKey(m.ID)
+			_, current = p.pending[key]
+			delete(p.pending, key)
+			p.lastUse = time.Now()
+		}
+		p.mu.Unlock()
+		if current {
+			p.writeLine(line)
+		}
 	}
 	p.mu.Lock()
-	var orphaned []string
+	var orphaned []json.RawMessage
 	if p.be == be {
 		p.be = nil
-		for id := range p.pending {
+		for _, id := range p.pending {
 			orphaned = append(orphaned, id)
 		}
-		p.pending = map[string]bool{}
+		p.pending = map[string]json.RawMessage{}
 	}
 	p.mu.Unlock()
 	// Answer what it left behind, or the CLI waits on those calls forever.
 	for _, id := range orphaned {
-		p.replyError(json.RawMessage(id), -32603, "The browser MCP server exited; retry the call.")
+		p.replyError(id, -32603, "The browser MCP server exited; retry the call.")
 	}
 }
 
@@ -333,14 +373,17 @@ func (p *proxy) stopBackend() {
 	be := p.be
 	p.be = nil
 	pending := p.pending
-	p.pending = map[string]bool{}
+	p.pending = map[string]json.RawMessage{}
 	p.mu.Unlock()
 	if be == nil {
 		return
 	}
 	be.Stop()
-	for id := range pending {
-		p.replyError(json.RawMessage(id), -32603, "The browser restarted; retry the call.")
+	for _, id := range pending {
+		p.replyError(id, -32603, "The browser restarted; retry the call.")
+	}
+	if p.prune != nil {
+		go p.prune()
 	}
 }
 

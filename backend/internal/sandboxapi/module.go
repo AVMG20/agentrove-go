@@ -16,6 +16,7 @@ import (
 
 	"agentrove/internal/app"
 	"agentrove/internal/auth"
+	"agentrove/internal/browserview"
 	"agentrove/internal/gitops"
 	"agentrove/internal/httpx"
 	"agentrove/internal/models"
@@ -26,10 +27,15 @@ type Module struct {
 	a       *app.App
 	terms   *terminals
 	viewers viewerCount
+	// browserBox reaches a workspace's box browser and names the box (for
+	// the viewer limit); tests replace it.
+	browserBox func(ws *models.Workspace) (browserview.Box, string, error)
 }
 
 func New(a *app.App) *Module {
-	return &Module{a: a, terms: newTerminals(a.Sandboxes)}
+	m := &Module{a: a, terms: newTerminals(a.Sandboxes)}
+	m.browserBox = m.dockerBrowser
+	return m
 }
 
 // TerminateSandbox kills the sandbox's terminals and tmux sessions. Workspace

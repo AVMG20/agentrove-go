@@ -48,9 +48,21 @@ cdp_path() {
     echo "/${url#ws://*/}"
 }
 
-# clients counts established CDP connections (agents and viewers).
+# clients counts established CDP connections (agents and viewers) to
+# Chromium $1. Connections Chromium makes itself are left out: a page that
+# fetches http://127.0.0.1:$PORT/json/version leaves a keep-alive socket in
+# Chromium's network service, which would keep the browser alive forever.
+# Sockets whose owner ss can't see (another user's) count as clients.
 clients() {
-    ss -Htn state established "( sport = :$PORT )" 2>/dev/null | wc -l
+    local n=0 line pid
+    while IFS= read -r line; do
+        pid=$(sed -n 's/.*pid=\([0-9]*\).*/\1/p' <<<"$line")
+        if [ -n "$pid" ] && [ "$(ps -o sid= -p "$pid" 2>/dev/null | tr -d ' ')" = "$1" ]; then
+            continue
+        fi
+        n=$((n + 1))
+    done < <(ss -Htnp state established "( dport = :$PORT )" 2>/dev/null)
+    echo "$n"
 }
 
 stop_locked() {
@@ -130,7 +142,7 @@ watchdog() {
     [ "$IDLE" -lt "$step" ] && step=$IDLE
     while kill -0 "$p" 2>/dev/null; do
         sleep "$step"
-        if [ "$(clients)" -gt 0 ]; then
+        if [ "$(clients "$p")" -gt 0 ]; then
             idle=0
             continue
         fi
@@ -141,7 +153,7 @@ watchdog() {
         if [ "$(chrome_pid || true)" != "$p" ]; then
             exit 0
         fi
-        if [ "$(clients)" -eq 0 ] && [ $(($(date +%s) - last)) -ge 60 ]; then
+        if [ "$(clients "$p")" -eq 0 ] && [ $(($(date +%s) - last)) -ge 60 ]; then
             stop_locked
             exit 0
         fi

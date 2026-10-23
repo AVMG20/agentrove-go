@@ -7,6 +7,7 @@ import (
 	"errors"
 	"log/slog"
 	"slices"
+	"sync/atomic"
 	"time"
 )
 
@@ -31,6 +32,8 @@ const (
 	screencastRetry    = 250 * time.Millisecond
 	screencastAttempts = 40
 	titlePollInterval  = time.Second
+	// Tabs the viewer may open; the agent can open more.
+	maxViewerTabs = 30
 )
 
 var (
@@ -55,6 +58,7 @@ type viewer struct {
 	touch func()
 
 	pages         []tab
+	opening       int    // tabs the viewer asked for that haven't appeared yet
 	active        string // target id
 	session       string // flattened session of active
 	screencasting bool
@@ -69,15 +73,20 @@ type viewer struct {
 
 	ackTimer  *time.Timer
 	castTimer *time.Timer
-	work      chan func()
-	results   chan func()
+	// work runs input and navigation in order; control runs everything else
+	// that mustn't block the loop (tab commands, dialogs, polling), so a page
+	// stuck in a dialog doesn't hold up the dialog's answer.
+	work    chan func()
+	control chan func()
+	results chan func()
+	polling atomic.Bool
 }
 
 func newViewer(cdp *Conn, out sink, touch func()) *viewer {
 	if touch == nil {
 		touch = func() {}
 	}
-	v := &viewer{cdp: cdp, out: out, touch: touch, work: make(chan func(), 256), results: make(chan func(), 64)}
+	v := &viewer{cdp: cdp, out: out, touch: touch, work: make(chan func(), 256), control: make(chan func(), 32), results: make(chan func(), 64)}
 	v.ackTimer = time.NewTimer(time.Hour)
 	v.ackTimer.Stop()
 	v.castTimer = time.NewTimer(time.Hour)
@@ -100,6 +109,14 @@ func (v *viewer) enqueue(f func()) {
 	}
 }
 
+// background runs f on the control worker, dropping it when that is backed up.
+func (v *viewer) background(f func()) {
+	select {
+	case v.control <- f:
+	default:
+	}
+}
+
 // post hands a result back to the loop goroutine.
 func (v *viewer) post(f func()) {
 	select {
@@ -113,12 +130,15 @@ func (v *viewer) post(f func()) {
 func (v *viewer) run(ctx context.Context, in <-chan clientMsg) error {
 	defer v.ackTimer.Stop()
 	defer v.castTimer.Stop()
-	go func() {
-		for f := range v.work {
-			f()
-		}
-	}()
+	for _, ch := range []chan func(){v.work, v.control} {
+		go func() {
+			for f := range ch {
+				f()
+			}
+		}()
+	}
 	defer close(v.work)
+	defer close(v.control)
 
 	if err := v.start(ctx); err != nil {
 		return err
@@ -214,7 +234,7 @@ func (v *viewer) addPage(t targetInfo) bool {
 	if t.Type != "page" || t.TargetID == "" || v.pageIndex(t.TargetID) >= 0 {
 		return false
 	}
-	v.pages = append(v.pages, tab{ID: t.TargetID, Title: t.Title, URL: t.URL})
+	v.pages = append(v.pages, tab{ID: clip(t.TargetID, maxTabField), Title: clip(t.Title, maxTabField), URL: clip(t.URL, maxTabField)})
 	return true
 }
 
@@ -255,12 +275,12 @@ func (v *viewer) detach() {
 	if sid == "" {
 		return
 	}
-	go func() {
+	v.background(func() {
 		ctx, cancel := context.WithTimeout(context.Background(), callTimeout)
 		defer cancel()
 		_, _ = v.cdp.Call(ctx, sid, "Page.stopScreencast", nil)
 		_, _ = v.cdp.Call(ctx, "", "Target.detachFromTarget", map[string]any{"sessionId": sid})
-	}()
+	})
 }
 
 func (v *viewer) startScreencast(ctx context.Context) {
@@ -320,7 +340,7 @@ func (v *viewer) refreshNav(ctx context.Context) {
 	if sid == "" {
 		return
 	}
-	go func() {
+	v.background(func() {
 		raw, err := v.call(context.WithoutCancel(ctx), callTimeout, sid, "Page.getNavigationHistory", nil)
 		if err != nil {
 			return
@@ -332,15 +352,20 @@ func (v *viewer) refreshNav(ctx context.Context) {
 				v.out.Text(map[string]any{"type": "nav", "canGoBack": h.CurrentIndex > 0, "canGoForward": h.CurrentIndex < len(h.Entries)-1})
 			}
 		})
-	}()
+	})
 }
 
 // refreshTitles re-reads every tab's title and URL. Headless Chromium sends
 // targetInfoChanged for navigations, but not for document.title changes, and
 // mid-navigation it reports the host as the title, so the tab strip polls.
 func (v *viewer) refreshTitles(ctx context.Context) {
-	go func() {
+	// One poll at a time: a slow browser mustn't pile them up.
+	if !v.polling.CompareAndSwap(false, true) {
+		return
+	}
+	v.background(func() {
 		raw, err := v.call(context.WithoutCancel(ctx), callTimeout, "", "Target.getTargets", nil)
+		v.polling.Store(false)
 		if err != nil {
 			return
 		}
@@ -357,12 +382,13 @@ func (v *viewer) refreshTitles(ctx context.Context) {
 				v.sendTabs()
 			}
 		})
-	}()
+	})
 }
 
 // updatePage applies a target's title and URL to its tab and reports
 // whether that changed it.
 func (v *viewer) updatePage(t targetInfo) bool {
+	t.Title, t.URL = clip(t.Title, maxTabField), clip(t.URL, maxTabField)
 	i := v.pageIndex(t.TargetID)
 	if i < 0 || (v.pages[i].Title == t.Title && v.pages[i].URL == t.URL) {
 		return false
@@ -386,6 +412,7 @@ func (v *viewer) onEvent(ctx context.Context, ev Event) {
 		}
 		_ = json.Unmarshal(ev.Params, &p)
 		if v.addPage(p.TargetInfo) {
+			v.opening = max(0, v.opening-1)
 			// Follow new tabs: the agent opened one, or the viewer did.
 			v.attach(ctx, p.TargetInfo.TargetID)
 		}
@@ -474,7 +501,8 @@ func (v *viewer) onEvent(ctx context.Context, ev Event) {
 			DefaultPrompt string `json:"defaultPrompt"`
 		}
 		_ = json.Unmarshal(ev.Params, &p)
-		v.out.Text(map[string]any{"type": "dialog", "open": true, "dialogType": p.Type, "message": p.Message, "defaultPrompt": p.DefaultPrompt})
+		v.out.Text(map[string]any{"type": "dialog", "open": true, "dialogType": clip(p.Type, 32),
+			"message": clip(p.Message, maxDialogMessage), "defaultPrompt": clip(p.DefaultPrompt, maxTabField)})
 	case "Page.javascriptDialogClosed":
 		v.out.Text(map[string]any{"type": "dialog", "open": false})
 	}
@@ -530,6 +558,7 @@ func (v *viewer) navCall(method string, params map[string]any) {
 			msg = err.Error()
 		}
 		if msg != "" {
+			msg = clip(msg, maxErrorMessage)
 			v.post(func() { v.out.Text(map[string]any{"type": "error", "message": "Navigation failed: " + msg}) })
 		}
 	})
@@ -556,15 +585,15 @@ func (v *viewer) historyStep(delta int) {
 	})
 }
 
-// browserCall runs a browser-level command off the loop.
+// browserCall runs a browser-level command on the control worker.
 func (v *viewer) browserCall(method string, params map[string]any) {
 	v.touch()
-	go func() {
+	v.background(func() {
 		_, err := v.call(context.Background(), callTimeout, "", method, params)
 		if err != nil && !errors.Is(err, ErrClosed) {
 			slog.Debug("browser viewer", "method", method, "err", err)
 		}
-	}()
+	})
 }
 
 func (v *viewer) onClient(ctx context.Context, m clientMsg) error {
@@ -604,13 +633,23 @@ func (v *viewer) onClient(ctx context.Context, m clientMsg) error {
 	case "stop":
 		v.inputCall("Page.stopLoading", map[string]any{})
 	case "tab.new":
+		if len(v.pages)+v.opening >= maxViewerTabs {
+			v.out.Text(map[string]any{"type": "error", "message": "Too many tabs open"})
+			return nil
+		}
 		u := "about:blank"
 		if m.URL != "" {
 			if nu, err := navigationURL(m.URL); err == nil {
 				u = nu
 			}
 		}
-		v.browserCall("Target.createTarget", map[string]any{"url": u})
+		v.opening++
+		v.touch()
+		v.background(func() {
+			if _, err := v.call(context.Background(), callTimeout, "", "Target.createTarget", map[string]any{"url": u}); err != nil {
+				v.post(func() { v.opening = max(0, v.opening-1) })
+			}
+		})
 	case "tab.switch":
 		if m.ID != v.active && v.pageIndex(m.ID) >= 0 {
 			v.touch()
@@ -639,16 +678,16 @@ func (v *viewer) onClient(ctx context.Context, m clientMsg) error {
 			v.restartScreencast(ctx)
 		}
 	case "dialog":
-		// Not through the worker: it may be stuck on the very input that
-		// opened the dialog.
+		// Not through the input worker: it may be stuck on the very input
+		// that opened the dialog.
 		sid := v.session
-		if sid == "" {
+		if sid == "" || len(m.PromptText) > maxTextInput {
 			return nil
 		}
 		v.touch()
-		go func() {
+		v.background(func() {
 			_, _ = v.call(context.Background(), callTimeout, sid, "Page.handleJavaScriptDialog", map[string]any{"accept": m.Accept, "promptText": m.PromptText})
-		}()
+		})
 	case "reset":
 		return errReset
 	}

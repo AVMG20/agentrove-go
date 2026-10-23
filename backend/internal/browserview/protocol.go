@@ -59,7 +59,21 @@ const (
 	modMeta = 4
 
 	maxTextInput = 64 << 10
+
+	// Page-controlled strings sent to the client are cut to these sizes: a
+	// page can set a megabytes-long URL or dialog message.
+	maxTabField      = 2 << 10
+	maxDialogMessage = 4 << 10
+	maxErrorMessage  = 512
 )
+
+// clip cuts s to at most n bytes without splitting a rune.
+func clip(s string, n int) string {
+	if len(s) <= n {
+		return s
+	}
+	return strings.ToValidUTF8(s[:n], "")
+}
 
 var errBadInput = errors.New("invalid input")
 

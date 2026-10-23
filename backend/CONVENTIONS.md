@@ -113,10 +113,14 @@ Nothing browser-related runs until it is used.
   Chromium under `flock` (idempotent, race-safe), waits for CDP on
   `127.0.0.1:9222` and prints the browser websocket path; `stop`; `reset`
   (stop and wipe the profile); `status`. The profile persists in
-  `~/.agentrove/browser-profile`; runtime state is in `/tmp/agentrove-browser`.
+  `~/.agentrove/browser-profile`; it is shared by the user and the agent, so
+  anything the user logs into in the viewer is usable by the agent (`reset`
+  wipes it). Runtime state is in `/tmp/agentrove-browser`.
   A watchdog stops Chromium after `AGENTROVE_BROWSER_IDLE_SECONDS` (the API
   passes `SANDBOX_BROWSER_IDLE_SECONDS`, default 600, 0 = never) with no
-  established CDP connection. `--no-sandbox`: Chromium's sandbox needs user namespaces that
+  established CDP connection. Connections Chromium opens itself (a page
+  fetching `127.0.0.1:9222`) don't count: `ss -p` client sockets in
+  Chromium's session are skipped. `--no-sandbox`: Chromium's sandbox needs user namespaces that
   Docker's seccomp profile blocks; the box is the sandbox.
 - **Agent tools**: `chat.sessionConfig` adds the stdio MCP server `browser`
   (`agentrove-browser-mcp`) to Docker sessions unless `SANDBOX_BROWSER_ENABLED`
@@ -129,7 +133,12 @@ Nothing browser-related runs until it is used.
   `playwright-mcp --cdp-endpoint http://127.0.0.1:9222 --caps vision` on the
   first tool call, and stops playwright-mcp (~130MB) after
   `AGENTROVE_BROWSER_MCP_IDLE_SECONDS` (300) without calls, so its CDP
-  connection closes and the watchdog can stop Chromium. Bumping
+  connection closes and the watchdog can stop Chromium. It answers
+  playwright-mcp's `roots/list` itself with `/tmp/playwright-mcp` (also its
+  cwd and output dir) and drops the client's roots, so the pre-allowed tools
+  that take a `filename` (screenshot, snapshot, evaluate, network bodies,
+  uploads) can't read or write the project; it prunes that dir to the newest
+  300 files / 200MB. Bumping
   `PLAYWRIGHT_MCP_VERSION` means checking `browserTools` against its tool list.
 - **Viewer** (`internal/browserview`, route
   `GET /api/v1/sandbox/{sandbox_id}/browser/ws` in `sandboxapi/browser.go`):
@@ -142,9 +151,14 @@ Nothing browser-related runs until it is used.
   JPEG, at most 15 fps and 2 unacked frames, sized to the client's canvas)
   and speaks a small protocol (`protocol.go`), never raw CDP: tabs, navigation
   (http(s) and about:blank only), window size, mouse/wheel/key/text input,
-  JS dialogs, reset. It follows tabs the agent opens. The socat process holds
-  a sandbox lease, so a watched box isn't idle-stopped. At most 4 viewers per
-  box. `TestRealBox` (env `AGENTROVE_BROWSER_E2E_CONTAINER`) drives a real box.
+  JS dialogs, reset. It follows tabs the agent opens. The CDP peer runs in
+  the box, so it is untrusted: messages are capped at 8MB, the event backlog
+  and the client's queued messages by bytes, and page-controlled strings (tab
+  titles and URLs, dialog text) are clipped. The socat process holds a
+  sandbox lease, so a watched box isn't idle-stopped. At most 4 viewers per
+  box, and 30 tabs opened through a viewer. Settings report
+  `browser_available` (`SANDBOX_BROWSER_ENABLED`) so the UI can hide it.
+  `TestRealBox` (env `AGENTROVE_BROWSER_E2E_CONTAINER`) drives a real box.
 
 ## Layout
 - `cmd/agentrove` — entrypoint.

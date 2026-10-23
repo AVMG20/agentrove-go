@@ -11,8 +11,10 @@ import (
 	"github.com/coder/websocket"
 )
 
-// cdpReadLimit fits a full-size screencast frame (base64 JPEG) with room.
-const cdpReadLimit = 32 << 20
+// cdpReadLimit fits a full-size screencast frame (1920px JPEG at quality 70
+// is about 1MB in base64) with room, and bounds what an untrusted peer can
+// make the API buffer per message.
+const cdpReadLimit = 8 << 20
 
 // DialCDP does the websocket client handshake for the browser endpoint path
 // (from /json/version, e.g. /devtools/browser/<id>) over stream, a byte

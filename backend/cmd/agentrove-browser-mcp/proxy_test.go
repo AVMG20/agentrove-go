@@ -4,6 +4,9 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -14,6 +17,7 @@ import (
 type fakeBackend struct {
 	mu      sync.Mutex
 	got     []message
+	raw     [][]byte
 	lines   chan []byte
 	stopped bool
 	// silent drops tools/call requests (a call still running).
@@ -31,6 +35,7 @@ func (f *fakeBackend) Send(line []byte) error {
 		return errors.New("stopped")
 	}
 	f.got = append(f.got, m)
+	f.raw = append(f.raw, line)
 	switch m.Method {
 	case "initialize":
 		f.lines <- []byte(`{"jsonrpc":"2.0","method":"notifications/message","params":{}}` + "\n")
@@ -302,5 +307,111 @@ func TestInitResultVersion(t *testing.T) {
 		if got["protocolVersion"] != want {
 			t.Errorf("client %q: got %v, want %s", req, got["protocolVersion"], want)
 		}
+	}
+}
+
+// playwright-mcp asks for roots to decide where tool calls may read and
+// write files; it must get filesDir, never the client's (the project).
+func TestRootsAreConfinedToFilesDir(t *testing.T) {
+	p, out, started := newTestProxy(testCache)
+	p.handle([]byte(clientInit))
+	p.handle([]byte(`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{}}`))
+	out.response(t, "1")
+	f := (*started)[0]
+	f.lines <- []byte(`{"jsonrpc":"2.0","id":"r1","method":"roots/list"}` + "\n")
+	waitFor := func(cond func() bool) {
+		deadline := time.Now().Add(2 * time.Second)
+		for !cond() && time.Now().Before(deadline) {
+			time.Sleep(5 * time.Millisecond)
+		}
+	}
+	var answer []byte
+	waitFor(func() bool {
+		f.mu.Lock()
+		defer f.mu.Unlock()
+		for _, l := range f.raw {
+			if strings.Contains(string(l), `"r1"`) {
+				answer = l
+				return true
+			}
+		}
+		return false
+	})
+	var resp struct {
+		Result struct {
+			Roots []struct{ URI string } `json:"roots"`
+		} `json:"result"`
+	}
+	if json.Unmarshal(answer, &resp) != nil || len(resp.Result.Roots) != 1 || resp.Result.Roots[0].URI != "file://"+filesDir {
+		t.Fatalf("roots answer = %s", answer)
+	}
+	// The client never sees the request, and its root changes aren't passed on.
+	p.handle([]byte(`{"jsonrpc":"2.0","method":"notifications/roots/list_changed"}`))
+	out.mu.Lock()
+	text := out.b.String()
+	out.mu.Unlock()
+	if strings.Contains(text, "roots/list") {
+		t.Fatalf("roots request reached the client: %s", text)
+	}
+	if strings.Contains(strings.Join(f.methods(), ","), "roots/list_changed") {
+		t.Fatal("client roots change reached playwright-mcp")
+	}
+}
+
+// A late answer from a replaced backend, for a call already failed, must
+// not reach the client a second time.
+func TestLateResponseFromOldBackendIsDropped(t *testing.T) {
+	p, out, started := newTestProxy(testCache)
+	up := true
+	p.browserUp = func() bool { return up }
+	p.handle([]byte(clientInit))
+	p.handle([]byte(`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{}}`))
+	out.response(t, "1")
+	old := (*started)[0]
+	old.mu.Lock()
+	old.silent = true
+	old.mu.Unlock()
+	p.handle([]byte(`{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{}}`))
+	up = false
+	p.handle([]byte(`{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{}}`))
+	if out.response(t, "2")["error"] == nil {
+		t.Fatal("call 2 not failed on restart")
+	}
+	out.response(t, "3")
+	// The old process answers call 2 on its way out.
+	old.mu.Lock()
+	old.stopped = false
+	old.lines = make(chan []byte, 4)
+	old.mu.Unlock()
+	go p.pump(old)
+	old.lines <- []byte(`{"jsonrpc":"2.0","id":2,"result":{"content":[]}}` + "\n")
+	close(old.lines)
+	time.Sleep(50 * time.Millisecond)
+	out.mu.Lock()
+	n := strings.Count(out.b.String(), `"id":2`)
+	out.mu.Unlock()
+	if n != 1 {
+		t.Fatalf("client got %d answers for call 2", n)
+	}
+}
+
+func TestPruneDir(t *testing.T) {
+	dir := t.TempDir()
+	now := time.Now()
+	for i := range 10 {
+		path := filepath.Join(dir, fmt.Sprintf("f%d.yml", i))
+		if err := os.WriteFile(path, make([]byte, 100), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		_ = os.Chtimes(path, now, now.Add(time.Duration(i)*time.Second))
+	}
+	pruneDir(dir, 4, 1<<20)
+	left, _ := os.ReadDir(dir)
+	if len(left) != 4 || left[0].Name() != "f6.yml" {
+		t.Fatalf("left %v", left)
+	}
+	pruneDir(dir, 100, 250)
+	if left, _ = os.ReadDir(dir); len(left) != 2 {
+		t.Fatalf("left %v", left)
 	}
 }

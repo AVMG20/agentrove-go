@@ -233,21 +233,23 @@ export function GeneralSettingsTab({
               </Select>
             </div>
           </div>
-          <div className={styles['pref-row-notif']}>
-            <div className={styles['pref-text']}>
-              <h3 className={styles['setting-title']}>Browser tools</h3>
-              <p className={styles['field-desc']}>
-                Let agents drive the headless browser in your box to test web apps. It starts on
-                first use and stops when idle; you can watch it in the terminal panel&apos;s Browser
-                tab.
-              </p>
+          {settings.browser_available !== false && (
+            <div className={styles['pref-row-notif']}>
+              <div className={styles['pref-text']}>
+                <h3 className={styles['setting-title']}>Browser tools</h3>
+                <p className={styles['field-desc']}>
+                  Let agents drive the headless browser in your box to test web apps. It starts on
+                  first use and stops when idle; you can watch it in the terminal panel&apos;s
+                  Browser tab.
+                </p>
+              </div>
+              <Switch
+                checked={settings.browser_tools_enabled}
+                onCheckedChange={onBrowserToolsEnabledChange}
+                aria-label="Browser tools"
+              />
             </div>
-            <Switch
-              checked={settings.browser_tools_enabled}
-              onCheckedChange={onBrowserToolsEnabledChange}
-              aria-label="Browser tools"
-            />
-          </div>
+          )}
         </div>
       </SectionCard>
 

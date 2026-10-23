@@ -426,6 +426,14 @@ func (d *DockerProvider) Start(ctx context.Context, sandboxID string, req ExecRe
 				err = nil
 			}
 		}
+		// exec hands the wrapper's pid to the command, so nothing in the box
+		// removes the pid file; one would pile up per process (e.g. per
+		// browser viewer). Best effort: the box may be stopping.
+		go func() {
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+			_, _ = d.Exec(ctx, sandboxID, ExecRequest{Cmd: []string{"rm", "-f", pidFile}, Root: true})
+		}()
 		p.done <- err
 		close(p.done)
 	}()

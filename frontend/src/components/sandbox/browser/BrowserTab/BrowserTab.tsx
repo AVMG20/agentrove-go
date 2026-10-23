@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type {
   ClipboardEvent as ReactClipboardEvent,
+  CompositionEvent as ReactCompositionEvent,
+  FormEvent as ReactFormEvent,
   KeyboardEvent as ReactKeyboardEvent,
   PointerEvent as ReactPointerEvent,
 } from 'react';
@@ -111,6 +113,10 @@ export function BrowserTab({ isVisible, sandboxId }: BrowserTabProps) {
 
   const wsRef = useRef<WebSocket | null>(null);
   const stageRef = useRef<HTMLDivElement | null>(null);
+  // Keys go to a hidden textarea rather than the stage: only an editable
+  // element gets IME composition and soft-keyboard input.
+  const keyboardRef = useRef<HTMLTextAreaElement | null>(null);
+  const mountedRef = useRef(true);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const headerRef = useRef<FrameHeader | null>(null);
   const drawnRef = useRef<Rect>({ x: 0, y: 0, width: 0, height: 0 });
@@ -173,6 +179,10 @@ export function BrowserTab({ isVisible, sandboxId }: BrowserTabProps) {
       decodingRef.current = true;
       createImageBitmap(new Blob([frame.jpeg as Uint8Array<ArrayBuffer>], { type: 'image/jpeg' }))
         .then((bitmap) => {
+          if (!mountedRef.current) {
+            bitmap.close();
+            return;
+          }
           bitmapRef.current?.close();
           bitmapRef.current = bitmap;
           draw();
@@ -350,15 +360,17 @@ export function BrowserTab({ isVisible, sandboxId }: BrowserTabProps) {
     };
   }, [draw, reportScreen]);
 
-  useEffect(
-    () => () => {
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
       bitmapRef.current?.close();
+      bitmapRef.current = null;
       if (agentTimerRef.current) clearTimeout(agentTimerRef.current);
       if (noticeTimerRef.current) clearTimeout(noticeTimerRef.current);
       if (rafRef.current !== null) cancelAnimationFrame(rafRef.current);
-    },
-    [],
-  );
+    };
+  }, []);
 
   const pagePoint = (clientX: number, clientY: number) => {
     const canvas = canvasRef.current;
@@ -402,7 +414,7 @@ export function BrowserTab({ isVisible, sandboxId }: BrowserTabProps) {
     const p = pagePoint(e.clientX, e.clientY);
     if (!p?.inside) return;
     e.preventDefault();
-    stageRef.current?.focus();
+    keyboardRef.current?.focus({ preventScroll: true });
     e.currentTarget.setPointerCapture?.(e.pointerId);
     markInput();
     flushPointer();
@@ -483,10 +495,16 @@ export function BrowserTab({ isVisible, sandboxId }: BrowserTabProps) {
     return () => canvas.removeEventListener('wheel', onWheel);
   }, [scheduleFlush]);
 
-  const onKey = (e: ReactKeyboardEvent<HTMLDivElement>, event: 'down' | 'up') => {
-    // Only keys typed into the page itself, not the dialog's prompt field.
-    if (e.target !== e.currentTarget) return;
-    if (e.nativeEvent.isComposing || e.key === 'Process' || e.key === 'Dead') return;
+  const onKey = (e: ReactKeyboardEvent<HTMLTextAreaElement>, event: 'down' | 'up') => {
+    // Composition and soft keyboards ('Unidentified', 229) arrive as text
+    // through compositionend/input instead.
+    if (
+      e.nativeEvent.isComposing ||
+      e.keyCode === 229 ||
+      ['Process', 'Dead', 'Unidentified'].includes(e.key)
+    ) {
+      return;
+    }
     if (isLocalShortcut(e)) return;
     e.preventDefault();
     markInput();
@@ -502,8 +520,26 @@ export function BrowserTab({ isVisible, sandboxId }: BrowserTabProps) {
     });
   };
 
-  const onPaste = (e: ReactClipboardEvent<HTMLDivElement>) => {
-    if (e.target !== e.currentTarget) return;
+  const sendTyped = (text: string) => {
+    if (!text) return;
+    markInput();
+    send({ type: 'text', text });
+  };
+
+  const onCompositionEnd = (e: ReactCompositionEvent<HTMLTextAreaElement>) => {
+    sendTyped(e.data);
+    e.currentTarget.value = '';
+  };
+
+  // Text that bypassed keydown (soft keyboards, dictation); composition
+  // ends in onCompositionEnd.
+  const onInput = (e: ReactFormEvent<HTMLTextAreaElement>) => {
+    if ((e.nativeEvent as InputEvent).isComposing) return;
+    sendTyped(e.currentTarget.value);
+    e.currentTarget.value = '';
+  };
+
+  const onPaste = (e: ReactClipboardEvent<HTMLTextAreaElement>) => {
     const text = e.clipboardData.getData('text/plain');
     if (!text) return;
     e.preventDefault();
@@ -669,15 +705,21 @@ export function BrowserTab({ isVisible, sandboxId }: BrowserTabProps) {
         </Button>
       </div>
 
-      <div
-        ref={stageRef}
-        className={styles.stage}
-        tabIndex={0}
-        aria-label="Browser page"
-        onKeyDown={(e) => onKey(e, 'down')}
-        onKeyUp={(e) => onKey(e, 'up')}
-        onPaste={onPaste}
-      >
+      <div ref={stageRef} className={styles.stage} aria-label="Browser page">
+        <textarea
+          ref={keyboardRef}
+          className={styles.keyboard}
+          aria-label="Browser keyboard"
+          autoCapitalize="off"
+          autoComplete="off"
+          autoCorrect="off"
+          spellCheck={false}
+          onKeyDown={(e) => onKey(e, 'down')}
+          onKeyUp={(e) => onKey(e, 'up')}
+          onPaste={onPaste}
+          onCompositionEnd={onCompositionEnd}
+          onInput={onInput}
+        />
         <canvas
           ref={canvasRef}
           className={styles.canvas}

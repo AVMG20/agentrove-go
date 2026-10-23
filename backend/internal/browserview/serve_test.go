@@ -295,3 +295,22 @@ func TestServeUnavailableBox(t *testing.T) {
 		return
 	}
 }
+
+// A client that stops reading is dropped once its queued control messages
+// pass maxQueuedTextBytes, however few they are.
+func TestWriterBoundsQueuedBytes(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	// No write loop: nothing is ever sent.
+	w := &writer{cancel: cancel, text: make(chan []byte, textQueueSize), ready: make(chan struct{}, 1)}
+	big := strings.Repeat("x", 200<<10)
+	for i := 0; i < 20 && ctx.Err() == nil; i++ {
+		w.Text(map[string]any{"type": "tabs", "url": big})
+	}
+	if ctx.Err() == nil {
+		t.Fatal("writer kept queueing for a client that doesn't read")
+	}
+	if w.queued > maxQueuedTextBytes {
+		t.Fatalf("queued %d bytes", w.queued)
+	}
+}

@@ -20,10 +20,13 @@ const (
 )
 
 const (
-	pingInterval   = 30 * time.Second
-	writeTimeout   = 30 * time.Second
-	textQueueSize  = 256
-	clientReadSize = 1 << 20
+	pingInterval  = 30 * time.Second
+	writeTimeout  = 30 * time.Second
+	textQueueSize = 256
+	// Queued control messages beyond this mean the client stopped reading.
+	maxQueuedTextBytes = 1 << 20
+	// Client messages are small; text input is capped at maxTextInput.
+	clientReadSize = 256 << 10
 	// A browser that keeps dying isn't retried forever.
 	maxRestarts = 3
 )
@@ -160,9 +163,10 @@ type writer struct {
 	cancel context.CancelFunc
 	text   chan []byte
 
-	mu    sync.Mutex
-	frame []byte
-	ready chan struct{}
+	mu     sync.Mutex
+	queued int // bytes in text
+	frame  []byte
+	ready  chan struct{}
 }
 
 func newWriter(ctx context.Context, c *websocket.Conn, cancel context.CancelFunc) *writer {
@@ -176,12 +180,28 @@ func (w *writer) Text(v any) {
 	if err != nil {
 		return
 	}
+	w.mu.Lock()
+	over := w.queued+len(b) > maxQueuedTextBytes
+	if !over {
+		w.queued += len(b)
+	}
+	w.mu.Unlock()
+	if over {
+		// The client stopped reading.
+		w.cancel()
+		return
+	}
 	select {
 	case w.text <- b:
 	default:
-		// The client stopped reading.
 		w.cancel()
 	}
+}
+
+func (w *writer) sent(b []byte) {
+	w.mu.Lock()
+	w.queued -= len(b)
+	w.mu.Unlock()
 }
 
 func (w *writer) Frame(b []byte) {
@@ -208,6 +228,7 @@ func (w *writer) loop(ctx context.Context) {
 		// Control messages first: tabs and status beat pixels.
 		select {
 		case b := <-w.text:
+			w.sent(b)
 			if !write(websocket.MessageText, b) {
 				return
 			}
@@ -218,6 +239,7 @@ func (w *writer) loop(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case b := <-w.text:
+			w.sent(b)
 			if !write(websocket.MessageText, b) {
 				return
 			}

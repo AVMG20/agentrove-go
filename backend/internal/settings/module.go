@@ -38,6 +38,7 @@ func (m *Module) get(w http.ResponseWriter, r *http.Request) error {
 	if err != nil {
 		return err
 	}
+	st.BrowserAvailable = m.a.Cfg.BrowserEnabled
 	return httpx.OK(w, st)
 }
 

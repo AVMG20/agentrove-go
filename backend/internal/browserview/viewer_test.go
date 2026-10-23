@@ -4,8 +4,10 @@ import (
 	"context"
 	"encoding/binary"
 	"errors"
+	"strings"
 	"testing"
 	"time"
+	"unicode/utf8"
 )
 
 type viewerRun struct {
@@ -264,4 +266,38 @@ func TestViewerResetAndBrowserGone(t *testing.T) {
 		t.Fatalf("err = %v", err)
 	}
 	r2.done <- nil
+}
+
+func TestViewerClipsPageStrings(t *testing.T) {
+	f := newFakeBrowser("http://localhost:3000/")
+	r := startViewer(t, f)
+	sid := r.activeSession(t)
+	big := strings.Repeat("é", 1<<20)
+	f.emit("", "Target.targetInfoChanged", map[string]any{"targetInfo": targetInfo{TargetID: "T1", Type: "page", URL: "http://x/?" + big, Title: big}})
+	tabs := r.sink.waitText(t, "tabs", func(m map[string]any) bool {
+		return strings.HasPrefix(m["tabs"].([]any)[0].(map[string]any)["url"].(string), "http://x/?")
+	})
+	tb := tabs["tabs"].([]any)[0].(map[string]any)
+	if url, title := tb["url"].(string), tb["title"].(string); len(url) > maxTabField || len(title) > maxTabField || !utf8.ValidString(url) || !utf8.ValidString(title) {
+		t.Fatalf("tab not clipped: url %d bytes, title %d bytes", len(url), len(title))
+	}
+	f.emit(sid, "Page.javascriptDialogOpening", map[string]any{"type": "prompt", "message": big, "defaultPrompt": big})
+	d := r.sink.waitText(t, "dialog", nil)
+	if len(d["message"].(string)) > maxDialogMessage || len(d["defaultPrompt"].(string)) > maxTabField {
+		t.Fatalf("dialog not clipped: %d / %d bytes", len(d["message"].(string)), len(d["defaultPrompt"].(string)))
+	}
+}
+
+func TestViewerCapsTabsItOpens(t *testing.T) {
+	f := newFakeBrowser("http://localhost:3000/")
+	r := startViewer(t, f)
+	r.activeSession(t)
+	for range maxViewerTabs + 5 {
+		r.in <- clientMsg{Type: "tab.new"}
+	}
+	r.sink.waitText(t, "error", func(m map[string]any) bool { return m["message"] == "Too many tabs open" })
+	time.Sleep(200 * time.Millisecond)
+	if n := f.count("Target.createTarget"); n > maxViewerTabs {
+		t.Fatalf("viewer opened %d tabs", n)
+	}
 }
