@@ -29,6 +29,7 @@ type SessionState = 'idle' | 'connecting' | 'reconnecting' | 'ready' | 'error' |
 const encoder = new TextEncoder();
 
 // Mirrors backend WS_CLOSE_* codes in app/constants.py
+const WS_CLOSE_NORMAL = 1000;
 const WS_CLOSE_AUTH_FAILED = 4001;
 const WS_CLOSE_SANDBOX_NOT_FOUND = 4004;
 const WS_CLOSE_INVALID_CWD = 4005;
@@ -239,8 +240,11 @@ export function TerminalTab({
         }
         // Any other close while this effect is live (backend restart, network
         // drop) is unexpected — retry with backoff, then offer a manual
-        // reconnect instead of a frozen terminal.
-        if (autoReconnectsRef.current < MAX_AUTO_RECONNECTS) {
+        // reconnect instead of a frozen terminal. A normal closure is the
+        // server ending this viewer on purpose (another tab attached to the
+        // terminal, or the shell exited): retrying would steal the terminal
+        // back and ping-pong between tabs, so only offer Reconnect.
+        if (event.code !== WS_CLOSE_NORMAL && autoReconnectsRef.current < MAX_AUTO_RECONNECTS) {
           const delay = RECONNECT_BASE_DELAY_MS * 2 ** autoReconnectsRef.current;
           autoReconnectsRef.current += 1;
           setSessionState('reconnecting');

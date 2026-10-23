@@ -223,6 +223,22 @@ describe('TerminalTab disconnects', () => {
     expect(FakeWebSocket.instances).toHaveLength(3);
   });
 
+  // The server closes a viewer with 1000 when another tab attaches to the same
+  // terminal (or the shell exits); auto-reconnecting would steal it back forever.
+  it('does not auto-reconnect after a normal closure', async () => {
+    render(<TerminalTab isVisible sandboxId="sandbox-1" terminalId="terminal-1" />);
+    await flush();
+    const ws = FakeWebSocket.instances[0];
+    act(() => ws.open());
+    act(() => ws.message({ type: 'init', rows: 40, cols: 120 }));
+
+    act(() => ws.drop(1000));
+    await act(() => vi.advanceTimersByTimeAsync(10_000));
+    expect(FakeWebSocket.instances).toHaveLength(1);
+    expect(screen.getByText('Terminal disconnected')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Reconnect' })).toBeTruthy();
+  });
+
   it('shows the server reason and a Reconnect button on a fatal close code', async () => {
     render(<TerminalTab isVisible sandboxId="sandbox-1" terminalId="terminal-1" />);
     await flush();
