@@ -12,6 +12,8 @@ services:
     image: ${DOCKER_IMAGE:-agentrove-sandbox:latest}
     command: ["true"]
     restart: "no"
+    # Coolify: a one-shot container shouldn't count toward app health.
+    exclude_from_hc: true
 
   api:
     build:
