@@ -373,6 +373,12 @@ func (s *store) loadAttachments(ctx context.Context, msgs []*Message) error {
 	return rows.Err()
 }
 
+// Results the chat shows outside the collapsed trace; they're a few fields.
+var keptResultTools = map[string]bool{
+	"mcp__agentrove__create_artifact": true,
+	"mcp__agentrove__update_artifact": true,
+}
+
 // omitResults drops tool results from a finished turn's render: they dominate
 // history size and are fetched per message on demand (/messages/{id}/render).
 func omitResults(m *Message) {
@@ -392,6 +398,8 @@ func omitResults(m *Message) {
 		return
 	}
 	seen := map[any]map[string]any{}
+	// Later events for a tool may leave out its name.
+	names := map[any]string{}
 	compact := make([]any, 0, len(events))
 	for _, e := range events {
 		ev, ok := e.(map[string]any)
@@ -405,9 +413,13 @@ func omitResults(m *Message) {
 			folded = map[string]any{}
 			seen[tool["id"]] = folded
 		}
+		if name, _ := tool["name"].(string); name != "" {
+			names[tool["id"]] = name
+		}
+		keepResult := keptResultTools[names[tool["id"]]]
 		slim := map[string]any{}
 		for k, v := range tool {
-			if k == "result" {
+			if k == "result" && !keepResult {
 				continue
 			}
 			if k == "input" || k == "title" {

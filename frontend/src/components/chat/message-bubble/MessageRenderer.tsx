@@ -4,6 +4,7 @@ import { TraceLoadState, WorkedRollup } from './WorkedRollup';
 import { useMessageRenderQuery } from '@/hooks/queries/useChatQueries';
 import { buildSegments, segmentsEqual, type MessageSegment } from './segmentBuilder';
 import { AgentToolsContext } from '@/contexts/AgentToolsContext';
+import { ARTIFACT_TOOL_NAMES } from '@/components/chat/tools/registry';
 import type { AssistantStreamEvent } from '@/types/chat.types';
 import type { ToolAggregate } from '@/types/tools.types';
 
@@ -108,6 +109,18 @@ export const MessageRenderer = memo(function MessageRenderer({
   // the full render on chat open.
   const rollUpTrace =
     traceSegments.length > 0 && (tailSegments.length > 0 || omittedToolResults !== undefined);
+  // Published artifacts stay visible below the collapsed trace.
+  const { rolledSegments, artifactSegments } = React.useMemo(() => {
+    if (!rollUpTrace) return { rolledSegments: traceSegments, artifactSegments: [] };
+    const isArtifact = (segment: MessageSegment) =>
+      segment.kind === 'tool' &&
+      segment.tool.status === 'completed' &&
+      ARTIFACT_TOOL_NAMES.has(segment.tool.name);
+    return {
+      rolledSegments: traceSegments.filter((segment) => !isArtifact(segment)),
+      artifactSegments: traceSegments.filter(isArtifact),
+    };
+  }, [traceSegments, rollUpTrace]);
   const segmentViewProps = {
     chatId,
     isLastBotMessage,
@@ -119,7 +132,7 @@ export const MessageRenderer = memo(function MessageRenderer({
   const traceNodes = awaitingFullRender ? (
     <TraceLoadState failed={fullRender.isError} onRetry={() => void fullRender.refetch()} />
   ) : (
-    traceSegments.map((segment) => (
+    rolledSegments.map((segment) => (
       <SegmentView
         key={segment.id}
         segment={segment}
@@ -129,7 +142,7 @@ export const MessageRenderer = memo(function MessageRenderer({
       />
     ))
   );
-  const tailNodes = tailSegments.map((segment) => (
+  const tailNodes = [...artifactSegments, ...tailSegments].map((segment) => (
     <SegmentView
       key={segment.id}
       segment={segment}

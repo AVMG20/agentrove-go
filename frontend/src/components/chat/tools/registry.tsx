@@ -39,7 +39,7 @@ const renderUiLoader: ToolModuleLoader = () =>
   import('./agentrove/RenderUiTool').then((m) => ({ default: m.RenderUiTool }));
 const artifactLoader: ToolModuleLoader = () =>
   import('./agentrove/ArtifactTool').then((m) => ({ default: m.ArtifactTool }));
-const ARTIFACT_TOOL_NAMES = new Set([
+export const ARTIFACT_TOOL_NAMES = new Set([
   'mcp__agentrove__create_artifact',
   'mcp__agentrove__update_artifact',
 ]);

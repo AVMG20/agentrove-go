@@ -142,6 +142,25 @@ describe('MessageRenderer streaming wiring', () => {
     expect(screen.getByText('the answer')).toBeTruthy();
   });
 
+  it('keeps published artifacts outside the collapsed trace, ahead of the answer', () => {
+    const artifact = { id: 'a1', name: 'mcp__agentrove__create_artifact' };
+    const events: AssistantStreamEvent[] = [
+      { type: 'tool_started', tool: tool({ id: 't1' }) },
+      { type: 'tool_completed', tool: tool({ id: 't1', status: 'completed' }) },
+      { type: 'tool_started', tool: tool(artifact) },
+      { type: 'tool_completed', tool: tool({ ...artifact, status: 'completed' }) },
+      { type: 'assistant_text', text: 'the answer' },
+    ];
+    render(<MessageRenderer events={events} isStreaming={false} />, { wrapper });
+
+    const rollup = screen.getByTestId('rollup');
+    const rollupIds = within(rollup)
+      .getAllByTestId('segment')
+      .map((el) => el.getAttribute('data-id'));
+    expect(rollupIds).toEqual(['tool-t1']);
+    expect(renderedOrder()).toEqual(['tool-t1', 'tool-a1', 'text-0']);
+  });
+
   it('keeps live segments flat (no rollup) while streaming', () => {
     const events: AssistantStreamEvent[] = [
       { type: 'assistant_thinking', thinking: 'plan' },
