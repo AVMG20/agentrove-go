@@ -120,7 +120,11 @@
       var options = {
         responsive: true,
         maintainAspectRatio: false,
-        interaction: { mode: round || type === 'scatter' ? 'nearest' : 'index', intersect: false },
+        // Index mode searches along x unless told otherwise, which picks the
+        // wrong row on horizontal bars.
+        interaction: round || type === 'scatter'
+          ? { mode: 'nearest', intersect: false }
+          : { mode: 'index', axis: o.horizontal ? 'y' : 'x', intersect: false },
         elements: {
           line: { tension: 0.3, borderWidth: 2 },
           point: { radius: o.points || type === 'scatter' ? 3 : 0, hoverRadius: 5 },
