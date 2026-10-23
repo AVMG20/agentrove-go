@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"agentrove/internal/app"
+	"agentrove/internal/artifact"
 	"agentrove/internal/claude"
 	"agentrove/internal/db"
 	"agentrove/internal/gitops"
@@ -472,15 +473,28 @@ func (m *Module) sessionConfig(sb *sandbox.Sandbox, req *turnRequest) claude.Con
 	}
 	if sb.Kind == sandbox.KindDocker {
 		cfg.Binary = "claude"
+		if m.a.Cfg.ArtifactsEnabled {
+			claudeDir := filepath.Join(m.a.Cfg.AgentHomeDir(req.userID), "claude")
+			if err := artifact.InstallSkill(claudeDir, m.a.Cfg.FrontendURL); err != nil {
+				slog.Warn("install artifacts skill", "user", req.userID, "err", err)
+			}
+		}
 		if !req.fullReplace {
 			cfg.SystemPrompt += boxPrompt
 		}
 	}
 	if m.MCPConfig != nil {
 		cfg.MCPServers = m.MCPConfig(req.userID, req.chat.ID, sb.Kind, req.member != nil)
+		if len(cfg.MCPServers) > 0 {
+			// Publishing a (private) artifact never needs a permission prompt.
+			cfg.Settings["permissions"] = map[string]any{"allow": artifactTools}
+		}
 	}
 	return cfg
 }
+
+var artifactTools = []string{"mcp__agentrove__create_artifact", "mcp__agentrove__update_artifact",
+	"mcp__agentrove__get_artifact", "mcp__agentrove__list_artifacts"}
 
 // boxPrompt covers what Claude can't discover itself about the user's box.
 const boxPrompt = "\n<environment>Personal Ubuntu box with passwordless sudo (run `sudo apt-get update` before apt installs). " +

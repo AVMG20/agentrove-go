@@ -44,6 +44,13 @@ type Module struct {
 	tools       []*tool
 }
 
+// Instructions lands in Claude's system prompt, so it knows artifacts exist
+// even before it loads the tool definitions.
+const Instructions = "An artifact is an HTML page published with create_artifact: it gets a link the user can open " +
+	"and share. When the user asks for an artifact, or for a page, report, dashboard, chart or diagram to view or share, " +
+	"use the artifacts skill and publish an artifact instead of writing an .html file. Artifacts are private until " +
+	"the user makes them public, so publishing needs no confirmation."
+
 func New(a *app.App, ch *channel.Service, au *automation.Service, ar *artifact.Service) *Module {
 	m := &Module{a: a, channels: ch, automations: au, artifacts: ar}
 	m.tools = m.buildTools()
@@ -251,11 +258,15 @@ func (m *Module) dispatch(ctx context.Context, c *caller, method string, params 
 		if supportedVersions[p.ProtocolVersion] {
 			version = p.ProtocolVersion
 		}
-		return map[string]any{
+		res := map[string]any{
 			"protocolVersion": version,
 			"capabilities":    map[string]any{"tools": map[string]any{"listChanged": false}},
 			"serverInfo":      map[string]any{"name": serverName, "version": serverVer},
-		}, nil
+		}
+		if m.a.Cfg.ArtifactsEnabled {
+			res["instructions"] = Instructions
+		}
+		return res, nil
 	case "ping":
 		return map[string]any{}, nil
 	case "tools/list":

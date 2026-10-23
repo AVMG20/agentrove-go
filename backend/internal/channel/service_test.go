@@ -142,7 +142,7 @@ func TestChannelConversation(t *testing.T) {
 		t.Fatal(err)
 	}
 	opus, sonnet := ch.Members[0], ch.Members[1]
-	if opus.DisplayName != "opus" || sonnet.DisplayName != "sonnet" || opus.PermissionMode != "default" {
+	if opus.DisplayName != "opus" || sonnet.DisplayName != "sonnet" || opus.PermissionMode != "bypassPermissions" {
 		t.Fatalf("members: %+v %+v", opus, sonnet)
 	}
 	rt.reply = func(chatID string, n int) string {

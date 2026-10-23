@@ -144,7 +144,7 @@ func (s *Service) Create(ctx context.Context, userID string, in CreateInput) (*C
 				chatID, in.Name, userID, ws.ID, ch.ID, now, now); err != nil {
 				return err
 			}
-			mode := models.DefaultPermissionMode
+			mode := models.FullAccessPermissionMode
 			if item.PermissionMode != nil {
 				mode = *item.PermissionMode
 			}

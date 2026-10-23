@@ -204,7 +204,7 @@ func (m *Module) buildTools() []*tool {
 				"so keep state in memory. Make it responsive and readable on its own; it is shown full-screen.\n\nArtifacts start " +
 				"private: only the user, signed in, can open the link; they can make it public from the page. Returns the " +
 				"artifact's id, url, version and visibility. Always give the user the url (as a markdown link) in your reply. To " +
-				"revise it later, call update_artifact with its id instead of creating a new one.",
+				"revise it later, call update_artifact with its id instead of creating a new one. The artifacts skill documents the styling kit (layout, charts, tables, diagrams, diffs).",
 			schema:  object(props{"title": str(""), "html": str("")}, "title", "html"),
 			handler: m.createArtifact,
 		},
