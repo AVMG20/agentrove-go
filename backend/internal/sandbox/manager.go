@@ -136,8 +136,13 @@ func (m *Manager) Touch(sandboxID string) {
 	m.mu.Unlock()
 }
 
-// Acquire marks the sandbox busy until the returned func is called.
-func (m *Manager) Acquire(sandboxID string) func() {
+// Acquire marks the sandbox busy until the returned func is called, which
+// also counts as activity.
+func (m *Manager) Acquire(sandboxID string) func() { return m.acquire(sandboxID, true) }
+
+// acquire with touch=false leaves the idle clock alone on release: an agent
+// process closing after sitting idle isn't use of the sandbox.
+func (m *Manager) acquire(sandboxID string, touch bool) func() {
 	m.mu.Lock()
 	m.leases[sandboxID]++
 	m.activity[sandboxID] = time.Now()
@@ -152,7 +157,9 @@ func (m *Manager) Acquire(sandboxID string) func() {
 			if m.leases[sandboxID] == 0 {
 				delete(m.leases, sandboxID)
 			}
-			m.activity[sandboxID] = time.Now()
+			if touch {
+				m.activity[sandboxID] = time.Now()
+			}
 			m.mu.Unlock()
 		})
 	}

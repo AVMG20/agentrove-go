@@ -207,7 +207,8 @@ func (s *Sandbox) Start(ctx context.Context, req ExecRequest) (Process, func(), 
 		req.Cwd = s.Root
 	}
 	req.Env = s.mgr.mergeEnv(s, req.Env)
-	release := s.mgr.Acquire(s.ID)
+	// Turns hold their own lease; the process lease only keeps the box up.
+	release := s.mgr.acquire(s.ID, false)
 	p, err := s.provider.Start(ctx, s.ID, req)
 	if err != nil {
 		release()

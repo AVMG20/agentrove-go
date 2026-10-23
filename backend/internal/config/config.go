@@ -127,7 +127,7 @@ func Load() (*Config, error) {
 		HostSandboxEnabled:   envBool("HOST_SANDBOX_ENABLED", os.Geteuid() != 0),
 		DefaultSandboxDriver: env("DEFAULT_SANDBOX_PROVIDER", ""),
 		ChatProcessIdleTTL:   time.Duration(envInt("CHAT_PROCESS_IDLE_TTL_SECONDS", 600)) * time.Second,
-		SandboxIdleTTL:       time.Duration(envInt("SANDBOX_IDLE_TTL_SECONDS", 3600)) * time.Second,
+		SandboxIdleTTL:       time.Duration(envInt("SANDBOX_IDLE_TTL_SECONDS", 900)) * time.Second,
 		ClaudeBinary:         env("CLAUDE_BINARY", "claude"),
 		LogLevel:             env("LOG_LEVEL", "INFO"),
 	}

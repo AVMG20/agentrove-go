@@ -37,7 +37,7 @@ services:
       DOCKER_NETWORK: ${DOCKER_NETWORK:-agentrove-sandbox-net}
       # How sandbox agents reach the API's MCP endpoint over the sandbox network.
       AGENTROVE_INTERNAL_URL: ${AGENTROVE_INTERNAL_URL:-http://api:8080}
-      SANDBOX_IDLE_TTL_SECONDS: ${SANDBOX_IDLE_TTL_SECONDS:-3600}
+      SANDBOX_IDLE_TTL_SECONDS: ${SANDBOX_IDLE_TTL_SECONDS:-900}
       ALLOWED_ORIGINS: ${APP_URL:-http://localhost}
       BASE_URL: ${APP_URL:-http://localhost}
       FRONTEND_URL: ${APP_URL:-http://localhost}
