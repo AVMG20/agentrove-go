@@ -35,7 +35,7 @@ func (o OneShot) Run(ctx context.Context, model, systemPrompt, prompt string) (s
 	ctx, cancel := context.WithTimeout(ctx, 2*time.Minute)
 	defer cancel()
 	args := []string{"-p", "--output-format", "json", "--model", model, "--tools", "", "--no-session-persistence",
-		"--setting-sources", "", "--strict-mcp-config", "--disable-slash-commands"}
+		"--setting-sources", "user", "--strict-mcp-config", "--disable-slash-commands"}
 	if systemPrompt != "" {
 		args = append(args, "--system-prompt", systemPrompt)
 	}

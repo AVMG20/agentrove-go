@@ -7,6 +7,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 )
 
 // Event is one frontend stream event: kind plus payload (the envelope body).
@@ -36,10 +37,19 @@ type Translator struct {
 	pendingTask map[string]map[string]any // TaskCreate tool_use_id -> input
 	// ResolvedModes records the permission mode chosen in a permission prompt,
 	// stamped onto that tool's completion (ExitPlanMode → frontend mode switch).
+	// Written from HTTP handlers (SetResolvedMode), read on the turn goroutine.
+	modesMu       sync.Mutex
 	ResolvedModes map[string]string
 	contextWindow int
 	lastUsage     int
 	sawOutput     bool
+}
+
+// SetResolvedMode records the permission mode picked for a tool's prompt.
+func (t *Translator) SetResolvedMode(toolUseID, mode string) {
+	t.modesMu.Lock()
+	t.ResolvedModes[toolUseID] = mode
+	t.modesMu.Unlock()
 }
 
 func NewTranslator() *Translator {
@@ -156,7 +166,17 @@ func (t *Translator) streamEvent(m Message) []Event {
 	return nil
 }
 
+// orphan reports a subagent message whose parent tool belongs to an earlier
+// turn: background subagents keep running after their turn ended, and their
+// internals have no tool card to nest under here.
+func (t *Translator) orphan(m Message) bool {
+	return m.ParentToolUseID != nil && *m.ParentToolUseID != "" && t.tools[*m.ParentToolUseID] == nil
+}
+
 func (t *Translator) assistant(m Message) []Event {
+	if t.orphan(m) {
+		return nil
+	}
 	var msg apiMessage
 	if err := json.Unmarshal(m.Message, &msg); err != nil {
 		return nil
@@ -215,6 +235,9 @@ func (t *Translator) toolStarted(id, name string, input map[string]any, parent *
 var taskIDRE = regexp.MustCompile(`#(\d+)`)
 
 func (t *Translator) user(m Message) []Event {
+	if t.orphan(m) {
+		return nil
+	}
 	var msg apiMessage
 	if err := json.Unmarshal(m.Message, &msg); err != nil {
 		return nil
@@ -236,10 +259,12 @@ func (t *Translator) user(m Message) []Event {
 			continue
 		}
 		delete(t.tools, b.ToolUseID)
+		t.modesMu.Lock()
 		if mode, ok := t.ResolvedModes[b.ToolUseID]; ok {
 			p["permission_mode"] = mode
 			delete(t.ResolvedModes, b.ToolUseID)
 		}
+		t.modesMu.Unlock()
 		if b.IsError {
 			p["status"] = "failed"
 			p["error"] = strings.TrimSpace(resultText(b.Content))

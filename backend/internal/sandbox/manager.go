@@ -40,7 +40,9 @@ func NewManager(cfg *config.Config) *Manager {
 		starting:  map[string]*sync.Mutex{},
 		userEnv:   map[string]map[string]string{},
 	}
-	m.providers[KindHost] = NewHostProvider(cfg)
+	if cfg.HostSandboxEnabled {
+		m.providers[KindHost] = NewHostProvider(cfg)
+	}
 	if d, err := NewDockerProvider(cfg); err != nil {
 		slog.Warn("docker sandbox provider unavailable", "err", err)
 	} else {

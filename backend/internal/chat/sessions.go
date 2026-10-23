@@ -157,8 +157,10 @@ func parseBackgroundTasks(raw json.RawMessage, prev []backgroundTask) []backgrou
 	}
 	_ = json.Unmarshal(raw, &msg)
 	started := map[string]float64{}
+	toolIDs := map[string]string{}
 	for _, t := range prev {
 		started[t.ID] = t.StartedAt
+		toolIDs[t.ID] = t.ToolID
 	}
 	out := make([]backgroundTask, 0, len(msg.Tasks))
 	now := float64(time.Now().UnixMilli()) / 1000
@@ -175,7 +177,11 @@ func parseBackgroundTasks(raw json.RawMessage, prev []backgroundTask) []backgrou
 		if title == "" {
 			title = t.TaskID
 		}
-		out = append(out, backgroundTask{ID: t.TaskID, Kind: kind, Title: title, ToolID: t.ToolUseID, StartedAt: at, Stoppable: true})
+		toolID := t.ToolUseID
+		if toolID == "" {
+			toolID = toolIDs[t.TaskID]
+		}
+		out = append(out, backgroundTask{ID: t.TaskID, Kind: kind, Title: title, ToolID: toolID, StartedAt: at, Stoppable: true})
 	}
 	return out
 }

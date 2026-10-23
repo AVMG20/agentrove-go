@@ -17,6 +17,8 @@ import (
 	"time"
 
 	"agentrove/internal/sandbox"
+
+	"github.com/google/uuid"
 )
 
 // Message is one raw stdout line from the CLI.
@@ -31,6 +33,8 @@ type Message struct {
 	RequestID       string          `json:"request_id,omitempty"`
 	Request         json.RawMessage `json:"request,omitempty"`
 	Response        json.RawMessage `json:"response,omitempty"`
+	UUID            string          `json:"uuid,omitempty"`
+	IsReplay        bool            `json:"isReplay,omitempty"`
 	Raw             json.RawMessage `json:"-"`
 }
 
@@ -74,14 +78,18 @@ func (c Config) args() []string {
 		"--thinking", "adaptive",
 		"--thinking-display", "summarized",
 		"--setting-sources", "user,project,local",
+		// Echo each user message once the CLI starts on it: a turn ends only
+		// on the result after its own echo.
+		"--replay-user-messages",
+		// Use the system prompt passed at launch, not the one snapshotted when
+		// the session began, so persona changes apply on resume.
+		"--system-prompt-snapshot", "off",
+		// Always allowed so a session launched in another mode can still be
+		// switched to bypassPermissions later.
+		"--allow-dangerously-skip-permissions",
 	}
 	if c.PermissionMode != "" {
 		args = append(args, "--permission-mode", c.PermissionMode)
-		if c.PermissionMode == "bypassPermissions" {
-			args = append(args, "--allow-dangerously-skip-permissions")
-		}
-	} else {
-		args = append(args, "--allow-dangerously-skip-permissions")
 	}
 	if c.Model != "" {
 		args = append(args, "--model", c.Model)
@@ -124,6 +132,7 @@ type Session struct {
 
 	mu        sync.Mutex
 	sessionID string
+	lastCost  float64
 	model     string
 	mode      string
 	effort    string
@@ -348,14 +357,30 @@ func (s *Session) RespondControl(requestID string, response map[string]any) {
 }
 
 // SendUser writes a user message (text and/or content blocks).
-func (s *Session) SendUser(content []map[string]any) error {
+// SendUser sends a prompt and returns the uuid the CLI echoes back when it
+// starts processing it.
+func (s *Session) SendUser(content []map[string]any) (string, error) {
 	s.Touch()
-	return s.write(map[string]any{
+	id := uuid.NewString()
+	return id, s.write(map[string]any{
 		"type":               "user",
+		"uuid":               id,
 		"message":            map[string]any{"role": "user", "content": content},
 		"parent_tool_use_id": nil,
 		"session_id":         s.SessionID(),
 	})
+}
+
+// CostDelta turns the CLI's cumulative total_cost_usd into this result's share.
+func (s *Session) CostDelta(total float64) float64 {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	d := total - s.lastCost
+	s.lastCost = total
+	if d < 0 {
+		return total
+	}
+	return d
 }
 
 func (s *Session) Interrupt(ctx context.Context) error {

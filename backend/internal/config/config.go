@@ -53,16 +53,19 @@ type Config struct {
 	AgentEnvPassthroughKey []string
 	ClaudeUsageEndpoints   map[string]string
 
-	DockerImage          string
-	DockerNetwork        string
-	DockerHost           string
-	DockerMemLimit       string
-	DockerCPUPeriod      int64
-	DockerCPUQuota       int64
-	DockerPidsLimit      int64
-	DockerNodeMaxOldMB   int
-	HostSandboxBaseDir   string
-	HostPreviewBaseURL   string
+	DockerImage        string
+	DockerNetwork      string
+	DockerHost         string
+	DockerMemLimit     string
+	DockerCPUPeriod    int64
+	DockerCPUQuota     int64
+	DockerPidsLimit    int64
+	DockerNodeMaxOldMB int
+	HostSandboxBaseDir string
+	HostPreviewBaseURL string
+	// The host provider runs Claude as the API's own user. Off by default when
+	// that is root (e.g. in the production container, next to docker.sock).
+	HostSandboxEnabled   bool
 	DefaultSandboxDriver string
 
 	// How long a Claude CLI process may sit idle before it's closed. The
@@ -108,22 +111,25 @@ func Load() (*Config, error) {
 		ArtifactViewTokenTTL:     time.Duration(envInt("ARTIFACT_VIEW_TOKEN_LIFETIME_SECONDS", 1800)) * time.Second,
 		AgentEnv:                 ParseEnvLines(env("AGENT_ENV", "")),
 		AgentEnvPassthroughKey:   envList("AGENT_ENV_PASSTHROUGH", []string{"ANTHROPIC_BASE_URL", "ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_API_KEY", "ANTHROPIC_CUSTOM_HEADERS", "CLAUDE_CODE_OAUTH_TOKEN"}),
-		ClaudeUsageEndpoints:     parsePairs(env("CLAUDE_USAGE_ENDPOINTS", "")),
-		DockerImage:              env("DOCKER_IMAGE", "agentrove-sandbox:latest"),
-		DockerNetwork:            env("DOCKER_NETWORK", "agentrove-sandbox-net"),
-		DockerHost:               env("DOCKER_HOST", ""),
-		DockerMemLimit:           env("DOCKER_MEM_LIMIT", "8g"),
-		DockerCPUPeriod:          int64(envInt("DOCKER_CPU_PERIOD", 100000)),
-		DockerCPUQuota:           int64(envInt("DOCKER_CPU_QUOTA", 200000)),
-		DockerPidsLimit:          int64(envInt("DOCKER_PIDS_LIMIT", 512)),
-		DockerNodeMaxOldMB:       envInt("DOCKER_NODE_MAX_OLD_SPACE_MB", 8192),
-		HostSandboxBaseDir:       env("HOST_SANDBOX_BASE_DIR", ""),
-		HostPreviewBaseURL:       env("HOST_PREVIEW_BASE_URL", "http://localhost"),
-		DefaultSandboxDriver:     env("DEFAULT_SANDBOX_PROVIDER", ""),
-		ChatProcessIdleTTL:       time.Duration(envInt("CHAT_PROCESS_IDLE_TTL_SECONDS", 600)) * time.Second,
-		SandboxIdleTTL:           time.Duration(envInt("SANDBOX_IDLE_TTL_SECONDS", 3600)) * time.Second,
-		ClaudeBinary:             env("CLAUDE_BINARY", "claude"),
-		LogLevel:                 env("LOG_LEVEL", "INFO"),
+		// Claude proxy hosts -> their 5h/weekly usage endpoint, fetched with
+		// the user's ANTHROPIC_AUTH_TOKEN. Deployment-set only.
+		ClaudeUsageEndpoints: parsePairs(env("CLAUDE_USAGE_ENDPOINTS", "claude.bitsec.dev=https://claude-admin.bitsec.dev/api/usage")),
+		DockerImage:          env("DOCKER_IMAGE", "agentrove-sandbox:latest"),
+		DockerNetwork:        env("DOCKER_NETWORK", "agentrove-sandbox-net"),
+		DockerHost:           env("DOCKER_HOST", ""),
+		DockerMemLimit:       env("DOCKER_MEM_LIMIT", "8g"),
+		DockerCPUPeriod:      int64(envInt("DOCKER_CPU_PERIOD", 100000)),
+		DockerCPUQuota:       int64(envInt("DOCKER_CPU_QUOTA", 200000)),
+		DockerPidsLimit:      int64(envInt("DOCKER_PIDS_LIMIT", 512)),
+		DockerNodeMaxOldMB:   envInt("DOCKER_NODE_MAX_OLD_SPACE_MB", 8192),
+		HostSandboxBaseDir:   env("HOST_SANDBOX_BASE_DIR", ""),
+		HostPreviewBaseURL:   env("HOST_PREVIEW_BASE_URL", "http://localhost"),
+		HostSandboxEnabled:   envBool("HOST_SANDBOX_ENABLED", os.Geteuid() != 0),
+		DefaultSandboxDriver: env("DEFAULT_SANDBOX_PROVIDER", ""),
+		ChatProcessIdleTTL:   time.Duration(envInt("CHAT_PROCESS_IDLE_TTL_SECONDS", 600)) * time.Second,
+		SandboxIdleTTL:       time.Duration(envInt("SANDBOX_IDLE_TTL_SECONDS", 3600)) * time.Second,
+		ClaudeBinary:         env("CLAUDE_BINARY", "claude"),
+		LogLevel:             env("LOG_LEVEL", "INFO"),
 	}
 
 	if c.DatabasePath == "" {

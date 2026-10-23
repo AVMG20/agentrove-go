@@ -43,6 +43,13 @@ type Module struct {
 	bgTasks  map[string][]backgroundTask
 	bgOwner  map[string]string // chat -> user, for publishing task changes
 
+	// routeMu orders session output against turns attaching and detaching:
+	// output that arrives while no turn is attached is held in pending and
+	// handed to the next turn that attaches, so a self-started cycle loses
+	// nothing. Nothing blocks while it is held.
+	routeMu sync.Mutex
+	pending map[string][]claude.Message
+
 	// MCPConfig returns the mcpServers map for a chat's Claude session. It
 	// must be stable across turns: the session fingerprint includes it.
 	MCPConfig func(userID, chatID, sandboxKind string, channelMember bool) map[string]any
@@ -52,13 +59,19 @@ func New(a *app.App) *Module {
 	m := &Module{
 		a: a, st: &store{db: a.DB}, sessions: newSessions(),
 		turns: map[string]*turn{}, attached: map[string]*turn{}, starting: map[string]bool{},
-		bgTasks: map[string][]backgroundTask{}, bgOwner: map[string]string{},
+		bgTasks: map[string][]backgroundTask{}, bgOwner: map[string]string{}, pending: map[string][]claude.Message{},
 	}
 	a.Hooks.StartChatTurn = m.hookStartTurn
 	a.Hooks.CancelChatTurn = func(chatID string) error { m.cancelTurn(chatID, 10*time.Second); return nil }
 	a.Hooks.ChatTurnActive = m.busy
 	a.Hooks.GenerateText = m.generateText
 	a.Sandboxes.OnStop = func(sandboxID string) { m.sessions.terminateSandbox(sandboxID, m.busy) }
+	a.Hooks.OnChatDeleted = append(a.Hooks.OnChatDeleted, func(chatID string) {
+		go func() {
+			m.cancelTurn(chatID, 10*time.Second)
+			m.sessions.terminate(chatID)
+		}()
+	})
 	return m
 }
 
@@ -71,7 +84,7 @@ func (m *Module) Start(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-t.C:
-			m.sessions.closeIdle(m.a.Cfg.ChatProcessIdleTTL, m.busy)
+			m.sessions.closeIdle(m.a.Cfg.ChatProcessIdleTTL, m.keepAlive)
 		}
 	}
 }
@@ -191,6 +204,14 @@ func (m *Module) busy(chatID string) bool {
 	return m.turns[chatID] != nil || m.starting[chatID]
 }
 
+// keepAlive reports a session that must not be idle-closed: a turn is running
+// or Claude still has background tasks (shells, subagents) going.
+func (m *Module) keepAlive(chatID string) bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.turns[chatID] != nil || m.starting[chatID] || len(m.bgTasks[chatID]) > 0
+}
+
 func (m *Module) activeTurn(chatID string) *turn {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -229,27 +250,83 @@ func (m *Module) launch(t *turn) {
 				delete(m.turns, t.chatID)
 			}
 			m.mu.Unlock()
+			// Output Claude produced on its own after the turn ended (a
+			// background task finished) waits in pending; stream it now.
+			if m.hasPendingCycle(t.chatID) {
+				m.startFollowup(t.chatID)
+			}
 		}()
 		t.run()
 	}()
 }
 
 func (m *Module) attach(chatID string, t *turn) {
+	m.routeMu.Lock()
+	defer m.routeMu.Unlock()
 	m.mu.Lock()
 	m.attached[chatID] = t
 	m.mu.Unlock()
+	if held := m.pending[chatID]; len(held) > 0 {
+		t.in.push(held...)
+	}
+	delete(m.pending, chatID)
 }
 
+// maxPending bounds output held for a turn that never attaches.
+const maxPending = 20000
+
+// detach stops routing to t; output it did not consume goes back to pending
+// for the next turn (or a follow-up started when t's launch unwinds).
 func (m *Module) detach(chatID string, t *turn) {
+	m.routeMu.Lock()
+	defer m.routeMu.Unlock()
 	m.mu.Lock()
 	if m.attached[chatID] == t {
 		delete(m.attached, chatID)
 	}
 	m.mu.Unlock()
+	left := t.in.take()
+	if t.sess == nil || t.sess.Closed() {
+		return
+	}
+	if len(left) > 0 && (len(m.pending[chatID]) > 0 || hasCycleStart(left)) {
+		m.pending[chatID] = append(left, m.pending[chatID]...)
+	}
+}
+
+// hasCycleStart reports main-thread output, which means Claude Code is
+// running a cycle. A background subagent's own messages don't count.
+func hasCycleStart(msgs []claude.Message) bool {
+	for _, msg := range msgs {
+		if (msg.Type == "stream_event" || msg.Type == "assistant") && (msg.ParentToolUseID == nil || *msg.ParentToolUseID == "") {
+			return true
+		}
+	}
+	return false
+}
+
+func (m *Module) hasPendingCycle(chatID string) bool {
+	m.routeMu.Lock()
+	defer m.routeMu.Unlock()
+	return len(m.pending[chatID]) > 0
 }
 
 func (m *Module) wireSession(s *claude.Session) {
 	chatID := s.ChatID
+	go func() {
+		<-s.Done()
+		m.dropPending(chatID)
+		// Its background tasks died with it.
+		if m.sessions.get(chatID) == nil {
+			m.mu.Lock()
+			had := len(m.bgTasks[chatID]) > 0
+			delete(m.bgTasks, chatID)
+			m.mu.Unlock()
+			if had {
+				m.publishBackgroundTasks(chatID)
+			}
+		}
+	}()
 	s.Attach(func(msg claude.Message) { m.onSessionMessage(chatID, msg) },
 		func(id string, raw json.RawMessage) {
 			m.mu.Lock()
@@ -264,21 +341,42 @@ func (m *Module) wireSession(s *claude.Session) {
 }
 
 func (m *Module) onSessionMessage(chatID string, msg claude.Message) {
-	if msg.Type == "system" && msg.Subtype == "background_tasks_changed" {
-		m.updateBackgroundTasks(chatID, msg.Raw)
+	if msg.Type == "system" {
+		switch msg.Subtype {
+		case "background_tasks_changed":
+			m.updateBackgroundTasks(chatID, msg.Raw)
+		case "task_started":
+			m.noteTaskToolID(chatID, msg.Raw)
+		}
 	}
+	m.routeMu.Lock()
+	defer m.routeMu.Unlock()
 	m.mu.Lock()
 	t := m.attached[chatID]
 	m.mu.Unlock()
 	if t != nil {
-		t.msgs <- msg
+		t.in.push(msg)
 		return
 	}
-	// Output with no turn attached: Claude Code started a cycle on its own
-	// (a background task finished). Stream it as a follow-up message.
-	if msg.Type == "stream_event" || msg.Type == "assistant" {
-		go m.startFollowup(chatID, msg)
+	if held, ok := m.pending[chatID]; ok {
+		if len(held) < maxPending {
+			m.pending[chatID] = append(held, msg)
+		}
+		return
 	}
+	// Main-thread output with no turn attached: Claude Code started a cycle
+	// on its own (a background task finished). Hold it and stream it as a
+	// follow-up message.
+	if hasCycleStart([]claude.Message{msg}) {
+		m.pending[chatID] = []claude.Message{msg}
+		go m.startFollowup(chatID)
+	}
+}
+
+func (m *Module) dropPending(chatID string) {
+	m.routeMu.Lock()
+	delete(m.pending, chatID)
+	m.routeMu.Unlock()
 }
 
 func (m *Module) updateBackgroundTasks(chatID string, raw json.RawMessage) {
@@ -289,6 +387,36 @@ func (m *Module) updateBackgroundTasks(chatID string, raw json.RawMessage) {
 	} else {
 		m.bgTasks[chatID] = tasks
 	}
+	m.mu.Unlock()
+	m.publishBackgroundTasks(chatID)
+}
+
+// noteTaskToolID links a background task to the tool call that started it;
+// background_tasks_changed doesn't carry it, task_started (sent right after) does.
+func (m *Module) noteTaskToolID(chatID string, raw json.RawMessage) {
+	var msg struct {
+		TaskID    string `json:"task_id"`
+		ToolUseID string `json:"tool_use_id"`
+	}
+	if json.Unmarshal(raw, &msg) != nil || msg.TaskID == "" || msg.ToolUseID == "" {
+		return
+	}
+	m.mu.Lock()
+	changed := false
+	for i := range m.bgTasks[chatID] {
+		if t := &m.bgTasks[chatID][i]; t.ID == msg.TaskID && t.ToolID == "" {
+			t.ToolID, changed = msg.ToolUseID, true
+		}
+	}
+	m.mu.Unlock()
+	if changed {
+		m.publishBackgroundTasks(chatID)
+	}
+}
+
+func (m *Module) publishBackgroundTasks(chatID string) {
+	m.mu.Lock()
+	tasks := append([]backgroundTask{}, m.bgTasks[chatID]...)
 	user := m.bgOwner[chatID]
 	m.mu.Unlock()
 	if user != "" {
@@ -651,28 +779,34 @@ func (m *Module) startQueued(prev *turn, sendNowOnly bool, priorDur *int64) bool
 }
 
 // startFollowup streams a cycle Claude Code started on its own.
-func (m *Module) startFollowup(chatID string, first claude.Message) {
+func (m *Module) startFollowup(chatID string) {
+	// A running or starting turn takes the held output when it attaches, or
+	// starts the follow-up when it unwinds.
 	if !m.reserve(chatID) {
 		return
+	}
+	fail := func() {
+		m.unreserve(chatID)
+		m.dropPending(chatID)
 	}
 	ctx := context.Background()
 	chat, err := m.a.Store.GetChatByID(ctx, chatID)
 	if err != nil {
-		m.unreserve(chatID)
+		fail()
 		return
 	}
 	ws, err := m.a.Store.GetWorkspaceByID(ctx, chat.WorkspaceID)
 	if err != nil {
-		m.unreserve(chatID)
+		fail()
 		return
 	}
 	model := firstNonEmpty(db.Deref(chat.LastModelID), "sonnet")
 	asst, err := m.st.createMessage(ctx, m.a.DB, chatID, "assistant", "", &model, nil)
 	if err != nil {
-		m.unreserve(chatID)
+		fail()
 		return
 	}
-	req := &turnRequest{chat: chat, ws: ws, userID: chat.UserID, modelID: model, messageID: asst.ID, followup: &first}
+	req := &turnRequest{chat: chat, ws: ws, userID: chat.UserID, modelID: model, messageID: asst.ID, followup: true}
 	if s := m.sessions.get(chatID); s != nil {
 		req.permissionMode = s.Mode()
 		req.modelID = firstNonEmpty(s.Model(), model)

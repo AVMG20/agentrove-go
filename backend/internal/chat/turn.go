@@ -51,7 +51,7 @@ type turnRequest struct {
 	messageID      string
 	isNewChat      bool
 	rawPrompt      string // for titling
-	followup       *claude.Message
+	followup       bool   // continue a cycle Claude started on its own
 	member         func(kind string, payload map[string]any)
 	onDone         func(status, content string)
 	unattended     bool
@@ -86,7 +86,7 @@ type turn struct {
 	cancelled atomic.Bool
 	done      chan struct{}
 
-	msgs chan claude.Message
+	in   *inbox
 	tr   *claude.Translator
 	sess *claude.Session
 
@@ -111,7 +111,7 @@ func newTurn(m *Module, req *turnRequest) *turn {
 	t := &turn{
 		m: m, req: req, chatID: req.chat.ID, streamID: uuid.NewString(),
 		ctx: ctx, cancel: cancel, done: make(chan struct{}),
-		msgs: make(chan claude.Message, 4096), tr: claude.NewTranslator(),
+		in: newInbox(), tr: claude.NewTranslator(),
 		perms: map[string]*pendingPerm{}, elicits: map[string]*pendingElicit{},
 		lastFlush: time.Now(), lastCheckpoint: time.Now(),
 	}
@@ -265,16 +265,33 @@ func (t *turn) execute() (*claude.Result, error) {
 	release := sb.Acquire()
 	defer release()
 
-	cfg := t.m.sessionConfig(sb, t.req)
-	sess, err := t.m.sessions.acquire(t.ctx, sb, t.chatID, cfg, t.m.wireSession)
-	if err != nil {
-		if t.cancelled.Load() {
+	var sess *claude.Session
+	if t.req.followup {
+		// Attach to the live process as-is: a config-driven respawn would
+		// kill the cycle being streamed.
+		if sess = t.m.sessions.get(t.chatID); sess == nil {
 			return nil, nil
 		}
-		return nil, err
+	} else {
+		cfg := t.m.sessionConfig(sb, t.req)
+		sess, err = t.m.sessions.acquire(t.ctx, sb, t.chatID, cfg, t.m.wireSession)
+		if err != nil && cfg.ResumeID != "" && strings.Contains(err.Error(), "No conversation found") {
+			// The transcript is gone (sandbox reset, CLI home wiped): start fresh
+			// instead of failing every turn on the stale id.
+			slog.Warn("claude session transcript missing; starting a new session", "chat", t.chatID, "session", cfg.ResumeID)
+			_, _ = t.m.a.DB.ExecContext(context.Background(), `UPDATE chats SET session_id = NULL WHERE id = ?`, t.chatID)
+			cfg.ResumeID = ""
+			sess, err = t.m.sessions.acquire(t.ctx, sb, t.chatID, cfg, t.m.wireSession)
+		}
+		if err != nil {
+			if t.cancelled.Load() {
+				return nil, nil
+			}
+			return nil, err
+		}
 	}
 	t.sess = sess
-	if t.req.followup == nil {
+	if !t.req.followup {
 		if err := sess.SetModel(t.ctx, t.req.modelID); err != nil && !t.cancelled.Load() {
 			return nil, fmt.Errorf("switch model: %w", err)
 		}
@@ -288,39 +305,61 @@ func (t *turn) execute() (*claude.Result, error) {
 	if sid := sess.SessionID(); sid != "" {
 		t.m.persistSessionID(t.chatID, sid)
 	}
-	if t.req.followup != nil {
-		t.msgs <- *t.req.followup
-	} else {
+	// echo is the uuid of our prompt; the CLI replays it when it starts on
+	// it. A result before that belongs to a cycle still running ahead of us.
+	echo := ""
+	if !t.req.followup {
 		blocks, err := t.m.promptBlocks(sb, t.req)
 		if err != nil {
 			return nil, err
 		}
-		if err := sess.SendUser(blocks); err != nil {
+		if t.cancelled.Load() {
+			return nil, nil
+		}
+		if echo, err = sess.SendUser(blocks); err != nil {
 			return nil, err
 		}
+	}
+	echoSeen := echo == ""
+	// handle consumes one message and returns the turn's result, if it ended.
+	handle := func(msg claude.Message) *claude.Result {
+		if msg.Type == "user" && msg.IsReplay {
+			if msg.UUID == echo {
+				echoSeen = true
+			}
+			return nil
+		}
+		evs, res := t.tr.Handle(msg)
+		for _, e := range evs {
+			t.process(e)
+		}
+		if res == nil || (!echoSeen && !t.cancelled.Load()) {
+			return nil
+		}
+		t.mu.Lock()
+		cost := sess.CostDelta(res.TotalCostUSD)
+		t.costUSD = &cost
+		t.mu.Unlock()
+		if res.ContextWindow > 0 {
+			t.tr.SetContextWindow(res.ContextWindow)
+		}
+		sess.Touch()
+		return res
 	}
 
 	var interruptDeadline <-chan time.Time
 	ctxDone := t.ctx.Done()
 	for {
 		select {
-		case msg := <-t.msgs:
-			evs, res := t.tr.Handle(msg)
-			for _, e := range evs {
-				t.process(e)
-			}
-			if res != nil {
-				t.mu.Lock()
-				cost := res.TotalCostUSD
-				t.costUSD = &cost
-				t.mu.Unlock()
-				if res.ContextWindow > 0 {
-					t.tr.SetContextWindow(res.ContextWindow)
-				}
-				sess.Touch()
+		case <-t.in.ready:
+			if res := t.drain(handle); res != nil {
 				return res, nil
 			}
 		case <-sess.Done():
+			// The reader may have queued the final messages just before exit.
+			if res := t.drain(handle); res != nil {
+				return res, nil
+			}
 			if t.cancelled.Load() {
 				return nil, nil
 			}
@@ -339,6 +378,61 @@ func (t *turn) execute() (*claude.Result, error) {
 			t.m.sessions.drop(t.chatID, sess)
 			return nil, nil
 		}
+	}
+}
+
+// drain handles queued session output until one message ends the turn; the
+// rest stays queued for whoever takes the session's output next.
+func (t *turn) drain(handle func(claude.Message) *claude.Result) *claude.Result {
+	msgs := t.in.take()
+	for i, msg := range msgs {
+		if res := handle(msg); res != nil {
+			t.in.unshift(msgs[i+1:])
+			return res
+		}
+	}
+	return nil
+}
+
+// inbox queues session output for a turn without ever blocking the
+// session's reader.
+type inbox struct {
+	mu    sync.Mutex
+	msgs  []claude.Message
+	ready chan struct{}
+}
+
+func newInbox() *inbox { return &inbox{ready: make(chan struct{}, 1)} }
+
+func (b *inbox) push(msgs ...claude.Message) {
+	b.mu.Lock()
+	b.msgs = append(b.msgs, msgs...)
+	b.mu.Unlock()
+	b.signal()
+}
+
+func (b *inbox) unshift(msgs []claude.Message) {
+	if len(msgs) == 0 {
+		return
+	}
+	b.mu.Lock()
+	b.msgs = append(append([]claude.Message{}, msgs...), b.msgs...)
+	b.mu.Unlock()
+	b.signal()
+}
+
+func (b *inbox) take() []claude.Message {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	out := b.msgs
+	b.msgs = nil
+	return out
+}
+
+func (b *inbox) signal() {
+	select {
+	case b.ready <- struct{}{}:
+	default:
 	}
 }
 
@@ -445,7 +539,7 @@ func (t *turn) resolvePermission(requestID, optionID string) bool {
 	if mode != "" {
 		t.sess.NoteMode(mode)
 		if p.req.ToolUseID != "" {
-			t.tr.ResolvedModes[p.req.ToolUseID] = mode
+			t.tr.SetResolvedMode(p.req.ToolUseID, mode)
 		}
 	}
 	t.sess.RespondControl(p.controlID, resp)
