@@ -393,7 +393,7 @@ const DiffViewContent = memo(function DiffViewContent({
           onClose={() => setDiscardAllOpen(false)}
           onConfirm={handleDiscardAll}
           title="Discard all changes?"
-          message="All modified, staged, and untracked files in the workspace will be reverted to the last committed version. This cannot be undone."
+          message="All modified, staged, and untracked files in the project will be reverted to the last committed version. This cannot be undone."
           confirmLabel="Discard all"
         />
       </div>

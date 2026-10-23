@@ -16,14 +16,14 @@ async function listWorkspaces(
   return serviceCall(async () => {
     const queryString = buildQueryString(pagination ? { ...pagination } : undefined);
     const response = await apiClient.get<PaginatedResponse<Workspace>>(`/workspaces${queryString}`);
-    return ensureResponse(response, 'Failed to fetch workspaces');
+    return ensureResponse(response, 'Failed to fetch projects');
   });
 }
 
 async function createWorkspace(data: CreateWorkspaceRequest): Promise<Workspace> {
   return serviceCall(async () => {
     const response = await apiClient.post<Workspace>('/workspaces', data);
-    return ensureResponse(response, 'Failed to create workspace');
+    return ensureResponse(response, 'Failed to create project');
   });
 }
 
@@ -33,7 +33,7 @@ async function updateWorkspace(
 ): Promise<Workspace> {
   return serviceCall(async () => {
     const response = await apiClient.patch<Workspace>(`/workspaces/${workspaceId}`, data);
-    return ensureResponse(response, 'Failed to update workspace');
+    return ensureResponse(response, 'Failed to update project');
   });
 }
 
@@ -48,7 +48,7 @@ async function getWorkspaceResources(workspaceId: string): Promise<WorkspaceReso
     const response = await apiClient.get<WorkspaceResources>(
       `/workspaces/${workspaceId}/resources`,
     );
-    return ensureResponse(response, 'Failed to fetch workspace resources');
+    return ensureResponse(response, 'Failed to fetch project resources');
   });
 }
 

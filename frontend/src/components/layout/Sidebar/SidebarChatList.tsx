@@ -92,7 +92,7 @@ export function SidebarChatList({
                     <SidebarWorkspaceGroup
                       key={section.key}
                       workspaceId={section.key}
-                      name={section.label ?? 'Unknown workspace'}
+                      name={section.label ?? 'Unknown project'}
                       onNewThread={onNewWorkspaceThread}
                       onOpenMenu={rowProps.onWorkspaceBadgeClick}
                     >

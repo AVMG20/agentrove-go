@@ -151,7 +151,7 @@ export const ChatSearchPanel = memo(function ChatSearchPanel({
               <span>
                 {totalMatches} {totalMatches === 1 ? 'result' : 'results'} in {resultCount}{' '}
                 {resultCount === 1 ? 'chat' : 'chats'} · {grouped.length}{' '}
-                {grouped.length === 1 ? 'workspace' : 'workspaces'}
+                {grouped.length === 1 ? 'project' : 'projects'}
                 {truncated && ' (truncated)'}
               </span>
             </p>

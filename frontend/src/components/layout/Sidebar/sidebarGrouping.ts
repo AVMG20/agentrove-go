@@ -73,7 +73,7 @@ export function buildRecentChatSections({
       if (!group) {
         group = {
           key: chat.workspace_id,
-          label: workspaceBadgeById.get(chat.workspace_id)?.name ?? 'Unknown workspace',
+          label: workspaceBadgeById.get(chat.workspace_id)?.name ?? 'Unknown project',
           chats: [],
         };
         groups.set(chat.workspace_id, group);

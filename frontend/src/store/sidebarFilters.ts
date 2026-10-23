@@ -15,7 +15,7 @@ export const STATUS_OPTIONS: { value: SidebarStatusFilter; label: string }[] = [
 export const GROUP_BY_OPTIONS: { value: SidebarGroupBy; label: string }[] = [
   { value: 'none', label: 'None' },
   { value: 'date', label: 'Date' },
-  { value: 'workspace', label: 'Workspace' },
+  { value: 'workspace', label: 'Project' },
   { value: 'status', label: 'Status' },
 ];
 

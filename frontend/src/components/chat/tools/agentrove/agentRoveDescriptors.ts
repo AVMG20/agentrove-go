@@ -37,10 +37,10 @@ const join = (...parts: (string | null)[]): string | null =>
   parts.filter(Boolean).join(' · ') || null;
 
 const DESCRIPTORS: Record<string, AgentRoveDescriptor> = {
-  list_workspaces: { label: 'List Workspaces' },
+  list_workspaces: { label: 'List Projects' },
   list_models: { label: 'List Models', summary: (i) => value(i, 'agent_kind') },
   get_current_chat: { label: 'Get Current Chat' },
-  list_chats: { label: 'List Chats', summary: (i) => labeled(i, 'workspace_id', 'workspace') },
+  list_chats: { label: 'List Chats', summary: (i) => labeled(i, 'workspace_id', 'project') },
   list_personas: { label: 'List Personas' },
   get_persona: { label: 'Get Persona', summary: (i) => value(i, 'name') },
   create_persona: {
@@ -69,7 +69,7 @@ const DESCRIPTORS: Record<string, AgentRoveDescriptor> = {
   get_messages: { label: 'Get Messages', summary: (i) => labeled(i, 'chat_id', 'chat') },
   list_channels: {
     label: 'List Channels',
-    summary: (i) => labeled(i, 'workspace_id', 'workspace'),
+    summary: (i) => labeled(i, 'workspace_id', 'project'),
   },
   create_channel: { label: 'Create Channel', summary: (i) => value(i, 'name') },
   post_channel_message: {

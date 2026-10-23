@@ -64,7 +64,7 @@ export function SkillsSettingsTab() {
       </div>
 
       {workspaces.length === 0 ? (
-        <EmptyState icon={Zap} message="No workspaces" />
+        <EmptyState icon={Zap} message="No projects" />
       ) : (
         <>
           <div className={styles.controls}>
@@ -83,7 +83,7 @@ export function SkillsSettingsTab() {
               <Select
                 value={workspaceId ?? ''}
                 onChange={(e) => setSelectedWorkspaceId(e.target.value)}
-                aria-label="Workspace"
+                aria-label="Project"
               >
                 {workspaces.map((ws) => (
                   <option key={ws.id} value={ws.id}>

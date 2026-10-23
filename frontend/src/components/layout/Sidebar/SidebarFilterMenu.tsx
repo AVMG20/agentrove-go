@@ -243,7 +243,7 @@ export function SidebarFilterMenu({
                 onLeave={scheduleSubmenuClose}
               />
               <FilterCategoryRow
-                label="Workspace"
+                label="Project"
                 summary={workspaceSummary}
                 active={filters.workspaceId !== null}
                 expanded={submenu?.view === 'workspace'}

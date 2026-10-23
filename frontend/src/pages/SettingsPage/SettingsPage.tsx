@@ -221,7 +221,7 @@ export function SettingsPage() {
         onTitleModelChange={handleTitleModelChange}
       />
     ),
-    workspaces: () => <WorkspacesSettingsTab />,
+    projects: () => <WorkspacesSettingsTab />,
     skills: () => <SkillsSettingsTab />,
     personas: () => <PersonasSettingsTab />,
     'stream-actions': () => <StreamActionsSettingsTab />,

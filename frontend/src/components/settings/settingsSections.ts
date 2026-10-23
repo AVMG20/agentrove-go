@@ -14,7 +14,7 @@ import {
 // Each section is a route: /settings/<id>.
 export type SettingsSectionId =
   | 'general'
-  | 'workspaces'
+  | 'projects'
   | 'skills'
   | 'personas'
   | 'stream-actions'
@@ -31,7 +31,7 @@ export interface SettingsSection {
 
 export const SETTINGS_SECTIONS: SettingsSection[] = [
   { id: 'general', label: 'General', icon: Settings2 },
-  { id: 'workspaces', label: 'Workspaces', icon: FolderOpen },
+  { id: 'projects', label: 'Projects', icon: FolderOpen },
   { id: 'skills', label: 'Skills', icon: Zap },
   { id: 'personas', label: 'Personas', icon: UserCircle },
   { id: 'stream-actions', label: 'Stream Actions', icon: GitBranch },
@@ -43,8 +43,12 @@ export const SETTINGS_SECTIONS: SettingsSection[] = [
 
 export const DEFAULT_SETTINGS_SECTION: SettingsSectionId = 'general';
 
+// Old links from before workspaces were called projects.
+const LEGACY_IDS: Record<string, SettingsSectionId> = { workspaces: 'projects' };
+
 export function findSettingsSection(id: string | undefined): SettingsSection | undefined {
-  return SETTINGS_SECTIONS.find((section) => section.id === id);
+  const resolved = (id && LEGACY_IDS[id]) || id;
+  return SETTINGS_SECTIONS.find((section) => section.id === resolved);
 }
 
 export const settingsPath = (id: SettingsSectionId = DEFAULT_SETTINGS_SECTION) => `/settings/${id}`;

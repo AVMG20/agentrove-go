@@ -189,7 +189,7 @@ export const SidebarChatItem = memo(function SidebarChatItem({
             type="button"
             data-ws-dropdown-trigger
             onClick={(e) => onWorkspaceBadgeClick(e, chat.workspace_id)}
-            aria-label={`${workspaceBadge.name} workspace options`}
+            aria-label={`${workspaceBadge.name} project options`}
             className={clsx(
               styles['workspace-badge'],
               hasLeadingSlot && styles['workspace-badge--indented'],

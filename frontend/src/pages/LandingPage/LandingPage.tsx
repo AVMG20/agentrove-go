@@ -185,7 +185,7 @@ export function LandingPage() {
       const title = trimmedPrompt.replace(/\s+/g, ' ').slice(0, 80) || 'New Chat';
 
       if (!selectedWorkspaceId) {
-        toast.error('Please select a workspace');
+        toast.error('Choose a project first');
         return;
       }
 

@@ -111,7 +111,7 @@ describe('buildRecentChatSections workspace grouping', () => {
     ]);
   });
 
-  it('falls back to "Unknown workspace" while the badge is unresolved', () => {
+  it('falls back to "Unknown project" while the badge is unresolved', () => {
     const sections = buildRecentChatSections({
       groupBy: 'workspace',
       visibleRecentChats: [chat('a', DAY, { workspace_id: 'ws-x' })],
@@ -120,7 +120,7 @@ describe('buildRecentChatSections workspace grouping', () => {
       streamingChatIdSet: new Set(),
       completedChatIds: new Set(),
     });
-    expect(sections.map(({ label }) => label)).toEqual(['Unknown workspace']);
+    expect(sections.map(({ label }) => label)).toEqual(['Unknown project']);
   });
 });
 

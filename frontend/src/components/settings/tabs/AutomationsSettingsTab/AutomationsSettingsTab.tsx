@@ -210,7 +210,7 @@ export function AutomationsSettingsTab() {
     <>
       <ListManagementTab<Automation>
         title="Automations"
-        description="Prompts that start a new chat with your chosen model, workspace, and settings — on a schedule (e.g. check email daily) or when something happens on GitHub (e.g. review every new PR)."
+        description="Prompts that start a new chat with your chosen model, project, and settings — on a schedule (e.g. check email daily) or when something happens on GitHub (e.g. review every new PR)."
         items={automations ?? null}
         emptyIcon={Clock}
         emptyText="No automations configured yet"

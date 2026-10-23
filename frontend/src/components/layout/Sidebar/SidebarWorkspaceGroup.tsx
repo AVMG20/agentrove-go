@@ -62,7 +62,7 @@ export function SidebarWorkspaceGroup({
             data-ws-dropdown-trigger
             onClick={(e) => onOpenMenu(e, workspaceId)}
             className={styles.action}
-            aria-label={`${name} workspace options`}
+            aria-label={`${name} project options`}
           >
             <MoreHorizontal className={styles['action-icon']} />
           </Button>

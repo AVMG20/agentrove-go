@@ -60,8 +60,8 @@ export function SidebarOverlays({ chat, workspace, workspaces }: SidebarOverlays
         isOpen={!!workspace.workspaceToDelete}
         onClose={() => workspace.setWorkspaceToDelete(null)}
         onConfirm={workspace.confirmDeleteWorkspace}
-        title="Delete Workspace"
-        message="Are you sure you want to delete this workspace and all its chats? This action cannot be undone."
+        title="Delete project"
+        message="Delete this project and all its threads? Files the app created are removed too; a folder on this computer is kept. This can't be undone."
         confirmLabel="Delete"
         cancelLabel="Cancel"
       />

@@ -106,8 +106,8 @@ export function useSidebarWorkspaceActions({
               workspaceId: workspaceToRename.id,
               data: { name: newName },
             }),
-          'Workspace renamed',
-          'Failed to rename workspace',
+          'Project renamed',
+          'Failed to rename project',
         );
       } catch {
         // toast already shown by mutateWithToast
@@ -129,8 +129,8 @@ export function useSidebarWorkspaceActions({
     try {
       await mutateWithToast(
         () => deleteWorkspace.mutateAsync(id),
-        'Workspace deleted',
-        'Failed to delete workspace',
+        'Project deleted',
+        'Failed to delete project',
       );
       if ((selectedChatId || selectedChannelId) && selectedChatWorkspaceId === id) {
         navigate('/');

@@ -151,7 +151,7 @@ export function AutomationEditDialog({
           </div>
 
           <div>
-            <Label className={styles.label}>Workspace</Label>
+            <Label className={styles.label}>Project</Label>
             <div className={styles.row}>
               <Select
                 value={form.workspace_id}
@@ -165,9 +165,7 @@ export function AutomationEditDialog({
                 ))}
               </Select>
             </div>
-            {workspaces.length === 0 && (
-              <p className={styles.hint}>No local workspaces available yet.</p>
-            )}
+            {workspaces.length === 0 && <p className={styles.hint}>No projects yet.</p>}
           </div>
 
           <div className={styles.columns}>
@@ -402,8 +400,8 @@ export function AutomationEditDialog({
             />
             <p className={styles.hint}>
               {isGithub
-                ? 'Each event starts a new chat in the selected workspace with this prompt plus the event.'
-                : 'Each run starts a new chat in the selected workspace with this prompt.'}
+                ? 'Each event starts a new chat in the selected project with this prompt plus the event.'
+                : 'Each run starts a new chat in the selected project with this prompt.'}
             </p>
           </div>
         </div>

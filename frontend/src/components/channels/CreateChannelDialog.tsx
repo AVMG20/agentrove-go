@@ -346,7 +346,7 @@ export function CreateChannelDialog({
       return;
     }
     if (!workspaceId) {
-      toast.error('Please select a workspace');
+      toast.error('Choose a project first');
       return;
     }
     if (models.length === 0) {
@@ -418,7 +418,7 @@ export function CreateChannelDialog({
             </div>
 
             <div>
-              <span className={styles['field-label']}>Workspace</span>
+              <span className={styles['field-label']}>Project</span>
               <div className={styles['workspace-field']}>
                 <WorkspaceSelector
                   selectedWorkspaceId={workspaceId}

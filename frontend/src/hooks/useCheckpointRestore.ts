@@ -13,7 +13,7 @@ export function useCheckpointRestore(messageId: string, sandboxId?: string) {
         toast.error(result.error || 'Failed to restore checkpoint');
         return;
       }
-      toast.success('Workspace restored to before this run');
+      toast.success('Project restored to before this run');
       if (sandboxId) {
         await invalidateAfterGitRestore(queryClient, sandboxId);
       }

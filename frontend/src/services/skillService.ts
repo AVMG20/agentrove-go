@@ -4,7 +4,7 @@ import type { CustomSkill } from '@/types/user.types';
 import { validateRequired } from '@/utils/validation';
 
 async function listSkills(workspaceId: string): Promise<CustomSkill[]> {
-  validateRequired(workspaceId, 'Workspace');
+  validateRequired(workspaceId, 'Project');
 
   return withAuth(async () => {
     const response = await apiClient.get<CustomSkill[]>(
@@ -30,7 +30,7 @@ async function getSkillFiles(
   source: string,
   skillName: string,
 ): Promise<SkillFileEntry[]> {
-  validateRequired(workspaceId, 'Workspace');
+  validateRequired(workspaceId, 'Project');
   validateRequired(source, 'Source');
   validateRequired(skillName, 'Skill name');
 
@@ -49,7 +49,7 @@ async function updateSkill(
   skillName: string,
   files: SkillFileEntry[],
 ): Promise<CustomSkill> {
-  validateRequired(workspaceId, 'Workspace');
+  validateRequired(workspaceId, 'Project');
   validateRequired(source, 'Source');
   validateRequired(skillName, 'Skill name');
 

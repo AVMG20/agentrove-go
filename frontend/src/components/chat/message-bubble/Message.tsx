@@ -176,7 +176,7 @@ export const AssistantMessage = memo(function AssistantMessage({
           onClose={() => setRestoreOpen(false)}
           onConfirm={() => restore()}
           title="Restore to before this run?"
-          message="The workspace will be reset to the checkpoint captured before this assistant run. Changes made by the run will be discarded."
+          message="The project will be reset to the checkpoint captured before this assistant run. Changes made by the run will be discarded."
           confirmLabel="Restore"
         />
       )}
