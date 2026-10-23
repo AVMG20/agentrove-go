@@ -1,12 +1,15 @@
 // Package sandbox runs commands and agent processes for a workspace, either in
-// a per-workspace Docker container or directly on the host.
+// the user's Docker box or directly on the host.
 //
-// Workspace files always live on a host directory the API can read (Docker
-// bind-mounts it), so read-only operations (file tree, file content, diffs,
-// search) run on the host via HostPath and never need the container awake.
-// Mutations and agent processes go through Exec/Start, which wake a stopped
-// container on demand. The Manager stops containers that sat idle longer than
-// SANDBOX_IDLE_TTL_SECONDS and holds leases so busy ones are never stopped.
+// Each user gets one Docker "box": a container that holds all their projects
+// (/home/user/projects/<project>) and a persistent home (/home/user), so
+// toolchains and caches installed once serve every project. Workspace files
+// live on host directories the API can read (bind mounts), so read-only
+// operations (file tree, content, diffs, search) run on the host via HostPath
+// and never wake the box. Mutations and agent processes go through
+// Exec/Start, which start it on demand. The Manager stops a box that sat idle
+// longer than SANDBOX_IDLE_TTL_SECONDS and holds leases so a busy one is
+// never stopped.
 package sandbox
 
 import (
@@ -24,15 +27,24 @@ const (
 	KindDocker = "docker"
 	KindHost   = "host"
 
-	// Paths inside a Docker sandbox.
-	ContainerHome      = "/home/user"
-	ContainerWorkspace = "/home/user/workspace"
+	// Paths inside a Docker box.
+	ContainerHome     = "/home/user"
+	ContainerProjects = "/home/user/projects"
+	// Claude's config dir inside HOME, the same layout host sandboxes use.
+	ContainerClaudeDir = ContainerHome + "/claude"
+	ContainerAskpass   = "/usr/local/bin/git-askpass"
 	ContainerUser      = "user"
 	ContainerUID       = 1000
 	TerminalType       = "xterm-256color"
 	ContainerPrefix    = "agentrove-sandbox-"
 	ManagedLabel       = "agentrove.managed"
+	BoxLabel           = "agentrove.box"
 )
+
+// BoxID is the sandbox id of a user's Docker box.
+func BoxID(userID string) string {
+	return "box-" + strings.ReplaceAll(userID, "-", "")
+}
 
 var ErrNotFound = errors.New("sandbox not found")
 
@@ -80,7 +92,7 @@ type PTY interface {
 
 type CreateOptions struct {
 	SandboxID     string
-	WorkspacePath string // host path of the workspace directory
+	WorkspacePath string // host path of the workspace directory (host sandboxes)
 	UserID        string
 }
 
@@ -237,7 +249,7 @@ func (s *Sandbox) Env() map[string]string { return s.mgr.mergeEnv(s, nil) }
 // GitAskpassPath is the askpass helper path inside the sandbox.
 func (s *Sandbox) GitAskpassPath() string {
 	if s.Kind == KindDocker {
-		return ContainerHome + "/.git-askpass.sh"
+		return ContainerAskpass
 	}
 	return s.mgr.hostAskpassPath()
 }

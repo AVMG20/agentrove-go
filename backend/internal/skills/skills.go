@@ -68,7 +68,7 @@ func NewService(cfg *config.Config, ws *models.Workspace) *Service {
 	}
 	containerClaude := ""
 	if ws.SandboxProvider == sandbox.KindDocker {
-		containerClaude = sandbox.ContainerHome + "/.claude"
+		containerClaude = sandbox.ContainerClaudeDir
 	}
 	paths = append(paths, pluginSkillPaths(claudeDir, containerClaude)...)
 	return &Service{paths: paths}
@@ -106,8 +106,12 @@ func pluginSkillPaths(claudeDir, containerClaude string) []string {
 				continue
 			}
 			if containerClaude != "" {
-				if rest, ok := strings.CutPrefix(p, containerClaude); ok {
-					p = filepath.Join(claudeDir, filepath.FromSlash(rest))
+				// Installs from before the box layout recorded ~/.claude.
+				for _, prefix := range []string{containerClaude, sandbox.ContainerHome + "/.claude"} {
+					if rest, ok := strings.CutPrefix(p, prefix); ok {
+						p = filepath.Join(claudeDir, filepath.FromSlash(rest))
+						break
+					}
 				}
 			}
 			dir := filepath.Join(p, "skills")

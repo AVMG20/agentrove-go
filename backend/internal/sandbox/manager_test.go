@@ -69,7 +69,7 @@ func TestIdleReaperStopsAndWakes(t *testing.T) {
 	m, fp := newTestManager(50 * time.Millisecond)
 	var stopped []string
 	m.OnStop = func(id string) { stopped = append(stopped, id) }
-	sb, err := m.For(&models.Workspace{SandboxID: "s1", SandboxProvider: KindDocker, WorkspacePath: t.TempDir()})
+	sb, err := m.For(&models.Workspace{SandboxID: "s1", UserID: "u1", SandboxProvider: KindDocker, WorkspacePath: t.TempDir()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -96,7 +96,7 @@ func TestIdleReaperStopsAndWakes(t *testing.T) {
 	release()
 	time.Sleep(80 * time.Millisecond)
 	m.reapOnce(ctx, fp)
-	if fp.stops != 1 || len(stopped) != 1 || stopped[0] != "s1" {
+	if fp.stops != 1 || len(stopped) != 1 || stopped[0] != BoxID("u1") {
 		t.Fatalf("idle sandbox not stopped: stops=%d onStop=%v", fp.stops, stopped)
 	}
 
@@ -104,7 +104,7 @@ func TestIdleReaperStopsAndWakes(t *testing.T) {
 	if _, err := sb.Exec(ctx, ExecRequest{Cmd: []string{"true"}}); err != nil {
 		t.Fatal(err)
 	}
-	if fp.starts != 2 || !fp.running["s1"] {
+	if fp.starts != 2 || !fp.running[BoxID("u1")] {
 		t.Fatalf("sandbox not restarted: starts=%d", fp.starts)
 	}
 }
@@ -115,5 +115,23 @@ func TestIdleReaperGivesUnknownSandboxesFullTTL(t *testing.T) {
 	m.reapOnce(context.Background(), fp)
 	if fp.stops != 0 {
 		t.Fatal("stopped a sandbox on first sight")
+	}
+}
+
+func TestDockerWorkspacesShareTheUserBox(t *testing.T) {
+	m, _ := newTestManager(time.Hour)
+	a, _ := m.For(&models.Workspace{SandboxID: "s1", UserID: "u-1", SandboxProvider: KindDocker, WorkspacePath: "/data/workspaces/u-1/site-ab12"})
+	b, _ := m.For(&models.Workspace{SandboxID: "s2", UserID: "u-1", SandboxProvider: KindDocker, WorkspacePath: "/data/workspaces/u-1/mod-cd34"})
+	if a.ID != b.ID || a.ID != "box-u1" {
+		t.Fatalf("box ids %q %q", a.ID, b.ID)
+	}
+	if a.Root != "/home/user/projects/site-ab12" || b.Root != "/home/user/projects/mod-cd34" {
+		t.Fatalf("roots %q %q", a.Root, b.Root)
+	}
+	if hp, err := a.HostPath("/home/user/projects/site-ab12/src/main.rs"); err != nil || hp != "/data/workspaces/u-1/site-ab12/src/main.rs" {
+		t.Fatalf("host path %q %v", hp, err)
+	}
+	if _, err := a.HostPath("/home/user/projects/mod-cd34/x"); err == nil {
+		t.Fatal("reached another project")
 	}
 }

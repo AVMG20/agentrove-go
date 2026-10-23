@@ -153,10 +153,17 @@ func Load() (*Config, error) {
 	return c, nil
 }
 
-// AgentHomeDir is the per-user HOME for host-mode agents in web mode, shared
-// across workspaces so CLI logins, MCP config and skills survive restarts.
+// AgentHomeDir is the user's persistent HOME, shared by all their workspaces
+// and both sandbox kinds (mounted at /home/user in the Docker box), so CLI
+// logins, toolchains (rustup, sdkman, nvm), caches and git config survive.
 func (c *Config) AgentHomeDir(userID string) string {
 	return filepath.Join(c.StoragePath, "agent-homes", userID)
+}
+
+// UserWorkspacesDir holds the user's storage-managed projects (cloned or
+// empty), mounted at /home/user/projects in the Docker box.
+func (c *Config) UserWorkspacesDir(userID string) string {
+	return filepath.Join(c.StoragePath, "workspaces", userID)
 }
 
 func (c *Config) UploadsDir() string { return filepath.Join(c.StoragePath, "uploads") }

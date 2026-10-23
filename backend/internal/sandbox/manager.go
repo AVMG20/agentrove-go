@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"path"
 	"path/filepath"
 	"sync"
 	"time"
@@ -81,7 +82,9 @@ func (m *Manager) For(ws *models.Workspace) (*Sandbox, error) {
 	}
 	s := &Sandbox{ID: ws.SandboxID, Kind: ws.SandboxProvider, UserID: ws.UserID, WorkspacePath: ws.WorkspacePath, provider: p, mgr: m}
 	if ws.SandboxProvider == KindDocker {
-		s.Root = ContainerWorkspace
+		// Every Docker workspace of a user lives in the user's one box.
+		s.ID = BoxID(ws.UserID)
+		s.Root = path.Join(ContainerProjects, filepath.Base(ws.WorkspacePath))
 		s.Home = ContainerHome
 	} else {
 		s.Root = ws.WorkspacePath
@@ -90,11 +93,18 @@ func (m *Manager) For(ws *models.Workspace) (*Sandbox, error) {
 	return s, nil
 }
 
-// Create provisions a sandbox for a workspace whose files are at workspacePath.
+// Create prepares a workspace whose files are at workspacePath. A Docker
+// workspace is a folder in the user's box, which starts lazily on first use.
 func (m *Manager) Create(ctx context.Context, kind, sandboxID, workspacePath, userID string) error {
 	p, err := m.Provider(kind)
 	if err != nil {
 		return err
+	}
+	if kind == KindDocker {
+		if filepath.Dir(workspacePath) != m.cfg.UserWorkspacesDir(userID) {
+			return fmt.Errorf("docker workspaces must live in %s", m.cfg.UserWorkspacesDir(userID))
+		}
+		return chownTree(workspacePath)
 	}
 	if err := p.Create(ctx, CreateOptions{SandboxID: sandboxID, WorkspacePath: workspacePath, UserID: userID}); err != nil {
 		return err
@@ -103,6 +113,8 @@ func (m *Manager) Create(ctx context.Context, kind, sandboxID, workspacePath, us
 	return nil
 }
 
+// Delete releases a workspace's sandbox. The user's box is shared and stays;
+// this only removes a container left from the per-workspace layout.
 func (m *Manager) Delete(ctx context.Context, kind, sandboxID string) error {
 	p, err := m.Provider(kind)
 	if err != nil {
@@ -175,6 +187,9 @@ func (m *Manager) RunIdleReaper(ctx context.Context) {
 	p, ok := m.providers[KindDocker]
 	if !ok {
 		return
+	}
+	if d, ok := p.(*DockerProvider); ok {
+		d.RemoveLegacy(ctx)
 	}
 	// Containers already running at startup get a full TTL from now.
 	if ids, err := p.Running(ctx); err == nil {
@@ -281,8 +296,33 @@ func (m *Manager) mergeEnv(s *Sandbox, extra map[string]string) map[string]strin
 
 func (m *Manager) hostHome(userID string) string {
 	home := m.cfg.AgentHomeDir(userID)
-	_ = os.MkdirAll(home, 0o755)
+	_ = SeedHome(home)
 	return home
+}
+
+// defaultGitConfig gives commits an author out of the box; the agent or user
+// can change it with `git config --global` (it lives in the persistent home).
+const defaultGitConfig = `[user]
+	name = Claude
+	email = noreply@anthropic.com
+[init]
+	defaultBranch = main
+[push]
+	autoSetupRemote = true
+[pull]
+	rebase = false
+`
+
+// SeedHome creates a user's persistent home with a default git identity.
+func SeedHome(home string) error {
+	if err := os.MkdirAll(filepath.Join(home, "claude"), 0o755); err != nil {
+		return err
+	}
+	gc := filepath.Join(home, ".gitconfig")
+	if _, err := os.Stat(gc); os.IsNotExist(err) {
+		return os.WriteFile(gc, []byte(defaultGitConfig), 0o644)
+	}
+	return nil
 }
 
 func (m *Manager) hostAskpassPath() string {

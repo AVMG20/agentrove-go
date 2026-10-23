@@ -80,22 +80,38 @@ func (d *DockerProvider) ensureNetwork(ctx context.Context) {
 	})
 }
 
-// claudeConfigDir is the per-user Claude config shared by all of the user's
-// sandboxes, so logging in once covers every workspace.
-func (d *DockerProvider) claudeConfigDir(userID string) string {
-	dir := filepath.Join(d.cfg.AgentHomeDir(userID), "claude")
-	_ = os.MkdirAll(dir, 0o755)
-	_ = os.Chown(dir, ContainerUID, ContainerUID)
-	_ = os.Chown(filepath.Dir(dir), ContainerUID, ContainerUID)
-	return dir
+// prepareDirs creates the user's persistent home and projects dirs and hands
+// them to the box user.
+func (d *DockerProvider) prepareDirs(userID string) (home, projects string, err error) {
+	home = d.cfg.AgentHomeDir(userID)
+	projects = d.cfg.UserWorkspacesDir(userID)
+	if err := SeedHome(home); err != nil {
+		return "", "", err
+	}
+	if err := os.MkdirAll(projects, 0o755); err != nil {
+		return "", "", err
+	}
+	_ = os.Chown(projects, ContainerUID, ContainerUID)
+	_ = chownTree(home)
+	return home, projects, nil
 }
 
+// Create creates and starts the user's box: one container per user with the
+// persistent home and all projects mounted.
 func (d *DockerProvider) Create(ctx context.Context, opts CreateOptions) error {
 	d.ensureNetwork(ctx)
+	home, projects, err := d.prepareDirs(opts.UserID)
+	if err != nil {
+		return fmt.Errorf("prepare box dirs: %w", err)
+	}
 	hc := &container.HostConfig{
 		NetworkMode: container.NetworkMode(d.cfg.DockerNetwork),
 		SecurityOpt: []string{"no-new-privileges=false"},
 		Init:        boolPtr(true),
+		Binds: []string{
+			d.hostPath(home) + ":" + ContainerHome,
+			d.hostPath(projects) + ":" + ContainerProjects,
+		},
 	}
 	if d.cfg.DockerMemLimit != "" {
 		if n, err := parseByteSize(d.cfg.DockerMemLimit); err == nil {
@@ -111,18 +127,11 @@ func (d *DockerProvider) Create(ctx context.Context, opts CreateOptions) error {
 	if d.cfg.DockerPidsLimit > 0 {
 		hc.PidsLimit = &d.cfg.DockerPidsLimit
 	}
-	if opts.WorkspacePath != "" {
-		_ = chownTree(opts.WorkspacePath)
-		hc.Binds = append(hc.Binds, d.hostPath(opts.WorkspacePath)+":"+ContainerWorkspace)
-	}
-	if opts.UserID != "" {
-		hc.Binds = append(hc.Binds, d.hostPath(d.claudeConfigDir(opts.UserID))+":"+ContainerHome+"/.claude")
-	}
 	env := []string{
 		"TERM=" + TerminalType,
 		"HOME=" + ContainerHome,
 		"USER=" + ContainerUser,
-		"CLAUDE_CONFIG_DIR=" + ContainerHome + "/.claude",
+		"CLAUDE_CONFIG_DIR=" + ContainerClaudeDir,
 	}
 	if d.cfg.DockerNodeMaxOldMB > 0 {
 		env = append(env, fmt.Sprintf("NODE_OPTIONS=--max-old-space-size=%d", d.cfg.DockerNodeMaxOldMB))
@@ -130,12 +139,13 @@ func (d *DockerProvider) Create(ctx context.Context, opts CreateOptions) error {
 	cc := &container.Config{
 		Image:      d.cfg.DockerImage,
 		Cmd:        []string{"sleep", "infinity"},
-		Hostname:   "sandbox",
+		Hostname:   "box",
 		User:       ContainerUser,
-		WorkingDir: ContainerWorkspace,
+		WorkingDir: ContainerProjects,
 		Env:        env,
 		Labels: map[string]string{
 			ManagedLabel:        "true",
+			BoxLabel:            "true",
 			"agentrove.sandbox": opts.SandboxID,
 			"agentrove.user":    opts.UserID,
 		},
@@ -149,6 +159,30 @@ func (d *DockerProvider) Create(ctx context.Context, opts CreateOptions) error {
 		return fmt.Errorf("start sandbox container: %w", err)
 	}
 	return nil
+}
+
+// RemoveLegacy removes containers from the old one-container-per-workspace
+// layout. Their files live on the host, so nothing is lost but packages
+// installed inside them.
+func (d *DockerProvider) RemoveLegacy(ctx context.Context) {
+	list, err := d.cli.ContainerList(ctx, container.ListOptions{All: true, Filters: filters.NewArgs(filters.Arg("label", ManagedLabel+"=true"))})
+	if err != nil {
+		return
+	}
+	for _, c := range list {
+		if c.Labels[BoxLabel] == "true" {
+			continue
+		}
+		slog.Info("removing legacy per-workspace sandbox", "container", strings.TrimPrefix(firstName(c.Names), "/"))
+		_ = d.cli.ContainerRemove(ctx, c.ID, container.RemoveOptions{Force: true})
+	}
+}
+
+func firstName(names []string) string {
+	if len(names) == 0 {
+		return ""
+	}
+	return names[0]
 }
 
 func (d *DockerProvider) Delete(ctx context.Context, sandboxID string) error {
@@ -175,6 +209,12 @@ func (d *DockerProvider) EnsureRunning(ctx context.Context, sandboxID string, op
 			return d.cli.ContainerUnpause(ctx, info.ID)
 		}
 		return nil
+	}
+	// A stopped box on an outdated image is rebuilt on wake so image updates
+	// (e.g. a newer Claude CLI) roll out; home and projects are on the host.
+	if img, err := d.cli.ImageInspect(ctx, d.cfg.DockerImage); err == nil && img.ID != info.Image {
+		slog.Info("recreating sandbox on the current image", "sandbox", sandboxID)
+		return d.Create(ctx, opts)
 	}
 	slog.Info("starting sandbox container", "sandbox", sandboxID)
 	return d.cli.ContainerStart(ctx, info.ID, container.StartOptions{})
@@ -461,4 +501,16 @@ func chownTree(root string) error {
 		_ = os.Lchown(p, ContainerUID, ContainerUID)
 		return nil
 	})
+}
+
+// State reports whether a sandbox container exists and is running.
+func (d *DockerProvider) State(ctx context.Context, sandboxID string) (exists, running bool, err error) {
+	info, err := d.cli.ContainerInspect(ctx, containerName(sandboxID))
+	if errdefs.IsNotFound(err) {
+		return false, false, nil
+	}
+	if err != nil {
+		return false, false, err
+	}
+	return true, info.State != nil && info.State.Running, nil
 }

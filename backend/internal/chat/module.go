@@ -468,11 +468,28 @@ func (m *Module) sessionConfig(sb *sandbox.Sandbox, req *turnRequest) claude.Con
 	}
 	if sb.Kind == sandbox.KindDocker {
 		cfg.Binary = "claude"
+		if !req.fullReplace {
+			cfg.SystemPrompt += boxPrompt(cfg.Cwd)
+		}
 	}
 	if m.MCPConfig != nil {
 		cfg.MCPServers = m.MCPConfig(req.userID, req.chat.ID, sb.Kind, req.member != nil)
 	}
 	return cfg
+}
+
+// boxPrompt tells Claude about the user's box so it installs what it needs
+// and delivers work as a PR without asking for setup details.
+func boxPrompt(cwd string) string {
+	return "\n<environment>\nYou work in the user's personal Linux box (Ubuntu 24.04, passwordless sudo). " +
+		"This project is at " + cwd + "; the user's other projects sit next to it in " + sandbox.ContainerProjects + ".\n" +
+		"- HOME (" + sandbox.ContainerHome + ") is persistent and shared by all projects: install toolchains there " +
+		"(rustup, sdkman, nvm, go) and they stay. apt packages work too but are reset when the box image is updated.\n" +
+		"- Preinstalled: git, gh, Node 22, Python 3 with uv, JDK 21, build-essential.\n" +
+		"- git and gh are authenticated with the user's GitHub token when one is set (GITHUB_TOKEN). If it is missing, " +
+		"ask the user to add a GitHub token in Settings. To deliver work: commit on a new branch, push, and open a PR with `gh pr create`.\n" +
+		"- Commits use the git identity in ~/.gitconfig (default: Claude <noreply@anthropic.com>); don't ask the user for one.\n" +
+		"- The box stops after a period of inactivity, which also stops background servers.\n</environment>\n"
 }
 
 var imageMIME = map[string]string{".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".gif": "image/gif", ".webp": "image/webp"}

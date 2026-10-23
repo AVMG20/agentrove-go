@@ -6,6 +6,7 @@ package workspace
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -57,6 +58,8 @@ func (m *Module) Routes(mux *http.ServeMux) {
 	mux.HandleFunc("GET "+p, req(m.list))
 	mux.HandleFunc("GET "+p+"/{$}", req(m.list))
 	mux.HandleFunc("GET "+p+"/disk-usage", req(m.diskUsage))
+	mux.HandleFunc("GET "+p+"/box", req(m.box))
+	mux.HandleFunc("POST "+p+"/box/stop", req(m.stopBox))
 	mux.HandleFunc("GET "+p+"/{workspace_id}", req(m.get))
 	mux.HandleFunc("PATCH "+p+"/{workspace_id}", req(m.update))
 	mux.HandleFunc("DELETE "+p+"/{workspace_id}", req(m.delete))
@@ -433,4 +436,22 @@ func (m *Module) diskUsage(w http.ResponseWriter, r *http.Request) error {
 	}
 	wg.Wait()
 	return httpx.OK(w, out)
+}
+
+func (m *Module) box(w http.ResponseWriter, r *http.Request) error {
+	return httpx.OK(w, m.a.Sandboxes.Box(r.Context(), auth.UserFrom(r.Context()).ID))
+}
+
+// stopBox stops the user's box now; ?reset=true also discards its system
+// (apt packages) so it restarts fresh from the current image.
+func (m *Module) stopBox(w http.ResponseWriter, r *http.Request) error {
+	u := auth.UserFrom(r.Context())
+	err := m.a.Sandboxes.StopBox(r.Context(), u.ID, r.URL.Query().Get("reset") == "true")
+	if errors.Is(err, sandbox.ErrBoxBusy) {
+		return httpx.Conflict(err.Error())
+	}
+	if err != nil {
+		return err
+	}
+	return httpx.OK(w, m.a.Sandboxes.Box(r.Context(), u.ID))
 }
