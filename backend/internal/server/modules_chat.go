@@ -22,7 +22,9 @@ func chatModules(a *app.App) ([]Module, error) {
 
 // mcpConfigs hands each chat session the agentrove MCP server over HTTP.
 // Configs are cached so the token (and thus the session fingerprint) stays
-// the same across turns until it nears expiry.
+// the same across turns until half its lifetime is used. A renewed token
+// changes the fingerprint, so the next turn restarts the CLI (with --resume)
+// on it; every turn therefore starts with at least half a lifetime left.
 type mcpConfigs struct {
 	a     *app.App
 	mu    sync.Mutex
@@ -62,7 +64,7 @@ func (c *mcpConfigs) forChat(userID, chatID, kind string, member bool) map[strin
 	cfg["url"] = c.baseURL(kind) + c.a.Cfg.APIPrefix + "/mcp"
 	servers := map[string]any{"agentrove": cfg}
 	ttl := c.a.Cfg.MCPTokenLifetime
-	c.cache[key] = cachedMCP{servers: servers, renewAt: time.Now().Add(ttl - ttl/4)}
+	c.cache[key] = cachedMCP{servers: servers, renewAt: time.Now().Add(ttl / 2)}
 	return servers
 }
 

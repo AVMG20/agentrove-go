@@ -5,6 +5,7 @@ package config
 import (
 	"bufio"
 	"fmt"
+	"net/netip"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -32,6 +33,9 @@ type Config struct {
 	HostStoragePath string
 
 	AllowedOrigins []string
+	// TrustedProxies are the peers whose X-Forwarded-For is believed
+	// (httpx.ClientIP).
+	TrustedProxies []netip.Prefix
 
 	MaxUploadSize int64
 
@@ -100,14 +104,17 @@ func Load() (*Config, error) {
 		GitAuthorName:            env("GIT_AUTHOR_NAME", ""),
 		GitAuthorEmail:           env("GIT_AUTHOR_EMAIL", ""),
 		MCPEnabled:               envBool("AGENTROVE_MCP_ENABLED", true),
-		MCPTokenLifetime:         time.Duration(envInt("AGENTROVE_MCP_TOKEN_LIFETIME_SECONDS", 604800)) * time.Second,
-		ArtifactsEnabled:         envBool("AGENTROVE_ARTIFACTS_ENABLED", true),
-		ArtifactViewTokenTTL:     time.Duration(envInt("ARTIFACT_VIEW_TOKEN_LIFETIME_SECONDS", 1800)) * time.Second,
-		AgentEnv:                 ParseEnvLines(env("AGENT_ENV", "")),
-		AgentEnvPassthroughKey:   envList("AGENT_ENV_PASSTHROUGH", []string{"ANTHROPIC_BASE_URL", "ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_API_KEY", "ANTHROPIC_CUSTOM_HEADERS", "CLAUDE_CODE_OAUTH_TOKEN"}),
-		// Claude proxy hosts -> their 5h/weekly usage endpoint, fetched with
-		// the user's ANTHROPIC_AUTH_TOKEN. Deployment-set only.
-		ClaudeUsageEndpoints: parsePairs(env("CLAUDE_USAGE_ENDPOINTS", "claude.bitsec.dev=https://claude-admin.bitsec.dev/api/usage")),
+		// The token is re-minted at half-life between turns (server.mcpConfigs),
+		// so 24h leaves any single agent turn at least 12h.
+		MCPTokenLifetime:       time.Duration(envInt("AGENTROVE_MCP_TOKEN_LIFETIME_SECONDS", 86400)) * time.Second,
+		ArtifactsEnabled:       envBool("AGENTROVE_ARTIFACTS_ENABLED", true),
+		ArtifactViewTokenTTL:   time.Duration(envInt("ARTIFACT_VIEW_TOKEN_LIFETIME_SECONDS", 1800)) * time.Second,
+		AgentEnv:               ParseEnvLines(env("AGENT_ENV", "")),
+		AgentEnvPassthroughKey: envList("AGENT_ENV_PASSTHROUGH", []string{"ANTHROPIC_BASE_URL", "ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_API_KEY", "ANTHROPIC_CUSTOM_HEADERS", "CLAUDE_CODE_OAUTH_TOKEN"}),
+		// Claude proxy host -> its 5h/weekly usage endpoint, overriding the
+		// official/derived endpoint for that host (see usage.ResolveSource).
+		// Deployment-set only.
+		ClaudeUsageEndpoints: parsePairs(env("CLAUDE_USAGE_ENDPOINTS", "")),
 		DockerImage:          env("DOCKER_IMAGE", "agentrove-sandbox:latest"),
 		DockerNetwork:        env("DOCKER_NETWORK", "agentrove-sandbox-net"),
 		DockerHost:           env("DOCKER_HOST", ""),
@@ -121,6 +128,20 @@ func Load() (*Config, error) {
 		ClaudeBinary:         env("CLAUDE_BINARY", "claude"),
 		LogLevel:             env("LOG_LEVEL", "INFO"),
 	}
+
+	// The API is only published through the frontend proxy (nginx, behind
+	// Coolify's Traefik), which reaches it over Docker's private networks;
+	// a public client connecting directly has a public address and its
+	// X-Forwarded-For is ignored.
+	trustedRaw := strings.TrimSpace(env("TRUSTED_PROXIES", ""))
+	if trustedRaw == "" {
+		trustedRaw = "127.0.0.0/8,::1/128,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,fc00::/7"
+	}
+	trusted, err := ParsePrefixes(trustedRaw)
+	if err != nil {
+		return nil, fmt.Errorf("TRUSTED_PROXIES: %w", err)
+	}
+	c.TrustedProxies = trusted
 
 	if c.DatabasePath == "" {
 		c.DatabasePath = filepath.Join(c.StoragePath, "agentrove.db")
@@ -183,6 +204,28 @@ func ParseEnvLines(raw string) map[string]string {
 		}
 	}
 	return out
+}
+
+// ParsePrefixes reads a comma-separated list of IPs and CIDRs.
+func ParsePrefixes(raw string) ([]netip.Prefix, error) {
+	var out []netip.Prefix
+	for _, part := range strings.Split(raw, ",") {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+		if p, err := netip.ParsePrefix(part); err == nil {
+			out = append(out, p.Masked())
+			continue
+		}
+		a, err := netip.ParseAddr(part)
+		if err != nil {
+			return nil, fmt.Errorf("invalid IP or CIDR %q", part)
+		}
+		a = a.Unmap()
+		out = append(out, netip.PrefixFrom(a, a.BitLen()))
+	}
+	return out, nil
 }
 
 func parsePairs(raw string) map[string]string {

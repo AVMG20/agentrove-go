@@ -1,6 +1,6 @@
 # Agentrove Go backend — conventions
 
-Rewrite of `/Users/arno/tools/agentrove/backend` (Python/FastAPI) in Go. The
+Rewrite of the Python/FastAPI Agentrove backend in Go. The
 frontend in `../frontend` is unchanged, so **every endpoint must keep the
 Python JSON contract** (paths, methods, field names, status codes, error
 shape `{"detail": "..."}`). When unsure, read the Python endpoint + schema
@@ -13,13 +13,14 @@ Scope changes vs Python:
 - **No Redis.** In-process pub/sub (`internal/events.Hub`), queues in SQLite.
 - **No ACP.** The Claude CLI is driven directly (`claude -p --input-format
   stream-json --output-format stream-json`).
-- **Workspace files live on a host dir the API can read.** Docker sandboxes
-  bind-mount it at `/home/user/workspace`. Read-only operations (file tree,
+- **Workspace files live on a host dir the API can read.** The user's Docker
+  box bind-mounts their projects dir at `/home/user/projects` (and their
+  persistent home at `/home/user`). Read-only operations (file tree,
   file content, diff, search, zip) run on the host through
   `Sandbox.HostPath(...)` so they work while the container is stopped.
   Mutations (writes via git commands, commit, push, checkout, …) and agent
   processes go through `Sandbox.Exec`/`Start`, which wake the container.
-- **Idle containers stop** after `SANDBOX_IDLE_TTL_SECONDS` (default 3600).
+- **Idle containers stop** after `SANDBOX_IDLE_TTL_SECONDS` (default 900).
   Anything holding a container busy for a long time (terminal, agent turn)
   must hold `sandbox.Acquire()` / the release func from `Start`/`StartPTY`.
 
@@ -30,7 +31,16 @@ Scope changes vs Python:
 - `internal/httpx` — `Wrap`, `JSON/OK/Created/NoContent`, `Decode`,
   `Error` (`httpx.NotFound("…")` etc.), `SSE`.
 - `internal/auth` — `Service.Require(handler)` for authed routes,
-  `auth.UserFrom(r.Context())` for the current user.
+  `auth.UserFrom(r.Context())` for the current user. `Require` accepts
+  session tokens only; MCP / artifact-agent tokens are scoped to their own
+  endpoints (`/api/v1/mcp`, artifacts). Use `httpx.ClientIP(r,
+  cfg.TrustedProxies)` for the client address, never `X-Forwarded-For`
+  directly.
+- `internal/usage` — usage meter. Endpoint follows `ANTHROPIC_BASE_URL`
+  (official `https://api.anthropic.com/api/oauth/usage` or
+  `<proxy origin>/api/oauth/usage`); `CLAUDE_USAGE_ENDPOINTS` overrides per
+  host. For bitsec set
+  `CLAUDE_USAGE_ENDPOINTS=claude.bitsec.dev=https://claude-admin.bitsec.dev/api/usage`.
 - `internal/store` — ownership-checked `GetWorkspace`, `GetWorkspaceBySandbox`,
   `GetChat`, `GetMemberChat`, `GetUserSettings`, `UserEnv`.
 - `internal/sandbox` — `Manager.For(workspace) -> *Sandbox`. `Sandbox.Exec`,

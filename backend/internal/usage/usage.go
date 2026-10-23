@@ -1,6 +1,10 @@
 // Package usage serves GET /api/v1/usage/claude: the 5-hour / weekly usage
-// windows of the Claude proxy the user's agents run through, when the
-// deployment maps that proxy host to a usage endpoint (CLAUDE_USAGE_ENDPOINTS).
+// windows of the Claude account or proxy the user's agents run through. The
+// endpoint follows ANTHROPIC_BASE_URL: Anthropic's own OAuth usage endpoint
+// when it is unset or api.anthropic.com, otherwise <proxy origin>/api/oauth/usage
+// (proxies mirror that API). A deployment's CLAUDE_USAGE_ENDPOINTS mapping
+// (host=url) overrides the endpoint for its host, e.g.
+// claude.bitsec.dev=https://claude-admin.bitsec.dev/api/usage.
 package usage
 
 import (
@@ -47,14 +51,23 @@ type Response struct {
 	FetchedAt db.Time `json:"fetched_at"`
 }
 
+const (
+	officialHost     = "api.anthropic.com"
+	officialEndpoint = "https://api.anthropic.com/api/oauth/usage"
+	usagePath        = "/api/oauth/usage"
+)
+
 type Source struct {
 	Provider string
 	URL      string
 	Token    string
+	Headers  map[string]string
 }
 
 // ResolveSource applies the precedence the agent sees (deployment env, then
-// the user's vars) and matches the ANTHROPIC_BASE_URL host to an endpoint.
+// the user's vars) and picks the usage endpoint for ANTHROPIC_BASE_URL: an
+// explicit endpoints entry for its host, else the official endpoint, else
+// one derived from the base URL's origin (https only).
 func ResolveSource(globalEnv map[string]string, endpoints map[string]string, custom []models.CustomEnvVar) *Source {
 	env := map[string]string{}
 	for k, v := range globalEnv {
@@ -63,9 +76,17 @@ func ResolveSource(globalEnv map[string]string, endpoints map[string]string, cus
 	for _, ev := range custom {
 		env[ev.Key] = ev.Value
 	}
-	host := ""
-	if u, err := url.Parse(strings.TrimSpace(env["ANTHROPIC_BASE_URL"])); err == nil {
-		host = strings.ToLower(u.Hostname())
+	var base *url.URL
+	if raw := strings.TrimSpace(env["ANTHROPIC_BASE_URL"]); raw != "" {
+		u, err := url.Parse(raw)
+		if err != nil || u.Hostname() == "" {
+			return nil
+		}
+		base = u
+	}
+	host := officialHost
+	if base != nil {
+		host = strings.ToLower(base.Hostname())
 	}
 	byHost := map[string]string{}
 	for h, u := range endpoints {
@@ -74,15 +95,31 @@ func ResolveSource(globalEnv map[string]string, endpoints map[string]string, cus
 			byHost[h] = u
 		}
 	}
-	endpoint := byHost[host]
-	token := strings.TrimSpace(env["ANTHROPIC_AUTH_TOKEN"])
-	if token == "" {
-		token = strings.TrimSpace(env["ANTHROPIC_API_KEY"])
+	token := firstEnv(env, "ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_API_KEY")
+	src := &Source{Provider: host, URL: byHost[host], Token: token}
+	switch {
+	case src.URL != "":
+	case host == officialHost:
+		// The official endpoint wants the OAuth token the CLI logs in with.
+		src.URL = officialEndpoint
+		src.Token = firstEnv(env, "CLAUDE_CODE_OAUTH_TOKEN", "ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_API_KEY")
+		src.Headers = map[string]string{"anthropic-beta": "oauth-2025-04-20"}
+	case base.Scheme == "https":
+		src.URL = "https://" + base.Host + usagePath
 	}
-	if host == "" || endpoint == "" || token == "" {
+	if src.URL == "" || src.Token == "" {
 		return nil
 	}
-	return &Source{Provider: host, URL: endpoint, Token: token}
+	return src
+}
+
+func firstEnv(env map[string]string, keys ...string) string {
+	for _, k := range keys {
+		if v := strings.TrimSpace(env[k]); v != "" {
+			return v
+		}
+	}
+	return ""
 }
 
 // parseReset accepts epoch seconds/milliseconds (number or numeric string)
@@ -252,6 +289,9 @@ func (m *Module) fetch(ctx context.Context, src *Source) Response {
 	}
 	req.Header.Set("Authorization", "Bearer "+src.Token)
 	req.Header.Set("Accept", "application/json")
+	for k, v := range src.Headers {
+		req.Header.Set(k, v)
+	}
 	resp, err := m.client.Do(req)
 	if err != nil {
 		return errorResponse(src.Provider, "Usage endpoint unreachable")

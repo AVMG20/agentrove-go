@@ -2,7 +2,9 @@
 // (stateless JSON-RPC 2.0 on POST /api/v1/mcp). It replaces the Python stdio
 // orchestration server and the artifacts MCP: a token for audience
 // auth.AudienceMCP gets every tool, an auth.AudienceArtifactAgent token only
-// the artifact tools. Tools call the Go services directly.
+// the artifact tools. Neither is accepted by auth.Service.Require, so a token
+// leaked from a box can't drive the rest of the API. Tools call the Go
+// services directly.
 package mcpserver
 
 import (
@@ -120,7 +122,10 @@ func (m *Module) authenticate(r *http.Request) *caller {
 		return nil
 	}
 	c := &caller{chatID: strings.TrimSpace(r.Header.Get(ChatIDHeader))}
-	if u, err := m.a.Auth.Authenticate(r.Context(), token); err == nil {
+	if u, err := m.a.Auth.AuthenticateMCP(r.Context(), token); err == nil {
+		c.userID, c.fullAccess = u.ID, true
+	} else if u, err := m.a.Auth.Authenticate(r.Context(), token); err == nil {
+		// A session token already grants the whole API.
 		c.userID, c.fullAccess = u.ID, true
 	} else if sub, err := m.a.Keys.VerifyToken(token, auth.AudienceArtifactAgent); err == nil {
 		u, err := m.a.Auth.GetUser(r.Context(), sub)

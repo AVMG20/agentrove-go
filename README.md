@@ -23,6 +23,16 @@ Open http://localhost:3000. The first account you register becomes the superuser
 
 For production (e.g. Coolify), use `docker-compose-production.yml`. It builds the sandbox image, serves the built frontend through nginx (`web`, port 80) and keeps data in `/data/agentrove-go/storage`. Set `SECRET_KEY` and `APP_URL`.
 
+The API trusts `X-Forwarded-For` only from `TRUSTED_PROXIES` (default: loopback and private ranges, which covers nginx/Traefik on the Docker network). Don't publish the API port directly on a network where untrusted clients have private addresses.
+
+### Usage meter
+
+The chat input shows the 5-hour and weekly usage of the account the agents run on. With `ANTHROPIC_BASE_URL` unset or `https://api.anthropic.com`, it reads Anthropic's OAuth usage endpoint with `CLAUDE_CODE_OAUTH_TOKEN` (falling back to `ANTHROPIC_AUTH_TOKEN` / `ANTHROPIC_API_KEY`). With an https proxy as base URL, it reads `<proxy origin>/api/oauth/usage`. `CLAUDE_USAGE_ENDPOINTS` (`host=url`, comma-separated) overrides the endpoint for a host. To keep the bitsec proxy's meter working, set:
+
+```sh
+CLAUDE_USAGE_ENDPOINTS=claude.bitsec.dev=https://claude-admin.bitsec.dev/api/usage
+```
+
 ## Run locally without Compose
 
 Projects always run in the user's box, so Docker is required. Build the box image once, then run the API and the frontend:
