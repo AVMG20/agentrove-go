@@ -220,9 +220,13 @@ label { font-size: 14px; color: var(--kit-muted); }
   border-radius: var(--kit-radius);
   padding: 20px;
   min-width: 0;
+  margin: 0 0 16px;
 }
+/* Layouts space their children with gap. */
+:is(.grid, .grid-2, .grid-3, .row, .stack) > .card { margin: 0; }
 .card > :first-child { margin-top: 0; }
-.card > :last-child { margin-bottom: 0; }
+.card > :last-child,
+.card > :last-child > .table-wrap:last-child { margin-bottom: 0; }
 .card > h2:first-child, .card > h3:first-child { font-size: 15px; margin-bottom: 12px; }
 
 .stat { display: flex; flex-direction: column; gap: 4px; }
