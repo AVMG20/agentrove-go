@@ -1,5 +1,6 @@
 import { useCallback } from 'react';
-import { AppWindow, ExternalLink, Globe, Lock } from 'lucide-react';
+import { AppWindow, Globe, Link2, Lock } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { ListManagementTab } from '@/components/ui/ListManagementTab/ListManagementTab';
 import { Switch } from '@/components/ui/primitives/Switch/Switch';
@@ -10,6 +11,7 @@ import {
 } from '@/hooks/queries/useArtifactQueries';
 import type { Artifact } from '@/types/artifact.types';
 import { formatRelativeTime } from '@/utils/date';
+import { artifactService } from '@/services/artifactService';
 import styles from './ArtifactsSettingsTab.module.scss';
 
 export function ArtifactsSettingsTab() {
@@ -47,6 +49,15 @@ export function ArtifactsSettingsTab() {
     [updateArtifact],
   );
 
+  const handleCopyLink = useCallback(async (artifact: Artifact) => {
+    try {
+      await navigator.clipboard.writeText(artifactService.getShareUrl(artifact.id));
+      toast.success(artifact.is_public ? 'Link copied' : 'Link copied — only you can open it');
+    } catch {
+      toast.error('Failed to copy link');
+    }
+  }, []);
+
   return (
     <ListManagementTab<Artifact>
       title="Artifacts"
@@ -68,7 +79,11 @@ export function ArtifactsSettingsTab() {
             ) : (
               <Lock className={styles['visibility-icon']} aria-hidden="true" />
             )}
-            <h3 className={styles['item-title']}>{artifact.title}</h3>
+            <h3 className={styles['item-title']}>
+              <Link to={`/artifacts/${artifact.id}`} className={styles['title-link']}>
+                {artifact.title}
+              </Link>
+            </h3>
           </div>
           <div className={styles['item-meta']}>
             <span>{artifact.is_public ? 'Public' : 'Private'}</span>
@@ -79,16 +94,15 @@ export function ArtifactsSettingsTab() {
       )}
       renderItemActions={(artifact) => (
         <>
-          <a
-            href={`/artifacts/${artifact.id}`}
-            target="_blank"
-            rel="noopener noreferrer"
-            className={styles['open-link']}
-            aria-label="Open artifact"
-            title="Open"
+          <button
+            type="button"
+            onClick={() => void handleCopyLink(artifact)}
+            className={styles['icon-button']}
+            aria-label="Copy link"
+            title="Copy link"
           >
-            <ExternalLink className={styles['open-icon']} />
-          </a>
+            <Link2 className={styles['icon']} />
+          </button>
           <Switch
             size="sm"
             className={styles.toggle}

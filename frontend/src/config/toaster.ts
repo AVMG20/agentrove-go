@@ -4,10 +4,10 @@ import type { ToasterProps } from 'react-hot-toast';
 const toastSurfaceClass = 'app-toast';
 
 export const toasterConfig: ToasterProps = {
-  position: 'top-right',
-  // Below safe-area inset (+1rem gap). Does not clear TitleBar height on chat screens.
+  // Bottom-center keeps toasts away from the header controls people click.
+  position: 'bottom-center',
   containerStyle: {
-    top: 'calc(env(safe-area-inset-top) + 1rem)',
+    bottom: 'calc(env(safe-area-inset-bottom) + 1rem)',
   },
   toastOptions: {
     className: '',
@@ -17,7 +17,7 @@ export const toasterConfig: ToasterProps = {
       fontFamily: 'inherit',
       maxWidth: '380px',
     },
-    duration: 4000,
+    duration: 2500,
     success: {
       iconTheme: {
         primary: '#22c55e',

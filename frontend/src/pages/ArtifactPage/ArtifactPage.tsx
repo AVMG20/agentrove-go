@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import clsx from 'clsx';
 import toast from 'react-hot-toast';
-import { ExternalLink, Globe, Link2, Loader2, Lock } from 'lucide-react';
+import { Globe, Link2, Loader2, Lock } from 'lucide-react';
 import { Button } from '@/components/ui/primitives/Button/Button';
 import { Switch } from '@/components/ui/primitives/Switch/Switch';
 import {
@@ -45,7 +45,6 @@ export function ArtifactPage() {
     if (!view) return;
     try {
       await updateArtifact.mutateAsync({ artifactId: view.id, data: { is_public: isPublic } });
-      toast.success(isPublic ? 'Anyone with the link can view it' : 'Only you can view it');
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to change visibility');
     }
@@ -149,16 +148,6 @@ export function ArtifactPage() {
           >
             <Link2 className={styles['action-icon']} />
           </Button>
-          <a
-            href={frame.src}
-            target="_blank"
-            rel="noopener noreferrer"
-            className={styles['action-btn']}
-            aria-label="Open in new tab"
-            title="Open in new tab"
-          >
-            <ExternalLink className={styles['action-icon']} />
-          </a>
         </div>
       </header>
       <iframe
