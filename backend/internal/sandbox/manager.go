@@ -30,6 +30,9 @@ type Manager struct {
 
 	// OnStop runs before an idle sandbox is stopped (e.g. close agent processes).
 	OnStop func(sandboxID string)
+	// Working reports an agent turn running in the sandbox. Idle agent
+	// processes and terminals hold leases too, but don't make it "busy".
+	Working func(sandboxID string) bool
 }
 
 func NewManager(cfg *config.Config) *Manager {

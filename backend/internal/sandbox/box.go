@@ -16,7 +16,7 @@ type BoxInfo struct {
 	DiskBytes      *int64 `json:"disk_bytes"`
 }
 
-var ErrBoxBusy = errors.New("the box is busy: stop running chats and close terminals first")
+var ErrBoxBusy = errors.New("Claude is working in the box: stop the running chats first")
 
 func (m *Manager) docker() (*DockerProvider, bool) {
 	p, ok := m.providers[KindDocker]
@@ -43,8 +43,8 @@ func (m *Manager) Box(ctx context.Context, userID string) BoxInfo {
 	if running {
 		info.State = "running"
 	}
+	info.Busy = m.Working != nil && m.Working(id)
 	m.mu.Lock()
-	info.Busy = m.leases[id] > 0
 	if last, ok := m.activity[id]; ok && running {
 		info.IdleForSeconds = int64(time.Since(last) / time.Second)
 	}
@@ -56,6 +56,7 @@ func (m *Manager) Box(ctx context.Context, userID string) BoxInfo {
 }
 
 // StopBox stops the user's box now instead of waiting for the idle timeout.
+// Idle agent processes and open terminals end with it.
 // With reset it is removed too, so the next start gets a fresh system from
 // the current image; home and projects are kept.
 func (m *Manager) StopBox(ctx context.Context, userID string, reset bool) error {
@@ -67,10 +68,7 @@ func (m *Manager) StopBox(ctx context.Context, userID string, reset bool) error 
 	lock := m.lockFor(id)
 	lock.Lock()
 	defer lock.Unlock()
-	m.mu.Lock()
-	busy := m.leases[id] > 0
-	m.mu.Unlock()
-	if busy {
+	if m.Working != nil && m.Working(id) {
 		return ErrBoxBusy
 	}
 	if m.OnStop != nil {

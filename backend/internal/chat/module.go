@@ -66,6 +66,7 @@ func New(a *app.App) *Module {
 	a.Hooks.ChatTurnActive = m.busy
 	a.Hooks.GenerateText = m.generateText
 	a.Sandboxes.OnStop = func(sandboxID string) { m.sessions.terminateSandbox(sandboxID, m.busy) }
+	a.Sandboxes.Working = func(sandboxID string) bool { return m.sessions.anyInSandbox(sandboxID, m.keepAlive) }
 	a.Hooks.OnChatDeleted = append(a.Hooks.OnChatDeleted, func(chatID string) {
 		go func() {
 			m.cancelTurn(chatID, 10*time.Second)
@@ -484,7 +485,7 @@ func boxPrompt(cwd string) string {
 	return "\n<environment>\nYou work in the user's personal Linux box (Ubuntu 24.04, passwordless sudo). " +
 		"This project is at " + cwd + "; the user's other projects sit next to it in " + sandbox.ContainerProjects + ".\n" +
 		"- HOME (" + sandbox.ContainerHome + ") is persistent and shared by all projects: install toolchains there " +
-		"(rustup, sdkman, nvm, go) and they stay. apt packages work too but are reset when the box image is updated.\n" +
+		"(rustup, sdkman, nvm, go) and they stay. apt packages work too (run `sudo apt-get update` first) but are reset when the box image is updated.\n" +
 		"- Preinstalled: git, gh, Node 22, Python 3 with uv, JDK 21, build-essential.\n" +
 		"- git and gh are authenticated with the user's GitHub token when one is set (GITHUB_TOKEN). If it is missing, " +
 		"ask the user to add a GitHub token in Settings. To deliver work: commit on a new branch, push, and open a PR with `gh pr create`.\n" +

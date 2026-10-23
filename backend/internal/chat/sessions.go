@@ -92,6 +92,24 @@ func (r *sessions) terminate(chatID string) {
 	}
 }
 
+// anyInSandbox reports whether pred holds for a chat with a live session in sandboxID.
+func (r *sessions) anyInSandbox(sandboxID string, pred func(chatID string) bool) bool {
+	r.mu.Lock()
+	var chats []string
+	for id, s := range r.byChat {
+		if s.SandboxID == sandboxID {
+			chats = append(chats, id)
+		}
+	}
+	r.mu.Unlock()
+	for _, id := range chats {
+		if pred(id) {
+			return true
+		}
+	}
+	return false
+}
+
 func (r *sessions) terminateSandbox(sandboxID string, busy func(chatID string) bool) {
 	r.mu.Lock()
 	var victims []*claude.Session
