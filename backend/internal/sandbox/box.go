@@ -8,9 +8,10 @@ import (
 
 // BoxInfo is the user-facing state of their Docker box.
 type BoxInfo struct {
-	Available      bool   `json:"available"` // Docker is reachable
-	State          string `json:"state"`     // running | stopped | none
-	Busy           bool   `json:"busy"`      // an agent or terminal holds it awake
+	Available      bool   `json:"available"`      // Docker is reachable
+	HostAvailable  bool   `json:"host_available"` // projects can run on this computer instead
+	State          string `json:"state"`          // running | stopped | none
+	Busy           bool   `json:"busy"`           // an agent or terminal holds it awake
 	IdleForSeconds int64  `json:"idle_for_seconds"`
 	IdleTTLSeconds int64  `json:"idle_ttl_seconds"`
 	DiskBytes      *int64 `json:"disk_bytes"`
@@ -28,7 +29,7 @@ func (m *Manager) docker() (*DockerProvider, bool) {
 }
 
 func (m *Manager) Box(ctx context.Context, userID string) BoxInfo {
-	info := BoxInfo{State: "none", IdleTTLSeconds: int64(m.cfg.SandboxIdleTTL / time.Second)}
+	info := BoxInfo{State: "none", IdleTTLSeconds: int64(m.cfg.SandboxIdleTTL / time.Second), HostAvailable: m.HasProvider(KindHost)}
 	d, ok := m.docker()
 	if !ok {
 		return info

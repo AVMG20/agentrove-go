@@ -39,6 +39,9 @@ const (
 	ContainerPrefix    = "agentrove-sandbox-"
 	ManagedLabel       = "agentrove.managed"
 	BoxLabel           = "agentrove.box"
+	// InstanceLabel scopes containers to the API instance (by storage path),
+	// so two instances sharing a Docker daemon never reap each other's boxes.
+	InstanceLabel = "agentrove.instance"
 )
 
 // BoxID is the sandbox id of a user's Docker box.

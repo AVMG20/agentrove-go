@@ -3,6 +3,8 @@ package sandbox
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -146,6 +148,7 @@ func (d *DockerProvider) Create(ctx context.Context, opts CreateOptions) error {
 		Labels: map[string]string{
 			ManagedLabel:        "true",
 			BoxLabel:            "true",
+			InstanceLabel:       d.instance(),
 			"agentrove.sandbox": opts.SandboxID,
 			"agentrove.user":    opts.UserID,
 		},
@@ -170,7 +173,7 @@ func (d *DockerProvider) RemoveLegacy(ctx context.Context) {
 		return
 	}
 	for _, c := range list {
-		if c.Labels[BoxLabel] == "true" {
+		if c.Labels[BoxLabel] == "true" || !d.ours(c.Labels) {
 			continue
 		}
 		slog.Info("removing legacy per-workspace sandbox", "container", strings.TrimPrefix(firstName(c.Names), "/"))
@@ -229,6 +232,19 @@ func (d *DockerProvider) Stop(ctx context.Context, sandboxID string) error {
 	return nil
 }
 
+// instance identifies this API instance's containers.
+func (d *DockerProvider) instance() string {
+	sum := sha256.Sum256([]byte(d.cfg.HostStoragePath))
+	return hex.EncodeToString(sum[:6])
+}
+
+// ours reports a container of this instance; ones from before the instance
+// label existed count as ours.
+func (d *DockerProvider) ours(labels map[string]string) bool {
+	v, ok := labels[InstanceLabel]
+	return !ok || v == d.instance()
+}
+
 func (d *DockerProvider) Running(ctx context.Context) ([]string, error) {
 	list, err := d.cli.ContainerList(ctx, container.ListOptions{Filters: filters.NewArgs(filters.Arg("label", ManagedLabel+"=true"))})
 	if err != nil {
@@ -236,6 +252,9 @@ func (d *DockerProvider) Running(ctx context.Context) ([]string, error) {
 	}
 	var ids []string
 	for _, c := range list {
+		if !d.ours(c.Labels) {
+			continue
+		}
 		if c.State != "running" {
 			continue
 		}
