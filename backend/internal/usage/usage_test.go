@@ -74,6 +74,31 @@ func TestResolveSource(t *testing.T) {
 	}
 }
 
+func TestResolveSourceUsageURL(t *testing.T) {
+	bitsec := map[string]string{"ANTHROPIC_BASE_URL": "https://claude.bitsec.dev", "ANTHROPIC_AUTH_TOKEN": "b"}
+	custom := []models.CustomEnvVar{{Key: "CLAUDE_USAGE_URL", Value: "https://claude-admin.bitsec.dev/api/usage"}}
+	s := ResolveSource(bitsec, custom)
+	if s == nil || s.URL != "https://claude-admin.bitsec.dev/api/usage" || s.Token != "b" || s.Provider != "claude.bitsec.dev" || !s.PublicOnly {
+		t.Fatalf("user usage URL = %+v", s)
+	}
+	// Set by the deployment (AGENT_ENV), it may point inside.
+	bitsec["CLAUDE_USAGE_URL"] = "https://usage.internal/api/usage"
+	if s = ResolveSource(bitsec, nil); s == nil || s.URL != "https://usage.internal/api/usage" || s.PublicOnly {
+		t.Fatalf("deployment usage URL = %+v", s)
+	}
+	// A broken override is unavailable rather than silently ignored.
+	for _, bad := range []string{"http://claude-admin.bitsec.dev/api/usage", "not a url", "https://"} {
+		bitsec["CLAUDE_USAGE_URL"] = bad
+		if s = ResolveSource(bitsec, nil); s != nil {
+			t.Errorf("%q = %+v", bad, s)
+		}
+	}
+	// Still needs a token.
+	if s = ResolveSource(map[string]string{"ANTHROPIC_BASE_URL": "https://claude.bitsec.dev"}, custom); s != nil {
+		t.Errorf("no token = %+v", s)
+	}
+}
+
 func TestPublicOnlyControl(t *testing.T) {
 	for _, addr := range []string{"127.0.0.1:443", "10.0.0.5:443", "172.18.0.2:443", "192.168.1.1:443", "169.254.169.254:80", "[::1]:443", "[fd00::1]:443", "0.0.0.0:443"} {
 		if publicOnlyControl("tcp", addr, nil) == nil {

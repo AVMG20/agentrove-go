@@ -2,7 +2,8 @@
 // windows of the Claude account or proxy the user's agents run through. The
 // endpoint follows ANTHROPIC_BASE_URL: Anthropic's own OAuth usage endpoint
 // when it is unset or api.anthropic.com, otherwise <base URL>/api/usage
-// (proxies mirror the OAuth usage layout).
+// (proxies mirror the OAuth usage layout), unless CLAUDE_USAGE_URL names
+// the endpoint.
 package usage
 
 import (
@@ -57,6 +58,7 @@ const (
 	officialEndpoint = "https://api.anthropic.com/api/oauth/usage"
 	proxyUsagePath   = "/api/usage"
 	oauthTokenPrefix = "sk-ant-oat"
+	usageURLKey      = "CLAUDE_USAGE_URL"
 )
 
 type Source struct {
@@ -72,17 +74,22 @@ type Source struct {
 // ResolveSource applies the precedence the agent sees (deployment env, then
 // the user's vars) and picks the usage endpoint for ANTHROPIC_BASE_URL: the
 // official endpoint when it is unset or Anthropic's, else <base URL>/api/usage
-// (https only, since the token goes with it).
+// (https only, since the token goes with it). CLAUDE_USAGE_URL replaces the
+// endpoint for proxies that serve usage elsewhere; the token stays the one
+// for the base URL.
 func ResolveSource(globalEnv map[string]string, custom []models.CustomEnvVar) *Source {
 	env := map[string]string{}
 	for k, v := range globalEnv {
 		env[k] = v
 	}
-	userBase := false
+	userBase, userUsage := false, false
 	for _, ev := range custom {
 		env[ev.Key] = ev.Value
-		if ev.Key == "ANTHROPIC_BASE_URL" {
+		switch ev.Key {
+		case "ANTHROPIC_BASE_URL":
 			userBase = true
+		case usageURLKey:
+			userUsage = true
 		}
 	}
 	var base *url.URL
@@ -111,6 +118,14 @@ func ResolveSource(globalEnv map[string]string, custom []models.CustomEnvVar) *S
 		src.URL = "https://" + base.Host + strings.TrimRight(base.Path, "/") + proxyUsagePath
 		src.Token = firstEnv(env, "ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_API_KEY")
 		src.PublicOnly = userBase
+	}
+	if raw := strings.TrimSpace(env[usageURLKey]); raw != "" {
+		u, err := url.Parse(raw)
+		if err != nil || u.Scheme != "https" || u.Hostname() == "" {
+			return nil
+		}
+		src.URL = u.String()
+		src.PublicOnly = src.PublicOnly || userUsage
 	}
 	if src.URL == "" || src.Token == "" {
 		return nil

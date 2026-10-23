@@ -67,7 +67,8 @@ shared network on their next start.
   (recorded by the Docker provider) are never trusted as proxies.
 - `internal/usage` — usage meter. Endpoint follows `ANTHROPIC_BASE_URL`
   (official `https://api.anthropic.com/api/oauth/usage`, else
-  `<ANTHROPIC_BASE_URL>/api/usage`).
+  `<ANTHROPIC_BASE_URL>/api/usage`); a `CLAUDE_USAGE_URL` env var (user or
+  `AGENT_ENV`) replaces the endpoint.
 - `internal/store` — ownership-checked `GetWorkspace`, `GetWorkspaceBySandbox`,
   `GetChat`, `GetMemberChat`, `GetUserSettings`, `UserEnv`.
 - `internal/sandbox` — `Manager.For(workspace) -> *Sandbox`. `Sandbox.Exec`,
