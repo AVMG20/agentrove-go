@@ -24,6 +24,32 @@ Scope changes vs Python:
   Anything holding a container busy for a long time (terminal, agent turn)
   must hold `sandbox.Acquire()` / the release func from `Start`/`StartPTY`.
 
+## Box networks
+`SANDBOX_PER_USER_NETWORKS` (default on) gives each user's box its own
+bridge, `agentrove-user-net-<user id without dashes>` (labels
+`agentrove.managed`, `agentrove.instance`, `agentrove.user`), so boxes can't
+reach each other. The API only drives boxes over the Docker socket (exec);
+boxes call the API (MCP) at `AGENTROVE_INTERNAL_URL`, so the API container
+joins every user network with the alias `api` (plus that URL's host) and
+rejoins them at startup. It finds its own container by hostname (Docker's
+default, the short id) or `AGENTROVE_API_CONTAINER`; if neither works it logs
+a warning once and boxes stay on the shared `DOCKER_NETWORK`, as with the
+flag off. Existing boxes move networks by connect/disconnect the next time
+they start (not recreated, so installed packages survive). Boxes still get
+internet access through the bridge's NAT.
+
+Verify on the host (`<id>` = user id without dashes):
+```sh
+docker network ls --filter label=agentrove.user        # one per user
+docker network inspect agentrove-user-net-<id>         # box + API container
+docker inspect -f '{{json .NetworkSettings.Networks}}' agentrove-sandbox-box-<id>
+docker exec agentrove-sandbox-box-<id> curl -fsS http://api:8080/health   # works
+docker exec agentrove-sandbox-box-<id> curl -m 3 http://<other box IP>:1  # times out; "refused" = reachable
+docker exec agentrove-sandbox-box-<id> curl -fsSI https://registry.npmjs.org # egress works
+```
+Turn it off with `SANDBOX_PER_USER_NETWORKS=false`; boxes move back to the
+shared network on their next start.
+
 ## Layout
 - `cmd/agentrove` — entrypoint.
 - `internal/config` — env config. `internal/db` — SQLite + embedded

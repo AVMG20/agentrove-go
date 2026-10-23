@@ -31,8 +31,15 @@ import (
 type DockerProvider struct {
 	cfg *config.Config
 	cli *client.Client
+	net dockerNetAPI
+	// hostname is os.Hostname, swappable in tests.
+	hostname func() (string, error)
 
-	netOnce sync.Once
+	netOnce  sync.Once
+	selfOnce sync.Once
+	self     string // the API's own container id; "" = not in a container
+	netMu    sync.Mutex
+	joined   map[string]bool // per-user networks the API is connected to
 }
 
 func NewDockerProvider(cfg *config.Config) (*DockerProvider, error) {
@@ -50,7 +57,7 @@ func NewDockerProvider(cfg *config.Config) (*DockerProvider, error) {
 		cli.Close()
 		return nil, fmt.Errorf("docker daemon unreachable: %w", err)
 	}
-	return &DockerProvider{cfg: cfg, cli: cli}, nil
+	return &DockerProvider{cfg: cfg, cli: cli, net: cli, hostname: os.Hostname, joined: map[string]bool{}}, nil
 }
 
 func (d *DockerProvider) Kind() string { return KindDocker }
@@ -101,13 +108,13 @@ func (d *DockerProvider) prepareDirs(userID string) (home, projects string, err 
 // Create creates and starts the user's box: one container per user with the
 // persistent home and all projects mounted.
 func (d *DockerProvider) Create(ctx context.Context, opts CreateOptions) error {
-	d.ensureNetwork(ctx)
+	netName := d.boxNetwork(ctx, opts.UserID)
 	home, projects, err := d.prepareDirs(opts.UserID)
 	if err != nil {
 		return fmt.Errorf("prepare box dirs: %w", err)
 	}
 	hc := &container.HostConfig{
-		NetworkMode: container.NetworkMode(d.cfg.DockerNetwork),
+		NetworkMode: container.NetworkMode(netName),
 		SecurityOpt: []string{"no-new-privileges=false"},
 		Init:        boolPtr(true),
 		Binds: []string{
@@ -150,7 +157,7 @@ func (d *DockerProvider) Create(ctx context.Context, opts CreateOptions) error {
 			BoxLabel:            "true",
 			InstanceLabel:       d.instance(),
 			"agentrove.sandbox": opts.SandboxID,
-			"agentrove.user":    opts.UserID,
+			UserLabel:           opts.UserID,
 		},
 	}
 	name := containerName(opts.SandboxID)
@@ -207,7 +214,9 @@ func (d *DockerProvider) EnsureRunning(ctx context.Context, sandboxID string, op
 	if err != nil {
 		return err
 	}
+	target := d.boxNetwork(ctx, opts.UserID)
 	if info.State != nil && info.State.Running {
+		// Left on its network until it next starts; the API has joined it.
 		if info.State.Paused {
 			return d.cli.ContainerUnpause(ctx, info.ID)
 		}
@@ -218,6 +227,9 @@ func (d *DockerProvider) EnsureRunning(ctx context.Context, sandboxID string, op
 	if img, err := d.cli.ImageInspect(ctx, d.cfg.DockerImage); err == nil && img.ID != info.Image {
 		slog.Info("recreating sandbox on the current image", "sandbox", sandboxID)
 		return d.Create(ctx, opts)
+	}
+	if err := d.moveBox(ctx, info, target); err != nil {
+		return fmt.Errorf("move sandbox to network %s: %w", target, err)
 	}
 	slog.Info("starting sandbox container", "sandbox", sandboxID)
 	return d.cli.ContainerStart(ctx, info.ID, container.StartOptions{})

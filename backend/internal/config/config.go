@@ -65,6 +65,13 @@ type Config struct {
 	DockerPidsLimit    int64
 	DockerNodeMaxOldMB int
 
+	// SandboxPerUserNetworks puts each user's box on its own bridge network
+	// (which the API container joins) instead of sharing DockerNetwork, so
+	// boxes can't reach each other. APIContainer names the API's own
+	// container when its hostname isn't the container id.
+	SandboxPerUserNetworks bool
+	APIContainer           string
+
 	// How long a Claude CLI process may sit idle before it's closed. The
 	// session id is persisted so the next turn resumes it losslessly.
 	ChatProcessIdleTTL time.Duration
@@ -123,6 +130,9 @@ func Load() (*Config, error) {
 		ClaudeBinary:           env("CLAUDE_BINARY", "claude"),
 		LogLevel:               env("LOG_LEVEL", "INFO"),
 	}
+
+	c.SandboxPerUserNetworks = envBool("SANDBOX_PER_USER_NETWORKS", true)
+	c.APIContainer = strings.TrimSpace(env("AGENTROVE_API_CONTAINER", ""))
 
 	// The API is only published through the frontend proxy (nginx, behind
 	// Coolify's Traefik), which reaches it over Docker's private networks;

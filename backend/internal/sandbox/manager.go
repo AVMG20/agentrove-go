@@ -175,15 +175,21 @@ func (m *Manager) ensureRunning(ctx context.Context, s *Sandbox) error {
 
 // RunIdleReaper stops Docker sandboxes with no leases and no activity for
 // SandboxIdleTTL. They restart transparently on the next Exec/Start.
+// It first rejoins the per-user box networks, which must happen even with
+// the reaper off.
 func (m *Manager) RunIdleReaper(ctx context.Context) {
-	if m.cfg.SandboxIdleTTL <= 0 {
-		return
-	}
 	p, ok := m.providers[KindDocker]
 	if !ok {
 		return
 	}
-	if d, ok := p.(*DockerProvider); ok {
+	d, isDocker := p.(*DockerProvider)
+	if isDocker {
+		d.ReconnectNetworks(ctx)
+	}
+	if m.cfg.SandboxIdleTTL <= 0 {
+		return
+	}
+	if isDocker {
 		d.RemoveLegacy(ctx)
 	}
 	// Containers already running at startup get a full TTL from now.
