@@ -428,6 +428,8 @@ export function useStreamCallbacks({
 
       // Off-screen completions would leave search stale for up to staleTime.
       queryClient.invalidateQueries({ queryKey: queryKeys.chatsSearchAll });
+      // The session panel lists artifacts the turn published.
+      queryClient.invalidateQueries({ queryKey: queryKeys.artifacts });
 
       // Server mutates title/updated_at/context during the turn — refresh even if off-screen.
       if (targetChatId) {

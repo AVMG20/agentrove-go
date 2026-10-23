@@ -1,12 +1,13 @@
 import { memo, useEffect, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Box, CornerLeftUp, ExternalLink, Folder, GitBranch, Plus } from 'lucide-react';
+import { AppWindow, Box, CornerLeftUp, ExternalLink, Folder, GitBranch, Plus } from 'lucide-react';
 import clsx from 'clsx';
 import { Button } from '@/components/ui/primitives/Button/Button';
 import { FloatingTooltip } from '@/components/ui/FloatingTooltip/FloatingTooltip';
 import { AsciiSpinner } from '@/components/ui/AsciiSpinner/AsciiSpinner';
 import { ChatStatusDot } from '@/components/ui/ChatStatusDot/ChatStatusDot';
 import { ClaudeIcon } from '@/components/ui/icons/ClaudeIcon';
+import { useArtifactsQuery } from '@/hooks/queries/useArtifactQueries';
 import { useChatQuery, useSubThreadsQuery } from '@/hooks/queries/useChatQueries';
 import { useModelMap } from '@/hooks/queries/useModelQueries';
 import {
@@ -282,6 +283,33 @@ function SubThreadsCard({ chatId }: { chatId: string }) {
   );
 }
 
+// Only shown once the agent has published something from this chat.
+function ArtifactsCard({ chatId }: { chatId: string }) {
+  const { data: artifacts } = useArtifactsQuery();
+  const published = artifacts?.filter((artifact) => artifact.chat_id === chatId);
+  if (!published || published.length === 0) return null;
+  return (
+    <Card title="Artifacts">
+      {published.map((artifact) => (
+        // The viewer is a standalone page — keep the chat open next to it.
+        <a
+          key={artifact.id}
+          href={`/artifacts/${artifact.id}`}
+          target="_blank"
+          rel="noopener noreferrer"
+          className={styles['thread-row']}
+        >
+          <span className={styles['row-icon']}>
+            <AppWindow className={styles.glyph} />
+          </span>
+          <span className={styles['row-text']}>{artifact.title}</span>
+          <span className={styles.timestamp}>{getRelativeTime(artifact.updated_at)}</span>
+        </a>
+      ))}
+    </Card>
+  );
+}
+
 function openDiff(chatId: string, mode: DiffMode) {
   focusPrimaryAgent();
   useUIStore.setState({ pendingDiffMode: { chatId, mode } });
@@ -443,6 +471,7 @@ export const SessionPanel = memo(function SessionPanel({
           ) : (
             <SubThreadsCard chatId={chat.id} />
           )}
+          <ArtifactsCard chatId={chat.id} />
         </>
       )}
       {branch && (

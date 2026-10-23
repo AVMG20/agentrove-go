@@ -65,6 +65,7 @@
   @include anim.transition-colors;
   width: 100%;
   text-align: left;
+  text-decoration: none;
 
   @include responsive.hover {
     background-color: colors.theme-color('surface-hover', 0.5);
