@@ -21,6 +21,7 @@ import {
   useGeneratePRDescriptionMutation,
 } from '@/hooks/queries/useGitHubQueries';
 import { CreatePRExistingBanner } from './CreatePRExistingBanner';
+import { GitHubTokenHint } from './GitHubTokenHint';
 import { CreatePRReviewers } from './CreatePRReviewers';
 import { CreatePRChangedFiles } from './CreatePRChangedFiles';
 import styles from './CreatePRDialog.module.scss';
@@ -238,8 +239,10 @@ export function CreatePRDialog({ onClose }: CreatePRDialogProps) {
           </div>
         </div>
 
+        <GitHubTokenHint onNavigate={onClose} className={styles['token-hint']} />
+
         {!owner ? (
-          <p className={styles['no-remote']}>No GitHub remote detected for this workspace.</p>
+          <p className={styles['no-remote']}>No GitHub remote detected for this project.</p>
         ) : (
           <div className={styles.fields}>
             {openPR && <CreatePRExistingBanner pr={openPR} />}

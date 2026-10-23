@@ -44,6 +44,10 @@
   color: var(--theme-text-tertiary);
 }
 
+.token-hint {
+  margin-top: var(--space-3);
+}
+
 .no-remote {
   margin-top: var(--space-4);
   @include type.type-default;
