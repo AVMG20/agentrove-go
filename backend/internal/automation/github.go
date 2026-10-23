@@ -187,8 +187,9 @@ func (g *GitHubClient) getList(ctx context.Context, path string, q url.Values) (
 }
 
 // ListActivity returns items created strictly after since, oldest first.
-// excludeAuthor drops our own activity so an automation that comments on
-// issues can't trigger itself.
+// excludeAuthor drops our own comments so an automation that comments can't
+// trigger itself. Our own PRs and issues still count: PRs Claude opens with
+// the user's token are exactly what a review-and-merge automation watches.
 func (g *GitHubClient) ListActivity(ctx context.Context, repo string, events []string, since time.Time, excludeAuthor string) ([]ActivityEvent, error) {
 	want := map[string]bool{}
 	for _, e := range events {
@@ -245,7 +246,8 @@ func (g *GitHubClient) ListActivity(ctx context.Context, repo string, events []s
 	}
 	out := found[:0]
 	for _, e := range found {
-		if e.CreatedAt.After(since) && (excludeAuthor == "" || e.Author != excludeAuthor) {
+		own := excludeAuthor != "" && e.Author == excludeAuthor && e.Event == "issue_comment_created"
+		if e.CreatedAt.After(since) && !own {
 			out = append(out, e)
 		}
 	}

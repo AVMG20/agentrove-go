@@ -106,6 +106,7 @@ type Chat struct {
 	LastModelID       *string     `json:"last_model_id"`
 	LastThinkingMode  *string     `json:"last_thinking_mode"`
 	LastPersonaName   *string     `json:"last_persona_name"`
+	AutomationID      *string     `json:"automation_id"` // set on automation runs
 	CreatedAt         db.Time     `json:"created_at"`
 	UpdatedAt         db.Time     `json:"updated_at"`
 
@@ -119,12 +120,12 @@ type Chat struct {
 // ChatColumns selects chat columns joined with workspaces as w (for sandbox_id).
 const ChatColumns = `c.id, c.title, c.user_id, c.workspace_id, c.channel_id, c.session_id, c.worktree_cwd,
 	c.context_token_usage, c.context_window, c.last_event_seq, c.deleted_at, c.pinned_at, c.last_viewed_at,
-	c.parent_chat_id, c.last_model_id, c.last_thinking_mode, c.last_persona_name, c.created_at, c.updated_at, w.sandbox_id`
+	c.parent_chat_id, c.last_model_id, c.last_thinking_mode, c.last_persona_name, c.automation_id, c.created_at, c.updated_at, w.sandbox_id`
 
 func (c *Chat) ScanFields() []any {
 	return []any{&c.ID, &c.Title, &c.UserID, &c.WorkspaceID, &c.ChannelID, &c.SessionID, &c.WorktreeCwd,
 		&c.ContextTokenUsage, &c.ContextWindow, &c.LastEventSeq, &c.DeletedAt, &c.PinnedAt, &c.LastViewedAt,
-		&c.ParentChatID, &c.LastModelID, &c.LastThinkingMode, &c.LastPersonaName, &c.CreatedAt, &c.UpdatedAt, &c.SandboxID}
+		&c.ParentChatID, &c.LastModelID, &c.LastThinkingMode, &c.LastPersonaName, &c.AutomationID, &c.CreatedAt, &c.UpdatedAt, &c.SandboxID}
 }
 
 // Finish fills computed fields after a scan.

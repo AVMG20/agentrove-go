@@ -22,8 +22,8 @@ var ErrWorkspaceNotFound = httpx.NotFound("Workspace not found")
 // CreateChat inserts a visible chat the way POST /chat/chats does (used by
 // automations and the MCP server). With parentChatID it becomes a sub-thread:
 // it inherits the parent's workspace and worktree, and the parent must be a
-// top-level chat.
-func CreateChat(ctx context.Context, a *app.App, userID, workspaceID, title string, parentChatID *string) (*models.Chat, error) {
+// top-level chat. automationID marks a run of that automation.
+func CreateChat(ctx context.Context, a *app.App, userID, workspaceID, title string, parentChatID, automationID *string) (*models.Chat, error) {
 	now := db.Now()
 	id := uuid.NewString()
 	err := a.DB.Tx(ctx, func(tx *sql.Tx) error {
@@ -64,8 +64,8 @@ func CreateChat(ctx context.Context, a *app.App, userID, workspaceID, title stri
 		if n == 0 {
 			return ErrWorkspaceNotFound
 		}
-		_, err := tx.ExecContext(ctx, `INSERT INTO chats (id, title, user_id, workspace_id, parent_chat_id, worktree_cwd, created_at, updated_at)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?)`, id, title, userID, workspaceID, parentChatID, worktreeCwd, now, now)
+		_, err := tx.ExecContext(ctx, `INSERT INTO chats (id, title, user_id, workspace_id, parent_chat_id, worktree_cwd, automation_id, created_at, updated_at)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`, id, title, userID, workspaceID, parentChatID, worktreeCwd, automationID, now, now)
 		return err
 	})
 	if err != nil {

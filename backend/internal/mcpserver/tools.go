@@ -662,7 +662,7 @@ func (m *Module) sendMessage(ctx context.Context, c *caller, args json.RawMessag
 		if a.ParentChatID != nil && *a.ParentChatID != "" {
 			parent = a.ParentChatID
 		}
-		chat, err := automation.CreateChat(ctx, m.a, c.userID, ws, title, parent)
+		chat, err := automation.CreateChat(ctx, m.a, c.userID, ws, title, parent, nil)
 		if err != nil {
 			return nil, err
 		}

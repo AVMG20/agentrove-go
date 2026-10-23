@@ -748,7 +748,7 @@ func (s *Service) fire(ctx context.Context, x *Automation, ev *ActivityEvent) (s
 	if ev != nil {
 		prompt = EventPrompt(x.Prompt, ev)
 	}
-	chat, err := CreateChat(ctx, s.a, x.UserID, x.WorkspaceID, RunTitle(x, ev, time.Now()), nil)
+	chat, err := CreateChat(ctx, s.a, x.UserID, x.WorkspaceID, RunTitle(x, ev, time.Now()), nil, &x.ID)
 	if err != nil {
 		return "", err
 	}
