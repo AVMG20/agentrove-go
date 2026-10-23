@@ -351,6 +351,48 @@ func TestHostRepoRejectsUnsafeRepo(t *testing.T) {
 	}
 }
 
+// When the box is running, read-only git must run inside it (where the agent's
+// config is harmless) and never touch the host: Verify is skipped and no host
+// git subprocess runs, so a malicious repo config can't execute on the host.
+func TestInBoxDispatchSkipsHostAndVerify(t *testing.T) {
+	ctx := context.Background()
+	ws := setupRepo(t)
+	write(t, filepath.Join(ws, "a.txt"), "changed\n")
+	marker := filepath.Join(t.TempDir(), "pwned")
+	git(t, ws, "config", "diff.external", "touch "+marker+" #") // would run on host
+
+	sb := &sandbox.Sandbox{Kind: sandbox.KindDocker, Root: "/home/user/workspace", WorkspacePath: ws}
+	r, err := OpenHost(sb, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Simulate a running box: dispatch to a recording in-box executor instead
+	// of the host. The executor returns canned output; we only assert routing.
+	var calls int
+	r.boxUp = func(context.Context) bool { return true }
+	r.boxExec = func(_ context.Context, _ string, args []string) (Result, error) {
+		calls++
+		if len(args) > 0 && args[0] == "rev-parse" {
+			return Result{Stdout: "true\n"}, nil // IsRepo check
+		}
+		return Result{Stdout: ""}, nil
+	}
+
+	if _, err := Diff(ctx, r, "all", false); err != nil {
+		t.Fatal(err)
+	}
+	if calls == 0 {
+		t.Error("read-only git did not dispatch into the running box")
+	}
+	// Verify is a no-op while the box is up.
+	if err := r.Verify(ctx); err != nil {
+		t.Errorf("Verify should pass (be skipped) when the box is up: %v", err)
+	}
+	if _, err := os.Stat(marker); err == nil {
+		t.Fatal("host git executed the repo's diff.external program")
+	}
+}
+
 func TestCapBuffer(t *testing.T) {
 	c := &capBuffer{max: 4}
 	if _, err := c.Write([]byte("abc")); err != nil {

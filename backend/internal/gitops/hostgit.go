@@ -9,16 +9,22 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"sync"
 	"time"
 
 	"agentrove/internal/httpx"
 	"agentrove/internal/sandbox"
 )
 
-// HostRepo runs read-only git commands on the host against a workspace dir,
-// so diffs, status and branch lists work while a Docker sandbox is stopped.
+// HostRepo runs read-only git commands against a workspace dir. When the
+// user's box is running it runs them *inside* the box (race-free: the repo
+// config is the agent's own, and it already has code execution there, so a
+// malicious .git/config, .gitattributes, filter/textconv driver or hook can't
+// reach the host). Only when the box is stopped — when no agent is running to
+// win a TOCTOU — does it fall back to running git on the host, gated by the
+// static-config Verify. This keeps diffs/status working while the box sleeps.
 type HostRepo struct {
-	// Dir is the host directory commands run in.
+	// Dir is the host directory commands run in (host fallback).
 	Dir string
 	// WorkTree is set when the git dir had to be translated from a sandbox path.
 	WorkTree string
@@ -28,6 +34,14 @@ type HostRepo struct {
 	env  []string
 	// trusted skips Verify (set while Verify itself runs git).
 	trusted bool
+
+	// sb and rel drive in-box execution; nil sb means host-only (tests).
+	sb  *sandbox.Sandbox
+	rel string
+	// boxUp reports the box is running; boxExec runs git inside it. Both are
+	// set by OpenHost for Docker sandboxes and overridable in tests.
+	boxUp   func(ctx context.Context) bool
+	boxExec func(ctx context.Context, dir string, args []string) (Result, error)
 }
 
 type Result struct {
@@ -91,6 +105,7 @@ func OpenHost(sb *sandbox.Sandbox, rel string) (*HostRepo, error) {
 	}
 	r := &HostRepo{
 		Dir:  dir,
+		rel:  rel,
 		root: sb.WorkspacePath,
 		opts: []string{"-c", "safe.directory=*", "-c", "core.fsmonitor=false", "-c", "color.ui=false"},
 		// GIT_OPTIONAL_LOCKS=0 keeps `git status` from rewriting the index: the
@@ -98,6 +113,16 @@ func OpenHost(sb *sandbox.Sandbox, rel string) (*HostRepo, error) {
 		env: append(os.Environ(), "GIT_DISCOVERY_ACROSS_FILESYSTEM=1", "GIT_OPTIONAL_LOCKS=0", "GIT_TERMINAL_PROMPT=0"),
 	}
 	if sb.Kind == sandbox.KindDocker {
+		r.sb = sb
+		// Decide host-vs-box once per repo (one request): a single diff fans out
+		// into many git commands, and each state probe is a docker inspect.
+		var upOnce sync.Once
+		var up bool
+		r.boxUp = func(ctx context.Context) bool {
+			upOnce.Do(func() { up = sb.IsRunning(ctx) })
+			return up
+		}
+		r.boxExec = r.execInBox
 		// The container can't see above its workspace mount, so neither should we.
 		r.env = append(r.env, "GIT_CEILING_DIRECTORIES="+filepath.Dir(filepath.Clean(sb.WorkspacePath)))
 		if gitDir, workTree, ok := translatedGitDir(sb, dir); ok {
@@ -106,6 +131,29 @@ func OpenHost(sb *sandbox.Sandbox, rel string) (*HostRepo, error) {
 		}
 	}
 	return r, nil
+}
+
+// execInBox runs git inside the user's box as the agent user. The agent owns
+// this box, so agent-controlled config is harmless here; no Verify is needed.
+// dir is a host path, mapped back to its container path; worktrees resolve
+// their .git natively, so no --git-dir/--work-tree translation is passed.
+func (r *HostRepo) execInBox(ctx context.Context, dir string, args []string) (Result, error) {
+	cwd := r.sb.Resolve(r.rel)
+	if dir != "" && dir != r.Dir {
+		if c, err := r.sb.SandboxPath(dir); err == nil {
+			cwd = c
+		}
+	}
+	opts := []string{"-c", "safe.directory=*", "-c", "core.fsmonitor=false", "-c", "color.ui=false"}
+	cmd := append(append([]string{"git"}, opts...), args...)
+	res, err := r.sb.Exec(ctx, sandbox.ExecRequest{
+		Cmd: cmd, Cwd: cwd, Timeout: hostGitTimeout,
+		Env: map[string]string{"GIT_OPTIONAL_LOCKS": "0", "GIT_TERMINAL_PROMPT": "0", "GIT_DISCOVERY_ACROSS_FILESYSTEM": "1"},
+	})
+	if err != nil {
+		return Result{}, err
+	}
+	return Result{Stdout: res.Stdout, Stderr: res.Stderr, Exit: res.ExitCode}, nil
 }
 
 // translatedGitDir walks up from dir to the workspace root looking for the
@@ -210,6 +258,11 @@ func (r *HostRepo) Verify(ctx context.Context) error {
 	if r.trusted {
 		return nil
 	}
+	// When the box is running, git runs inside it (RunIn dispatches there), so
+	// the host never touches the agent's config and there is nothing to verify.
+	if r.boxExec != nil && r.boxUp(ctx) {
+		return nil
+	}
 	t := *r
 	t.trusted = true
 	res, err := t.Run(ctx, "rev-parse", "--path-format=absolute", "--absolute-git-dir", "--git-common-dir", "--show-toplevel")
@@ -238,8 +291,12 @@ func (r *HostRepo) Verify(ctx context.Context) error {
 	return nil
 }
 
-// RunIn executes git in dir with extra env entries.
+// RunIn executes git in dir with extra env entries. It runs inside the box
+// when it is up (race-free) and on the host otherwise (Verify-gated).
 func (r *HostRepo) RunIn(ctx context.Context, dir string, env []string, args ...string) (Result, error) {
+	if r.boxExec != nil && r.boxUp(ctx) {
+		return r.boxExec(ctx, dir, args)
+	}
 	if err := r.Verify(ctx); err != nil {
 		return Result{}, err
 	}
@@ -275,7 +332,9 @@ func (r *HostRepo) IsRepo(ctx context.Context) bool {
 	return err == nil && res.Exit == 0 && strings.TrimSpace(res.Stdout) == "true"
 }
 
-// TopLevel is the work tree root on the host.
+// TopLevel is the work tree root as a host path. When git ran inside the box,
+// rev-parse returns a container path, which is mapped back to the host so
+// callers that feed it to RunIn (which maps host->container) round-trip.
 func (r *HostRepo) TopLevel(ctx context.Context) string {
 	if r.WorkTree != "" {
 		return r.WorkTree
@@ -284,8 +343,14 @@ func (r *HostRepo) TopLevel(ctx context.Context) string {
 	if err != nil || res.Exit != 0 {
 		return r.Dir
 	}
-	if top := strings.TrimSpace(res.Stdout); top != "" {
-		return top
+	top := strings.TrimSpace(res.Stdout)
+	if top == "" {
+		return r.Dir
 	}
-	return r.Dir
+	if r.sb != nil {
+		if host, err := r.sb.HostPath(top); err == nil {
+			return host
+		}
+	}
+	return top
 }

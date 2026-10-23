@@ -356,11 +356,7 @@ func (m *Module) search(w http.ResponseWriter, r *http.Request) error {
 	if err != nil {
 		return err
 	}
-	dir, err := gitops.HostDir(sb, rel)
-	if err != nil {
-		return err
-	}
-	out, err := search(r.Context(), sb, rel, dir, opts)
+	out, err := search(r.Context(), sb, rel, opts)
 	if err != nil {
 		return err
 	}

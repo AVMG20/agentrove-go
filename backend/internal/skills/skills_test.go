@@ -188,3 +188,39 @@ func TestSkillsStayInsideTheirRoots(t *testing.T) {
 		t.Errorf("victim skill was modified: %q %v", b, err)
 	}
 }
+
+// A ~/claude swapped for a symlink out of HOME must not let skill reads/writes
+// escape: os.Root is anchored at the (non-swappable) HOME mount, above claude.
+func TestConfigDirSymlinkSwapBlocked(t *testing.T) {
+	storage := t.TempDir()
+	cfg := &config.Config{StoragePath: storage}
+	ws := &models.Workspace{ID: "w", UserID: "u1", SandboxProvider: "docker", WorkspacePath: filepath.Join(storage, "workspaces", "u1", "proj")}
+	if err := os.MkdirAll(ws.WorkspacePath, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	home := cfg.AgentHomeDir("u1")
+	if err := os.MkdirAll(home, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	// Another user's config on the same host, with a real skill.
+	victimClaude := filepath.Join(storage, "agent-homes", "u2", "claude")
+	writeSkill(t, filepath.Join(victimClaude, "skills"), "mine", "other user's skill")
+	// The agent replaces its own ~/claude with a symlink to the victim's.
+	if err := os.Symlink(victimClaude, filepath.Join(home, "claude")); err != nil {
+		t.Fatal(err)
+	}
+
+	s := NewService(cfg, ws)
+	if list := s.List(); len(list) != 0 {
+		t.Errorf("listed skills through a swapped ~/claude: %+v", list)
+	}
+	if _, err := s.Files("claude", "mine"); !errors.Is(err, ErrNotFound) {
+		t.Errorf("Files via swapped ~/claude = %v, want not found", err)
+	}
+	if _, err := s.Update("claude", "mine", []FileEntry{{Path: "SKILL.md", Content: "---\ndescription: x\n---\n"}}); !errors.Is(err, ErrNotFound) {
+		t.Errorf("Update via swapped ~/claude = %v, want not found", err)
+	}
+	if b, err := os.ReadFile(filepath.Join(victimClaude, "skills", "mine", skillMD)); err != nil || !strings.Contains(string(b), "other user's skill") {
+		t.Errorf("victim skill was modified: %q %v", b, err)
+	}
+}

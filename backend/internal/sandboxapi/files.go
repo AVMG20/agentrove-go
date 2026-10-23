@@ -83,7 +83,7 @@ func listFiles(ctx context.Context, sb *sandbox.Sandbox, rel string) ([]FileMeta
 	if err == nil && res.Exit == 0 && res.Stdout != "" {
 		return ParseLsFiles(res.Stdout), nil
 	}
-	root, err := os.OpenRoot(sb.WorkspacePath)
+	root, err := sb.OpenWorkspaceRoot()
 	if err != nil {
 		return nil, err
 	}
@@ -136,10 +136,12 @@ var (
 // encoded on top of it).
 const maxReadBytes = 25 << 20
 
-// readFile reads a workspace-relative file on the host. os.Root refuses
-// anything (including symlinks) that escapes the workspace.
+// readFile reads a workspace-relative file on the host. The workspace Root is
+// anchored at the (non-swappable) mount parent, so it refuses anything —
+// including a symlinked project dir or any symlink inside it — that escapes
+// the workspace.
 func readFile(sb *sandbox.Sandbox, rel string) (FileContent, error) {
-	root, err := os.OpenRoot(sb.WorkspacePath)
+	root, err := sb.OpenWorkspaceRoot()
 	if err != nil {
 		return FileContent{}, err
 	}
@@ -185,7 +187,7 @@ func EncodeContent(p string, data []byte) (string, bool) {
 // API, new files and dirs are handed to the sandbox user so the agent can
 // keep editing them.
 func writeFile(sb *sandbox.Sandbox, rel string, content []byte) error {
-	root, err := os.OpenRoot(sb.WorkspacePath)
+	root, err := sb.OpenWorkspaceRoot()
 	if err != nil {
 		return err
 	}
@@ -237,7 +239,7 @@ func writeZip(ctx context.Context, sb *sandbox.Sandbox, w io.Writer) error {
 	if err != nil {
 		return err
 	}
-	root, err := os.OpenRoot(sb.WorkspacePath)
+	root, err := sb.OpenWorkspaceRoot()
 	if err != nil {
 		return err
 	}

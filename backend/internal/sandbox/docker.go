@@ -123,8 +123,20 @@ func (d *DockerProvider) Create(ctx context.Context, opts CreateOptions) error {
 	}
 	hc := &container.HostConfig{
 		NetworkMode: container.NetworkMode(netName),
+		// no-new-privileges stays off on purpose: the box is a dev environment
+		// where the agent uses sudo (NOPASSWD in the image) to apt/npm install,
+		// so uid 1000 is effectively root inside the box. Host-side code must
+		// never trust box file ownership (see the os.Root-based file access).
+		// The default seccomp and AppArmor (docker-default) profiles still
+		// apply since the box is not privileged.
 		SecurityOpt: []string{"no-new-privileges=false"},
-		Init:        boolPtr(true),
+		// Drop CAP_NET_RAW so the box can't craft raw/spoofed packets on its
+		// bridge (e.g. ARP-spoof the "api" alias). Nothing in apt/npm/dev-server
+		// workflows needs it; only raw ICMP `ping` stops working. The rest of
+		// the default caps are kept because a sudo-capable dev box needs them to
+		// install packages (chown/setuid/etc.), so CapDrop=ALL isn't viable.
+		CapDrop: []string{"NET_RAW"},
+		Init:    boolPtr(true),
 		Binds: []string{
 			d.hostPath(home) + ":" + ContainerHome,
 			d.hostPath(projects) + ":" + ContainerProjects,

@@ -1,16 +1,65 @@
 package sandboxapi
 
 import (
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"agentrove/internal/sandbox"
 )
+
+func TestSearchStaysInsideWorkspace(t *testing.T) {
+	if _, err := exec.LookPath("rg"); err != nil {
+		t.Skip("ripgrep not installed")
+	}
+	parent, _ := filepath.EvalSymlinks(t.TempDir())
+	ws := filepath.Join(parent, "proj")
+	if err := os.MkdirAll(filepath.Join(ws, "sub"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(ws, "sub", "a.txt"), []byte("hello NEEDLE\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	outside, _ := filepath.EvalSymlinks(t.TempDir())
+	if err := os.WriteFile(filepath.Join(outside, "pw"), []byte("secret NEEDLE\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	// A symlinked file inside the searched dir must not be followed.
+	if err := os.Symlink(filepath.Join(outside, "pw"), filepath.Join(ws, "sub", "leak.txt")); err != nil {
+		t.Fatal(err)
+	}
+	sb := &sandbox.Sandbox{Kind: sandbox.KindDocker, Root: "/home/user/projects/proj", WorkspacePath: ws}
+
+	res, err := search(context.Background(), sb, "sub", searchOptions{Query: "NEEDLE"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, r := range res.Results {
+		if strings.Contains(r.Path, "leak") {
+			t.Errorf("search followed a symlink out of the workspace: %s", r.Path)
+		}
+	}
+	if len(res.Results) != 1 || !strings.HasSuffix(res.Results[0].Path, "a.txt") {
+		t.Errorf("results = %+v (want only sub/a.txt)", res.Results)
+	}
+
+	// Searching a subdir that is itself a symlink out of the workspace fails.
+	if err := os.RemoveAll(filepath.Join(ws, "sub")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outside, filepath.Join(ws, "sub")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := search(context.Background(), sb, "sub", searchOptions{Query: "NEEDLE"}); err == nil {
+		t.Error("search into a symlinked-out subdir must fail")
+	}
+}
 
 func TestParseLsFiles(t *testing.T) {
 	got := ParseLsFiles("a.txt\x00src/lib/x.go\x00src/img.PNG\x00")
@@ -167,6 +216,38 @@ func TestHostFileOps(t *testing.T) {
 	}
 	if _, err := readFile(sb, "dir"); err == nil {
 		t.Error("reading a directory must fail")
+	}
+}
+
+// The box mounts the parent of the project dir and the agent is root there, so
+// it can replace the project dir with a symlink pointing at other host files.
+// Host file ops must anchor at the (non-swappable) parent, not the project dir.
+func TestHostFileOpsProjectDirSwap(t *testing.T) {
+	parent, _ := filepath.EvalSymlinks(t.TempDir())
+	ws := filepath.Join(parent, "proj")
+	if err := os.Mkdir(ws, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	outside, _ := filepath.EvalSymlinks(t.TempDir())
+	if err := os.WriteFile(filepath.Join(outside, "secret"), []byte("TOPSECRET"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	sb := &sandbox.Sandbox{Kind: sandbox.KindDocker, Root: "/home/user/projects/proj", WorkspacePath: ws}
+	// The agent swaps the project dir for a symlink to an outside host dir.
+	if err := os.Remove(ws); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outside, ws); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := readFile(sb, "secret"); err == nil {
+		t.Error("read through swapped project-dir symlink must fail")
+	}
+	if err := writeFile(sb, "planted", []byte("x")); err == nil {
+		t.Error("write through swapped project-dir symlink must fail")
+	}
+	if _, err := os.Stat(filepath.Join(outside, "planted")); err == nil {
+		t.Error("write escaped into the outside dir")
 	}
 }
 
