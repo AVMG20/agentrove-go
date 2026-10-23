@@ -588,15 +588,10 @@ func (m *Module) promptBlocks(sb *sandbox.Sandbox, req *turnRequest) ([]map[stri
 			blocks = append(blocks, map[string]any{"type": "document", "source": map[string]any{"type": "base64", "media_type": "application/pdf", "data": base64.StdEncoding.EncodeToString(data)}})
 		default:
 			dest := filepath.Base(rel)
-			host, err := sb.HostPath(sb.Resolve(dest))
-			if err != nil {
-				continue
-			}
-			if err := os.WriteFile(host, data, 0o644); err != nil {
+			// The workspace is box-writable: write through the swap-safe root
+			// and never through a symlink planted at dest.
+			if err := sb.WriteWorkspaceFile(dest, data); err != nil {
 				return nil, fmt.Errorf("copy attachment into workspace: %w", err)
-			}
-			if sb.Kind == sandbox.KindDocker && os.Geteuid() == 0 {
-				_ = os.Chown(host, sandbox.ContainerUID, sandbox.ContainerUID)
 			}
 			notes = append(notes, "- "+name+" is available at "+path.Join(sb.Root, dest))
 		}
