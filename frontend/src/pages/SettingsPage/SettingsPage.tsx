@@ -90,6 +90,7 @@ export function SettingsPage() {
         'stream_actions',
         'notifications_enabled',
         'title_model_id',
+        'auto_compact_window',
       ];
 
       for (const field of fields) {
@@ -170,6 +171,12 @@ export function SettingsPage() {
     void persistSettings((prev) => ({ ...prev, title_model_id: modelId })).catch(() => undefined);
   };
 
+  const handleAutoCompactWindowChange = (tokens: number) => {
+    void persistSettings((prev) => ({ ...prev, auto_compact_window: tokens })).catch(
+      () => undefined,
+    );
+  };
+
   const confirmDeleteAllChats = async () => {
     try {
       await deleteAllChats.mutateAsync();
@@ -219,6 +226,7 @@ export function SettingsPage() {
         onDeleteAllChats={handleDeleteAllChats}
         onNotificationsEnabledChange={handleNotificationsEnabledChange}
         onTitleModelChange={handleTitleModelChange}
+        onAutoCompactWindowChange={handleAutoCompactWindowChange}
       />
     ),
     projects: () => <WorkspacesSettingsTab />,

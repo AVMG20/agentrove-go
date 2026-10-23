@@ -467,6 +467,9 @@ func (m *Module) sessionConfig(sb *sandbox.Sandbox, req *turnRequest) claude.Con
 		Env:            m.sessionEnv(req),
 		Binary:         m.a.Cfg.ClaudeBinary,
 	}
+	if st, err := m.a.Store.GetUserSettings(context.Background(), req.userID); err == nil && st.AutoCompactWindow > 0 {
+		cfg.Settings["autoCompactWindow"] = st.AutoCompactWindow
+	}
 	if sb.Kind == sandbox.KindDocker {
 		cfg.Binary = "claude"
 		if !req.fullReplace {

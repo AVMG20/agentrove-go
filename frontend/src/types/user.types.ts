@@ -63,6 +63,7 @@ export interface UserSettings {
   stream_actions: StreamAction[] | null;
   notifications_enabled: boolean;
   title_model_id: string;
+  auto_compact_window: number;
   created_at: string;
   updated_at: string;
 }

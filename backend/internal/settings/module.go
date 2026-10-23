@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"slices"
 	"unicode/utf8"
 
 	"agentrove/internal/app"
@@ -18,6 +19,9 @@ import (
 const defaultPersonaName = "Default"
 
 type Module struct{ a *app.App }
+
+// AutoCompactWindows are the context sizes (tokens) a user can have Claude compact at.
+var AutoCompactWindows = []int{100000, 250000, 500000, 750000, 1000000}
 
 func New(a *app.App) *Module { return &Module{a: a} }
 
@@ -188,6 +192,13 @@ func (m *Module) patch(w http.ResponseWriter, r *http.Request) error {
 			return httpx.Unprocessable("title_model_id must be a Claude model id or alias (1-128 characters)")
 		}
 		set("title_model_id", v)
+	}
+	if raw, ok := body["auto_compact_window"]; ok {
+		var v int
+		if err := json.Unmarshal(raw, &v); err != nil || !slices.Contains(AutoCompactWindows, v) {
+			return httpx.Unprocessable("auto_compact_window must be one of 100000, 250000, 500000, 750000, 1000000")
+		}
+		set("auto_compact_window", v)
 	}
 
 	// Creates the row on first use.

@@ -27,6 +27,7 @@ interface GeneralSettingsTabProps {
   onDeleteAllChats: () => void;
   onNotificationsEnabledChange: (enabled: boolean) => void;
   onTitleModelChange: (modelId: string) => void;
+  onAutoCompactWindowChange: (tokens: number) => void;
 }
 
 function SectionCard({
@@ -45,6 +46,14 @@ function SectionCard({
     </div>
   );
 }
+
+const AUTO_COMPACT_WINDOWS = [
+  { value: 100_000, label: '100k' },
+  { value: 250_000, label: '250k' },
+  { value: 500_000, label: '500k' },
+  { value: 750_000, label: '750k' },
+  { value: 1_000_000, label: '1M' },
+];
 
 // Dropdown rather than a row of buttons — 9 themes is too many to lay out inline.
 // Width is bounded on the wrapper since Select itself is w-full.
@@ -148,6 +157,7 @@ export function GeneralSettingsTab({
   onDeleteAllChats,
   onNotificationsEnabledChange,
   onTitleModelChange,
+  onAutoCompactWindowChange,
 }: GeneralSettingsTabProps) {
   const isSuperuser = useCurrentUserQuery().data?.is_superuser ?? false;
 
@@ -198,6 +208,28 @@ export function GeneralSettingsTab({
               compact={false}
               dropdownAlign="right"
             />
+          </div>
+          <div className={styles['pref-row-notif']}>
+            <div className={styles['pref-text']}>
+              <h3 className={styles['setting-title']}>Auto-compact</h3>
+              <p className={styles['field-desc']}>
+                Claude summarizes the conversation once its context reaches this many tokens.
+              </p>
+            </div>
+            <div className={styles['theme-control']}>
+              <Select
+                value={settings.auto_compact_window}
+                onChange={(e) => onAutoCompactWindowChange(Number(e.target.value))}
+                className={styles['theme-select']}
+                aria-label="Auto-compact"
+              >
+                {AUTO_COMPACT_WINDOWS.map((opt) => (
+                  <option key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </option>
+                ))}
+              </Select>
+            </div>
           </div>
         </div>
       </SectionCard>
