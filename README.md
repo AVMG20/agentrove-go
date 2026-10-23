@@ -28,7 +28,7 @@ For production (e.g. Coolify), use `docker-compose-production.yml`. It builds th
 ```sh
 cd backend
 SECRET_KEY=$(openssl rand -hex 32) STORAGE_PATH=$PWD/../storage DEFAULT_SANDBOX_PROVIDER=host go run ./cmd/agentrove
-cd ../frontend && npm install && API_PROXY_TARGET=http://localhost:8080 npm run dev
+cd ../frontend && bun install && API_PROXY_TARGET=http://localhost:8080 bun run dev
 ```
 
 Host-sandbox agents run as the API's OS user, with a per-user HOME under `STORAGE_PATH/agent-homes/<user>`.
@@ -59,6 +59,7 @@ frontend/              React app
 
 ```sh
 cd backend && go vet ./... && go test -race ./...
+cd frontend && bun run typecheck && bun run lint && bunx vitest run
 ```
 
 ## Not ported

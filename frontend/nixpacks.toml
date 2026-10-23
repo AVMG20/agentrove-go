@@ -1,9 +1,9 @@
 [phases.setup]
-nixPkgs = ["nodejs_20"]
+nixPkgs = ["bun"]
 
 [phases.install]
 dependsOn = []
-cmds = ["npm install --legacy-peer-deps"]
+cmds = ["bun install --frozen-lockfile"]
 
-[variables]
-NODE_VERSION = "20"
+[phases.build]
+cmds = ["bun --bun run build"]

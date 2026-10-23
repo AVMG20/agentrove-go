@@ -1,16 +1,13 @@
-FROM node:20-alpine AS build
+FROM oven/bun:1-slim AS build
 
 WORKDIR /app
 
-COPY package*.json ./
-RUN npm ci --legacy-peer-deps
+COPY package.json bun.lock ./
+RUN bun install --frozen-lockfile
 
 COPY . .
 
-ENV VITE_API_BASE_URL=/api/v1
-ENV VITE_WS_URL=/api/v1/ws
-
-RUN npm run build
+RUN bun --bun run build
 
 FROM nginx:1.27-alpine
 
