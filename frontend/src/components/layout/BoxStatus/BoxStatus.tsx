@@ -6,13 +6,13 @@ import { ConfirmDialog } from '@/components/ui/ConfirmDialog/ConfirmDialog';
 import { useBoxQuery, useStopBoxMutation } from '@/hooks/queries/useWorkspaceQueries';
 import { useDropdown } from '@/hooks/useDropdown';
 import { useNow } from '@/hooks/useNow';
-import { BOX_HOME, BOX_PROJECTS, formatIdleDuration, summarizeBox } from '@/utils/box';
+import { BOX_HOME, formatIdleDuration, summarizeBox } from '@/utils/box';
 import { formatBytes } from '@/utils/format';
 import styles from './BoxStatus.module.scss';
 
 const RESET_MESSAGE =
-  `Stops the box and discards system packages installed with apt, so it starts fresh from the latest image. ` +
-  `Your home folder (${BOX_HOME}) with its toolchains, settings and Claude login, and every project in ${BOX_PROJECTS}, are kept.`;
+  `Stops the box and removes system packages installed with apt, so it starts fresh from the latest image. ` +
+  `Kept: your home folder (${BOX_HOME}) with its toolchains, settings and Claude login, and all projects.`;
 
 // "● Box running · idles in 12m" in the sidebar footer; click for stop/reset.
 // Hidden on host-only setups, where there is no box.

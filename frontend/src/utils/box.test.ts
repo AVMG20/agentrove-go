@@ -32,7 +32,10 @@ describe('summarizeBox', () => {
   });
 
   it('says Claude is working while a turn runs', () => {
-    expect(summarizeBox(box({ busy: true }))).toMatchObject({ tone: 'running', detail: 'Claude working' });
+    expect(summarizeBox(box({ busy: true }))).toMatchObject({
+      tone: 'running',
+      detail: 'Claude working',
+    });
   });
 
   it('treats a missing box as stopped', () => {
@@ -62,7 +65,10 @@ describe('projectPath', () => {
 
   it('keeps a host path and appends the worktree', () => {
     expect(
-      projectPath(workspace({ sandbox_provider: 'host', workspace_path: '/src/app' }), '.worktrees/ab'),
+      projectPath(
+        workspace({ sandbox_provider: 'host', workspace_path: '/src/app' }),
+        '.worktrees/ab',
+      ),
     ).toBe('/src/app/.worktrees/ab');
   });
 });

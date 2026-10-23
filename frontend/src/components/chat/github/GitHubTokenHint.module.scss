@@ -1,0 +1,30 @@
+@use '@/styles/globals/typography' as type;
+@use '@/styles/globals/controls' as controls;
+@use '@/styles/globals/responsive' as responsive;
+
+.hint {
+  @include type.type-meta;
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-1-5);
+  color: var(--theme-text-tertiary);
+}
+
+.icon {
+  height: var(--space-3);
+  width: var(--space-3);
+  flex-shrink: 0;
+  margin-top: var(--space-0-5);
+  color: var(--theme-warning);
+}
+
+.link {
+  @include controls.focus-ring;
+  color: var(--theme-text-secondary);
+  text-decoration: underline;
+  text-underline-offset: var(--space-0-5);
+
+  @include responsive.hover {
+    color: var(--theme-text-primary);
+  }
+}

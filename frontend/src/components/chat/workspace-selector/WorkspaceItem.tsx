@@ -83,9 +83,7 @@ export function WorkspaceItem({
         <div className={styles.content}>
           <div className={styles['name-row']}>
             <span className={styles.name}>{ws.name}</span>
-            {ws.sandbox_provider === 'host' && (
-              <span className={styles.badge}>This computer</span>
-            )}
+            {ws.sandbox_provider === 'host' && <span className={styles.badge}>This computer</span>}
             {isSelected && <Check className={styles['selected-icon']} aria-hidden="true" />}
           </div>
           <div className={styles['meta-row']}>

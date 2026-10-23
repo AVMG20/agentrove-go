@@ -14,7 +14,7 @@ interface WorkspacePickerProps {
   onSelect: (id: string) => void;
   isLoading?: boolean;
   triggerDisabled?: boolean;
-  // Creation flows; receives `close` so a new workspace can dismiss the modal.
+  // Creation flows; receives `close` so a new project can dismiss the modal.
   footer?: (close: () => void) => ReactNode;
 }
 
@@ -50,7 +50,7 @@ export function WorkspacePicker({
     [onSelect, close],
   );
 
-  const label = selectedWorkspace?.name ?? (isLoading ? 'Loading…' : 'Select workspace');
+  const label = selectedWorkspace?.name ?? (isLoading ? 'Loading…' : 'Choose a project');
 
   return (
     <>
@@ -68,8 +68,8 @@ export function WorkspacePicker({
         <ChevronDown className={styles['trigger-icon']} aria-hidden="true" />
       </Button>
 
-      <BaseModal isOpen={isOpen} onClose={close} size="md" ariaLabel="Select workspace">
-        <ModalHeader title="Select Workspace" onClose={close} />
+      <BaseModal isOpen={isOpen} onClose={close} size="md" ariaLabel="Choose a project">
+        <ModalHeader title="Projects" onClose={close} />
 
         <div className={styles.body}>
           {workspaces.length > 0 && (
@@ -80,19 +80,19 @@ export function WorkspacePicker({
                   variant="unstyled"
                   type="search"
                   name="workspace-search"
-                  aria-label="Search workspaces"
+                  aria-label="Search projects"
                   autoComplete="off"
                   spellCheck={false}
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="Search workspaces…"
+                  placeholder="Search projects…"
                   className={styles['search-input']}
                 />
                 {searchQuery && (
                   <Button
                     variant="unstyled"
                     type="button"
-                    aria-label="Clear workspace search"
+                    aria-label="Clear project search"
                     onClick={() => setSearchQuery('')}
                     className={styles['clear-search']}
                   >
@@ -103,39 +103,42 @@ export function WorkspacePicker({
             </div>
           )}
 
-          <div className={styles.list}>
-            {visibleWorkspaces.length > 0 && (
-              <div className={styles['list-heading']}>
-                <span>{hasSearchQuery ? 'Search Results' : 'Workspaces'}</span>
-                <span>{visibleWorkspaces.length}</span>
-              </div>
-            )}
-            {visibleWorkspaces.length === 0 ? (
-              <div className={styles.empty}>
-                <FolderOpen className={styles['empty-icon']} aria-hidden="true" />
-                <p className={styles['empty-title']}>
-                  {hasSearchQuery ? 'No matching workspaces' : 'No workspaces yet'}
-                </p>
-                {hasSearchQuery && (
-                  <p className={styles['empty-description']}>Try a different workspace name.</p>
-                )}
-              </div>
-            ) : (
-              <div className={styles['list-items']}>
-                {visibleWorkspaces.map((ws) => (
-                  <WorkspaceItem
-                    key={ws.id}
-                    ws={ws}
-                    isSelected={ws.id === selectedWorkspaceId}
-                    isPickerOpen={isOpen}
-                    onSelect={selectWorkspace}
-                  />
-                ))}
-              </div>
-            )}
-          </div>
+          {workspaces.length > 0 && (
+            <div className={styles.list}>
+              {visibleWorkspaces.length > 0 && (
+                <div className={styles['list-heading']}>
+                  <span>{hasSearchQuery ? 'Search results' : 'Your projects'}</span>
+                  <span>{visibleWorkspaces.length}</span>
+                </div>
+              )}
+              {visibleWorkspaces.length === 0 ? (
+                <div className={styles.empty}>
+                  <FolderOpen className={styles['empty-icon']} aria-hidden="true" />
+                  <p className={styles['empty-title']}>No matching projects</p>
+                  <p className={styles['empty-description']}>Try a different name.</p>
+                </div>
+              ) : (
+                <div className={styles['list-items']}>
+                  {visibleWorkspaces.map((ws) => (
+                    <WorkspaceItem
+                      key={ws.id}
+                      ws={ws}
+                      isSelected={ws.id === selectedWorkspaceId}
+                      isPickerOpen={isOpen}
+                      onSelect={selectWorkspace}
+                    />
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
 
-          {footer && <div className={styles.footer}>{footer(close)}</div>}
+          {footer && (
+            <div className={styles.footer}>
+              <div className={styles['footer-heading']}>New project</div>
+              {footer(close)}
+            </div>
+          )}
         </div>
       </BaseModal>
     </>

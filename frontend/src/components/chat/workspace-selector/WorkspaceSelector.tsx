@@ -1,6 +1,6 @@
 import { useWorkspacesList } from '@/hooks/queries/useWorkspaceQueries';
 import { WorkspacePicker } from './WorkspacePicker';
-import { CreateWorkspaceFooter } from './CreateWorkspaceFooter';
+import { NewProject } from './NewProject';
 
 interface WorkspaceSelectorProps {
   selectedWorkspaceId: string | null;
@@ -19,11 +19,12 @@ export function WorkspaceSelector({
       selectedWorkspaceId={selectedWorkspaceId}
       onSelect={onWorkspaceChange}
       footer={(close) => (
-        <CreateWorkspaceFooter
+        <NewProject
           onCreated={(id) => {
             onWorkspaceChange(id);
             close();
           }}
+          onNavigate={close}
         />
       )}
     />

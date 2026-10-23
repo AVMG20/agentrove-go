@@ -95,8 +95,19 @@ export const useWorkspacesList = (
 
 export const useCreateWorkspaceMutation = createMutation<Workspace, Error, CreateWorkspaceRequest>(
   (data) => workspaceService.createWorkspace(data),
-  (queryClient) => {
-    queryClient.invalidateQueries({ queryKey: queryKeys.workspaces });
+  (queryClient, workspace) => {
+    // In the list right away, so pickers that drop a selection missing from
+    // the list keep the new project selected while the refetch runs.
+    queryClient.setQueryData<PaginatedResponse<Workspace>>(queryKeys.workspaces, (old) =>
+      old
+        ? {
+            ...old,
+            items: [{ ...workspace, chat_count: 0, last_chat_at: null }, ...old.items],
+            total: old.total + 1,
+          }
+        : old,
+    );
+    void queryClient.invalidateQueries({ queryKey: queryKeys.workspaces });
   },
 );
 
