@@ -18,13 +18,13 @@ export function useSidebarChatLists(workspaces: Workspace[], enabled: boolean = 
   } = useInfiniteChatsQuery({ pinned: false, enabled });
 
   const pinnedChats = useMemo(() => {
-    const pinned = pinnedChatsData?.pages.flatMap((page) => page.items) ?? [];
+    const pinned = pinnedChatsData?.pages.flatMap((page) => page.items ?? []) ?? [];
     return [...pinned].sort((a, b) => Date.parse(b.pinned_at!) - Date.parse(a.pinned_at!));
   }, [pinnedChatsData?.pages]);
 
   // One recency-ordered list spanning every workspace.
   const recentChats = useMemo(() => {
-    const chats = chatsData?.pages.flatMap((page) => page.items) ?? [];
+    const chats = chatsData?.pages.flatMap((page) => page.items ?? []) ?? [];
     const sorted = [...chats].sort((a, b) => Date.parse(b.updated_at) - Date.parse(a.updated_at));
     // While pages remain unloaded, anything older than the oldest loaded chat can't be
     // placed yet — an unloaded chat may be newer. Load more advances the window.

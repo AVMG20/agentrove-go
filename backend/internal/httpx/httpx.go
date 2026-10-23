@@ -65,7 +65,7 @@ func JSON(w http.ResponseWriter, status int, v any) error {
 	}
 	enc := json.NewEncoder(w)
 	enc.SetEscapeHTML(false)
-	return enc.Encode(v)
+	return enc.Encode(emptySlices(v))
 }
 
 func OK(w http.ResponseWriter, v any) error { return JSON(w, http.StatusOK, v) }

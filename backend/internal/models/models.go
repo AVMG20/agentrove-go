@@ -4,6 +4,7 @@ package models
 
 import (
 	"agentrove/internal/db"
+	"encoding/json"
 )
 
 type User struct {
@@ -158,6 +159,24 @@ type CursorPaginated[T any] struct {
 	Items      []T     `json:"items"`
 	NextCursor *string `json:"next_cursor"`
 	HasMore    bool    `json:"has_more"`
+}
+
+// The frontend iterates items directly: never send null.
+
+func (p Paginated[T]) MarshalJSON() ([]byte, error) {
+	type plain Paginated[T]
+	if p.Items == nil {
+		p.Items = []T{}
+	}
+	return json.Marshal(plain(p))
+}
+
+func (p CursorPaginated[T]) MarshalJSON() ([]byte, error) {
+	type plain CursorPaginated[T]
+	if p.Items == nil {
+		p.Items = []T{}
+	}
+	return json.Marshal(plain(p))
 }
 
 // Attachment is the persisted shape of an uploaded file (message, queue, channel).

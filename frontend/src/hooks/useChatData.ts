@@ -17,7 +17,7 @@ export function useChatData(chatId: string | undefined): UseChatDataResult {
     if (!messagesQuery.data?.pages) return [];
     // Backend pages are DESC (newest first); reverse pages and items for chronological UI.
     const reversedPages = [...messagesQuery.data.pages].reverse();
-    const allMessages = reversedPages.flatMap((page) => [...page.items].reverse());
+    const allMessages = reversedPages.flatMap((page) => [...(page.items ?? [])].reverse());
     const seen = new Set<string>();
     return allMessages.filter((msg) => {
       if (seen.has(msg.id)) return false;
