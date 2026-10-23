@@ -1,0 +1,125 @@
+@use '@/styles/globals/colors' as colors;
+@use '@/styles/globals/typography' as type;
+@use '@/styles/globals/animations' as anim;
+@use '@/styles/globals/controls' as controls;
+@use '@/styles/globals/responsive' as responsive;
+@use '@/styles/globals/zlayer' as z;
+
+.usage {
+  position: relative;
+}
+
+.tooltip {
+  display: flex;
+}
+
+.trigger {
+  @include controls.focus-ring;
+  @include anim.transition-colors;
+  position: relative;
+  display: flex;
+  height: var(--space-7);
+  width: var(--space-7);
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-full);
+
+  @include responsive.hover {
+    background-color: var(--theme-surface-hover);
+  }
+}
+
+.ring {
+  height: var(--space-4);
+  width: var(--space-4);
+}
+
+.track {
+  fill: none;
+  stroke: var(--theme-border-secondary);
+  stroke-width: 2.5;
+}
+
+.progress {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2.5;
+  stroke-linecap: round;
+  transition: stroke-dashoffset 300ms ease;
+}
+
+// Green → amber → red as the context window fills.
+.tone--normal,
+.text--normal {
+  color: var(--theme-success);
+}
+
+.tone--warning,
+.text--warning {
+  color: var(--theme-warning);
+}
+
+.tone--danger,
+.text--danger {
+  color: var(--theme-error);
+}
+
+// Plan limit running low: a dot on the ring, visible without opening it.
+.flag {
+  position: absolute;
+  top: var(--space-1);
+  right: var(--space-1);
+  height: var(--space-1-5);
+  width: var(--space-1-5);
+  border-radius: var(--radius-full);
+  box-shadow: 0 0 0 1.5px var(--theme-surface-secondary);
+
+  &--warning {
+    background-color: var(--theme-warning);
+  }
+
+  &--danger {
+    background-color: var(--theme-error);
+  }
+}
+
+.panel {
+  @include z.z('dropdown');
+  @include anim.fade-in(var(--duration-base), forwards);
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + var(--space-2));
+  width: var(--space-72);
+  max-width: calc(100vw - var(--space-8));
+  border: 1px solid colors.theme-color('border', 0.6);
+  border-radius: var(--radius-xl);
+  background-color: var(--theme-surface-secondary);
+  box-shadow: var(--shadow-medium);
+  padding: var(--space-1) 0;
+}
+
+.section {
+  padding: var(--space-2-5) var(--space-3);
+
+  & + & {
+    border-top: 1px solid var(--theme-border);
+  }
+}
+
+.heading {
+  @include type.type-default(500);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: var(--theme-text-primary);
+}
+
+.figure {
+  font-variant-numeric: tabular-nums;
+}
+
+.detail {
+  @include type.type-meta;
+  margin-top: var(--space-0-5);
+  color: var(--theme-text-tertiary);
+}

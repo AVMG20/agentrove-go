@@ -4,21 +4,8 @@
 .footer-row {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-end;
   padding: var(--space-1-5) var(--space-2) var(--safe-area-bottom);
-}
-
-.footer-row:has(+ .usage-row) {
-  // The usage meter below takes over the safe-area inset.
-  padding-bottom: 0;
-}
-
-.usage-row {
-  margin-top: calc(-1 * var(--space-0-5));
-}
-
-.context-slot {
-  flex-shrink: 0;
 }
 
 .tip {

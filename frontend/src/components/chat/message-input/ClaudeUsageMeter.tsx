@@ -65,14 +65,16 @@ function UsageWindow({
   );
 }
 
-export function ClaudeUsageMeter({ className }: { className?: string }) {
+// The plan windows (5-hour and weekly), one row each, as shown in the composer's
+// usage popover.
+export function ClaudeUsageMeter() {
   const { usage, isRefreshing, refresh } = useClaudeUsage();
   const now = useNow(30_000);
 
   if (!usage || usage.status === 'unavailable') return null;
 
   return (
-    <div className={clsx(styles.meter, className)}>
+    <div className={styles.meter}>
       {usage.status === 'error' ? (
         <FloatingTooltip content={usage.error ?? 'Usage unavailable'} className={styles.window}>
           <span className={styles.label}>Usage unavailable</span>
@@ -87,12 +89,15 @@ export function ClaudeUsageMeter({ className }: { className?: string }) {
           )}
         </>
       )}
-      <RefreshButton
-        onClick={() => void refresh()}
-        isRefreshing={isRefreshing}
-        title={usage.provider ? `Refresh usage (${usage.provider})` : 'Refresh usage'}
-        ariaLabel="Refresh Claude usage"
-      />
+      <div className={styles.footer}>
+        {usage.provider && <span className={styles.provider}>{usage.provider}</span>}
+        <RefreshButton
+          onClick={() => void refresh()}
+          isRefreshing={isRefreshing}
+          title="Refresh usage"
+          ariaLabel="Refresh Claude usage"
+        />
+      </div>
     </div>
   );
 }

@@ -1,6 +1,7 @@
 @use '@/styles/globals/colors' as colors;
 @use '@/styles/globals/responsive' as responsive;
 @use '@/styles/globals/state-classes' as state;
+@use '@/styles/globals/zlayer' as z;
 
 .composer {
   position: relative;
@@ -41,6 +42,18 @@
 .textarea-wrap {
   position: relative;
   padding: var(--space-3) var(--space-4) 0;
+
+  // Keep text clear of the corner control.
+  &--corner {
+    padding-right: var(--space-10);
+  }
+}
+
+.corner {
+  @include z.z('raised');
+  position: absolute;
+  top: var(--space-1-5);
+  right: var(--space-1-5);
 }
 
 .actions {

@@ -9,8 +9,7 @@ import { ComposerField } from './ComposerField';
 import { ComposerAttachmentSlots } from './ComposerAttachmentSlots';
 import { SelectionAttachments } from './SelectionAttachments';
 import { InputSuggestionsPanel } from './InputSuggestionsPanel';
-import { ContextUsageIndicator } from './ContextUsageIndicator';
-import { ClaudeUsageMeter } from './ClaudeUsageMeter';
+import { ComposerUsage } from './ComposerUsage';
 import { InputProvider } from './InputProvider';
 import { useInputContext } from '@/hooks/useInputContext';
 import type { ContextUsageInfo } from '@/utils/contextUsage';
@@ -67,6 +66,7 @@ function InputLayout() {
       onSubmit={actions.handleSubmit}
       isDragging={state.isDragging}
       dragHandlers={meta.dragHandlers}
+      corner={<ComposerUsage contextUsage={state.contextUsage ?? null} />}
       attachments={
         <>
           <ComposerAttachmentSlots
@@ -132,12 +132,8 @@ function InputLayout() {
       }
     >
       <div className={styles['footer-row']}>
-        <div className={styles['context-slot']}>
-          {state.contextUsage && <ContextUsageIndicator usage={state.contextUsage} />}
-        </div>
         <InputControls />
       </div>
-      <ClaudeUsageMeter className={styles['usage-row']} />
 
       {state.showTip && !state.hasAttachments && (
         <div className={styles.tip}>

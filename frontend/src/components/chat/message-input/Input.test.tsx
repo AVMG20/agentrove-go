@@ -56,7 +56,7 @@ vi.mock('react-hot-toast', () => ({
 
 // Heavy composer sub-trees that don't participate in submit/queue logic.
 vi.mock('./InputControls', () => ({ InputControls: () => null }));
-vi.mock('./ClaudeUsageMeter', () => ({ ClaudeUsageMeter: () => null }));
+vi.mock('./ComposerUsage', () => ({ ComposerUsage: () => null }));
 vi.mock('@/components/ui/FileUploadDialog/FileUploadDialog', () => ({
   FileUploadDialog: () => null,
 }));
