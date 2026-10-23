@@ -5,15 +5,13 @@ import { CreateWorkspaceFooter } from './CreateWorkspaceFooter';
 interface WorkspaceSelectorProps {
   selectedWorkspaceId: string | null;
   onWorkspaceChange: (workspaceId: string | null) => void;
-  enabled: boolean;
 }
 
 export function WorkspaceSelector({
   selectedWorkspaceId,
   onWorkspaceChange,
-  enabled,
 }: WorkspaceSelectorProps) {
-  const workspaces = useWorkspacesList({ enabled });
+  const workspaces = useWorkspacesList();
 
   return (
     <WorkspacePicker

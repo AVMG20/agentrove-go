@@ -1,7 +1,7 @@
 import { useMutation, useQuery } from '@tanstack/react-query';
 import type { UseMutationOptions, UseQueryOptions } from '@tanstack/react-query';
 import { authService } from '@/services/authService';
-import type { AuthResponse, User } from '@/types/user.types';
+import type { AuthConfig, AuthResponse, User } from '@/types/user.types';
 import { clearAllStreamState } from '@/hooks/stream/streamRegistry';
 import { createMutation } from './createMutation';
 import { queryKeys } from './queryKeys';
@@ -14,6 +14,20 @@ export const useCurrentUserQuery = (options?: Partial<UseQueryOptions<User>>) =>
     ...options,
   });
 };
+
+export const useAuthConfigQuery = () =>
+  useQuery({
+    queryKey: queryKeys.auth.config,
+    queryFn: () => authService.getAuthConfig(),
+    staleTime: 60_000,
+  });
+
+export const useSetRegistrationMutation = createMutation<AuthConfig, Error, boolean>(
+  (enabled) => authService.setRegistrationEnabled(enabled),
+  (queryClient, config) => {
+    queryClient.setQueryData(queryKeys.auth.config, config);
+  },
+);
 
 interface LoginData {
   username: string;

@@ -11,7 +11,6 @@ import { useChatStore } from '@/store/chatStore';
 import { useUIStore } from '@/store/uiStore';
 import { useModelStore } from '@/store/modelStore';
 import { useChatSettingsStore, DEFAULT_CHAT_SETTINGS_KEY } from '@/store/chatSettingsStore';
-import { useAuthStore } from '@/store/authStore';
 import { useCreateChatMutation } from '@/hooks/queries/useChatQueries';
 import { useWorkspacesList, useWorkspaceResourcesQuery } from '@/hooks/queries/useWorkspaceQueries';
 import { useFilesMetadataQuery } from '@/hooks/queries/useSandboxQueries';
@@ -65,19 +64,13 @@ export function LandingPage() {
   const attachedFiles = useChatStore(
     (state) => state.attachedFilesByChat[PENDING_NEW_CHAT_KEY] ?? null,
   );
-  const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
-  const { selectedModelId, selectModel } = useModelSelection({
-    enabled: isAuthenticated,
-  });
+  const { selectedModelId, selectModel } = useModelSelection();
 
-  const workspaces = useWorkspacesList({ enabled: isAuthenticated });
+  const workspaces = useWorkspacesList();
 
-  const { data: currentUser } = useCurrentUserQuery({ enabled: isAuthenticated });
+  const { data: currentUser } = useCurrentUserQuery();
   // Same list as the sidebar (empty → example prompts).
-  const { recentChats, workspaceBadgeById, isLoadingChats } = useSidebarChatLists(
-    workspaces,
-    isAuthenticated,
-  );
+  const { recentChats, workspaceBadgeById, isLoadingChats } = useSidebarChatLists(workspaces);
   const showRecents = !isLoadingChats && recentChats.length > 0;
   const greeting = getTimeGreeting();
   // Handles are lowercase — capitalize for the greeting.
@@ -132,11 +125,11 @@ export function LandingPage() {
   const { data: workspaceResources } = useWorkspaceResourcesQuery(
     selectedWorkspaceId ?? undefined,
     {
-      enabled: isAuthenticated && !!selectedWorkspaceId,
+      enabled: !!selectedWorkspaceId,
     },
   );
 
-  const { data: settings } = useSettingsQuery({ enabled: isAuthenticated });
+  const { data: settings } = useSettingsQuery();
 
   // Sandbox for editor/@file/branch before a chat exists.
   const selectedSandboxId = workspaces.find((ws) => ws.id === selectedWorkspaceId)?.sandbox_id;
@@ -146,7 +139,7 @@ export function LandingPage() {
     isLoading: isFilesMetadataLoading,
     refetch: refetchFilesMetadata,
   } = useFilesMetadataQuery(selectedSandboxId, undefined, {
-    enabled: isAuthenticated && !!selectedSandboxId,
+    enabled: !!selectedSandboxId,
   });
 
   const fileStructure = useMemo(
@@ -184,11 +177,6 @@ export function LandingPage() {
       const trimmedPrompt = message.trim();
       if (!trimmedPrompt || isLoading) return;
 
-      if (!isAuthenticated) {
-        navigate('/signup');
-        return;
-      }
-
       if (!selectedModelId?.trim()) {
         toast.error('Please select an AI model');
         return;
@@ -219,15 +207,7 @@ export function LandingPage() {
         setIsLoading(false);
       }
     },
-    [
-      createChat,
-      isAuthenticated,
-      isLoading,
-      message,
-      navigate,
-      selectedModelId,
-      selectedWorkspaceId,
-    ],
+    [createChat, isLoading, message, navigate, selectedModelId, selectedWorkspaceId],
   );
 
   const handleChatSelect = useCallback(
@@ -243,12 +223,11 @@ export function LandingPage() {
         <WorkspaceSelector
           selectedWorkspaceId={selectedWorkspaceId}
           onWorkspaceChange={handleWorkspaceChange}
-          enabled={isAuthenticated}
         />
         <BranchWorktreeSelector disabled={isLoading} />
       </div>
     ),
-    [selectedWorkspaceId, handleWorkspaceChange, isLoading, isAuthenticated],
+    [selectedWorkspaceId, handleWorkspaceChange, isLoading],
   );
 
   const renderView = useCallback(

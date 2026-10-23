@@ -6,7 +6,7 @@ import { FieldMessage } from '@/components/ui/primitives/FieldMessage/FieldMessa
 import { Input } from '@/components/ui/primitives/Input/Input';
 import { Label } from '@/components/ui/primitives/Label/Label';
 import { useAuthStore } from '@/store/authStore';
-import { useLoginMutation } from '@/hooks/queries/useAuthQueries';
+import { useAuthConfigQuery, useLoginMutation } from '@/hooks/queries/useAuthQueries';
 import { useAuthForm } from '@/hooks/useAuthForm';
 import { isValidEmail } from '@/utils/validation';
 import { AuthPageLayout } from '@/components/auth/AuthPageLayout/AuthPageLayout';
@@ -76,6 +76,8 @@ export function LoginPage() {
   // paths only, so the param can't redirect off-site.
   const next = searchParams.get('next');
   const redirectTo = next && /^\/(?![/\\])/.test(next) ? next : '/';
+
+  const registrationEnabled = useAuthConfigQuery().data?.registration_enabled ?? false;
 
   const loginMutation = useLoginMutation({
     onSuccess: () => {
@@ -176,16 +178,18 @@ export function LoginPage() {
         </Button>
       </form>
 
-      <div className={styles.footer}>
-        <Button
-          type="button"
-          variant="link"
-          className={styles['link-small']}
-          onClick={() => navigate('/signup')}
-        >
-          Don{'’'}t have an account? Create one
-        </Button>
-      </div>
+      {registrationEnabled && (
+        <div className={styles.footer}>
+          <Button
+            type="button"
+            variant="link"
+            className={styles['link-small']}
+            onClick={() => navigate('/signup')}
+          >
+            Don{'’'}t have an account? Create one
+          </Button>
+        </div>
+      )}
     </AuthPageLayout>
   );
 }

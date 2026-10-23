@@ -1,4 +1,10 @@
+import toast from 'react-hot-toast';
 import { useDraftField } from '@/hooks/useDraftField';
+import {
+  useAuthConfigQuery,
+  useCurrentUserQuery,
+  useSetRegistrationMutation,
+} from '@/hooks/queries/useAuthQueries';
 import clsx from 'clsx';
 import { Button } from '@/components/ui/primitives/Button/Button';
 import { Select } from '@/components/ui/primitives/Select/Select';
@@ -98,6 +104,41 @@ function SecretField({
   );
 }
 
+// Superuser-only: whether new accounts can sign up. REGISTRATION_DISABLED on
+// the server pins it off, which the switch shows but can't change.
+function AdministrationCard() {
+  const { data: config } = useAuthConfigQuery();
+  const setRegistration = useSetRegistrationMutation({
+    onSuccess: (next) =>
+      toast.success(next.registration_enabled ? 'Sign-ups enabled' : 'Sign-ups disabled', {
+        id: 'settings-saved',
+      }),
+    onError: (error) => toast.error(error.message || 'Failed to update sign-ups'),
+  });
+  const locked = config?.registration_locked ?? false;
+
+  return (
+    <SectionCard title="Administration">
+      <div className={styles['pref-row-notif']}>
+        <div className={styles['pref-text']}>
+          <h3 className={styles['setting-title']}>Allow new sign-ups</h3>
+          <p className={styles['field-desc']}>
+            {locked
+              ? 'Locked by REGISTRATION_DISABLED on the server.'
+              : 'Let anyone with the link create an account on this instance.'}
+          </p>
+        </div>
+        <Switch
+          checked={config?.registration_enabled ?? false}
+          onCheckedChange={(enabled) => setRegistration.mutate(enabled)}
+          disabled={!config || locked || setRegistration.isPending}
+          aria-label="Allow new sign-ups"
+        />
+      </div>
+    </SectionCard>
+  );
+}
+
 export function GeneralSettingsTab({
   fields,
   settings,
@@ -108,6 +149,8 @@ export function GeneralSettingsTab({
   onNotificationsEnabledChange,
   onTitleModelChange,
 }: GeneralSettingsTabProps) {
+  const isSuperuser = useCurrentUserQuery().data?.is_superuser ?? false;
+
   return (
     <div className={styles.general}>
       <SectionCard title="API Keys & Authentication">
@@ -158,6 +201,8 @@ export function GeneralSettingsTab({
           </div>
         </div>
       </SectionCard>
+
+      {isSuperuser && <AdministrationCard />}
 
       <SectionCard title="Data Management">
         <div className={styles['data-row']}>

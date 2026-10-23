@@ -5,7 +5,15 @@ export interface User {
   email: string;
   username: string;
   is_verified: boolean;
+  is_superuser: boolean;
   email_verification_required: boolean;
+}
+
+// GET /auth/config — public, so the sign-in page can hide sign-up.
+export interface AuthConfig {
+  registration_enabled: boolean;
+  // REGISTRATION_DISABLED pins sign-ups off; the admin switch can't override it.
+  registration_locked: boolean;
 }
 
 export interface AuthResponse {

@@ -3,19 +3,12 @@ import type { ReactElement } from 'react';
 
 interface AuthRouteProps {
   isAuthenticated: boolean;
-  requireAuth: boolean;
   children: ReactElement;
 }
 
-// Auth gate only — in-app pages get their chrome from AppShellRoute.
-export function AuthRoute({ isAuthenticated, requireAuth, children }: AuthRouteProps) {
-  if (requireAuth && !isAuthenticated) {
-    return <Navigate to="/login" />;
-  }
-
-  if (!requireAuth && isAuthenticated) {
-    return <Navigate to="/" replace />;
-  }
-
+// Gate for the signed-out pages (login, sign-up, password reset): a signed-in
+// user is sent into the app instead. The app itself is gated by AppShellRoute.
+export function AuthRoute({ isAuthenticated, children }: AuthRouteProps) {
+  if (isAuthenticated) return <Navigate to="/" replace />;
   return children;
 }

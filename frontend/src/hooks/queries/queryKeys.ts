@@ -13,6 +13,7 @@ export const queryKeys = {
   subThreads: (chatId?: string) => ['chat', chatId, 'sub-threads'] as const,
   auth: {
     user: 'auth-user',
+    config: ['auth-config'] as const,
   },
   settings: 'settings',
   skills: 'skills',

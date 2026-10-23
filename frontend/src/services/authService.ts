@@ -1,7 +1,7 @@
 import { apiClient } from '@/lib/api';
 import { ensureResponse, serviceCall, withAuth } from '@/services/base/BaseService';
 import { ValidationError } from '@/services/base/ServiceError';
-import type { AuthResponse, User } from '@/types/user.types';
+import type { AuthConfig, AuthResponse, User } from '@/types/user.types';
 import { authStorage } from '@/utils/storage';
 import {
   validateRequired,
@@ -150,7 +150,23 @@ async function resetPassword(data: ResetPasswordRequest): Promise<void> {
   });
 }
 
+async function getAuthConfig(): Promise<AuthConfig> {
+  return serviceCall(async () => {
+    const response = await apiClient.get<AuthConfig>('/auth/config');
+    return ensureResponse(response, 'Invalid response from server');
+  });
+}
+
+async function setRegistrationEnabled(enabled: boolean): Promise<AuthConfig> {
+  return withAuth(async () => {
+    const response = await apiClient.put<AuthConfig>('/auth/registration', { enabled });
+    return ensureResponse(response, 'Invalid response from server');
+  });
+}
+
 export const authService = {
+  getAuthConfig,
+  setRegistrationEnabled,
   signup,
   login,
   getCurrentUser,

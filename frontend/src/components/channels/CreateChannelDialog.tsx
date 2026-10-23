@@ -423,7 +423,6 @@ export function CreateChannelDialog({
                 <WorkspaceSelector
                   selectedWorkspaceId={workspaceId}
                   onWorkspaceChange={handleWorkspaceChange}
-                  enabled={isAuthenticated}
                 />
               </div>
             </div>

@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/primitives/Button/Button';
 import { FieldMessage } from '@/components/ui/primitives/FieldMessage/FieldMessage';
 import { Input } from '@/components/ui/primitives/Input/Input';
 import { Label } from '@/components/ui/primitives/Label/Label';
-import { useSignupMutation } from '@/hooks/queries/useAuthQueries';
+import { useAuthConfigQuery, useSignupMutation } from '@/hooks/queries/useAuthQueries';
 import { useAuthForm } from '@/hooks/useAuthForm';
 import { isValidEmail, isValidUsername, isValidPassword } from '@/utils/validation';
 import { useAuthStore } from '@/store/authStore';
@@ -55,6 +55,36 @@ const validateForm = (values: SignupFormData): SignupFormErrors | null => {
 };
 
 export function SignupPage() {
+  const navigate = useNavigate();
+  const { data: authConfig, isError } = useAuthConfigQuery();
+
+  // If the config can't be read, show the form; the server still enforces it.
+  if (!authConfig && !isError) return <AuthPageLayout title="Join Agentrove" subtitle="" />;
+
+  if (authConfig && !authConfig.registration_enabled) {
+    return (
+      <AuthPageLayout
+        title="Sign-ups are closed"
+        subtitle="This instance isn't accepting new accounts. Ask the administrator for access."
+      >
+        <Button
+          type="button"
+          variant="primary"
+          size="lg"
+          className={styles.submit}
+          onClick={() => navigate('/login')}
+        >
+          <span>Back to sign in</span>
+          <ArrowRight className={styles.icon} />
+        </Button>
+      </AuthPageLayout>
+    );
+  }
+
+  return <SignupForm />;
+}
+
+function SignupForm() {
   const navigate = useNavigate();
 
   const signupMutation = useSignupMutation({

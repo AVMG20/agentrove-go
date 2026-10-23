@@ -30,6 +30,7 @@ export const persistOptions: Omit<PersistQueryClientOptions, 'queryClient'> = {
     key: 'agentrove-query-cache',
   }),
   dehydrateOptions: { shouldDehydrateQuery: shouldPersistQuery },
-  // Bump on response-shape changes. v2 purges v1 that briefly cached settings (secrets).
-  buster: 'v2',
+  // Bump on response-shape changes. v2 purged v1 that briefly cached settings (secrets);
+  // v3: the persisted user gained is_superuser.
+  buster: 'v3',
 };

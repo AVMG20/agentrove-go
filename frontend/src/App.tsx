@@ -1,6 +1,6 @@
 import { BrowserRouter, Navigate, Routes, Route } from 'react-router-dom';
 import { settingsPath } from '@/components/settings/settingsSections';
-import { useEffect, useState, Suspense } from 'react';
+import { useEffect, useState, Suspense, type ReactElement } from 'react';
 import { lazyNamed } from '@/utils/lazyNamed';
 import { useMountEffect } from '@/hooks/useMountEffect';
 import { useAppBadge } from '@/hooks/useAppBadge';
@@ -62,78 +62,44 @@ function AppContent() {
     }
   }, [user, hasToken, isAuthenticated]);
 
+  useGlobalStream({ enabled: isSessionAuthenticated });
   useLocalStreamRestoration({ enabled: isSessionAuthenticated });
   useChatEvents({ enabled: isSessionAuthenticated });
   usePageResumeRefresh({ enabled: isSessionAuthenticated });
   useNotificationPermissionPrompt(isSessionAuthenticated);
 
-  const showLoading = hasToken && isLoading;
+  const signedOutOnly = (page: ReactElement) => (
+    <AuthRoute isAuthenticated={isSessionAuthenticated}>{page}</AuthRoute>
+  );
 
   return (
     <Suspense fallback={<LoadingScreen />}>
       <Routes>
-        <Route
-          path="/login"
-          element={
-            <AuthRoute isAuthenticated={isSessionAuthenticated} requireAuth={false}>
-              <LoginPage />
-            </AuthRoute>
-          }
-        />
-        <Route
-          path="/signup"
-          element={
-            <AuthRoute isAuthenticated={isSessionAuthenticated} requireAuth={false}>
-              <SignupPage />
-            </AuthRoute>
-          }
-        />
+        <Route path="/login" element={signedOutOnly(<LoginPage />)} />
+        <Route path="/signup" element={signedOutOnly(<SignupPage />)} />
+        <Route path="/register" element={<Navigate to="/signup" replace />} />
         <Route path="/verify-email" element={<EmailVerificationPage />} />
-        {/* Outside the app shell and auth gate: public artifacts open signed out. */}
+        <Route path="/forgot-password" element={signedOutOnly(<ForgotPasswordPage />)} />
+        <Route path="/reset-password" element={signedOutOnly(<ResetPasswordPage />)} />
+        {/* Outside the auth gate: artifacts published as public open signed out
+            (private ones send you to sign in from the page itself). */}
         <Route path="/artifacts/:artifactId" element={<ArtifactPage />} />
+
+        {/* Everything else is the signed-in app; signed out, it all lands on /login. */}
         <Route
-          path="/forgot-password"
           element={
-            <AuthRoute isAuthenticated={isSessionAuthenticated} requireAuth={false}>
-              <ForgotPasswordPage />
-            </AuthRoute>
+            <AppShellRoute
+              isAuthenticated={isSessionAuthenticated}
+              isLoading={hasToken && isLoading}
+            />
           }
-        />
-        <Route
-          path="/reset-password"
-          element={
-            <AuthRoute isAuthenticated={isSessionAuthenticated} requireAuth={false}>
-              <ResetPasswordPage />
-            </AuthRoute>
-          }
-        />
-        <Route element={<AppShellRoute showLoading={showLoading} />}>
+        >
           <Route path="/" element={<LandingPage />} />
-          <Route
-            path="/chat/:chatId"
-            element={
-              <AuthRoute isAuthenticated={isSessionAuthenticated} requireAuth={true}>
-                <ChatPage />
-              </AuthRoute>
-            }
-          />
-          <Route
-            path="/channels/:channelId"
-            element={
-              <AuthRoute isAuthenticated={isSessionAuthenticated} requireAuth={true}>
-                <ChannelPage />
-              </AuthRoute>
-            }
-          />
+          <Route path="/chat/:chatId" element={<ChatPage />} />
+          <Route path="/channels/:channelId" element={<ChannelPage />} />
           <Route path="/settings" element={<Navigate to={settingsPath()} replace />} />
-          <Route
-            path="/settings/:section"
-            element={
-              <AuthRoute isAuthenticated={isSessionAuthenticated} requireAuth={true}>
-                <SettingsPage />
-              </AuthRoute>
-            }
-          />
+          <Route path="/settings/:section" element={<SettingsPage />} />
+          <Route path="*" element={<Navigate to="/" replace />} />
         </Route>
       </Routes>
     </Suspense>
@@ -144,8 +110,6 @@ export default function App() {
   const resolvedTheme = useResolvedTheme();
   const theme = useUIStore((state) => state.theme);
   const [authHydrated, setAuthHydrated] = useState(false);
-
-  useGlobalStream({ enabled: authHydrated });
 
   useMountEffect(() => {
     useAuthStore.getState().setAuthenticated(!!authStorage.getToken());

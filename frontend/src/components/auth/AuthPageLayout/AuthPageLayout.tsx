@@ -8,7 +8,7 @@ import styles from './AuthPageLayout.module.scss';
 interface AuthPageLayoutProps {
   title: string;
   subtitle: string;
-  children: ReactNode;
+  children?: ReactNode;
 }
 
 export const AuthPageLayout = memo(function AuthPageLayout({
@@ -35,10 +35,10 @@ export const AuthPageLayout = memo(function AuthPageLayout({
                 className={clsx(styles.logo, styles['logo--on-dark'])}
               />
               <h2 className={styles.title}>{title}</h2>
-              <p className={styles.subtitle}>{subtitle}</p>
+              {subtitle && <p className={styles.subtitle}>{subtitle}</p>}
             </div>
 
-            <div className={styles.card}>{children}</div>
+            {children && <div className={styles.card}>{children}</div>}
           </div>
         </div>
       </div>
