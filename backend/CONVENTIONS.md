@@ -37,10 +37,8 @@ Scope changes vs Python:
   cfg.TrustedProxies)` for the client address, never `X-Forwarded-For`
   directly.
 - `internal/usage` — usage meter. Endpoint follows `ANTHROPIC_BASE_URL`
-  (official `https://api.anthropic.com/api/oauth/usage` or
-  `<proxy origin>/api/oauth/usage`); `CLAUDE_USAGE_ENDPOINTS` overrides per
-  host. For bitsec set
-  `CLAUDE_USAGE_ENDPOINTS=claude.bitsec.dev=https://claude-admin.bitsec.dev/api/usage`.
+  (official `https://api.anthropic.com/api/oauth/usage`, else
+  `<ANTHROPIC_BASE_URL>/api/usage`).
 - `internal/store` — ownership-checked `GetWorkspace`, `GetWorkspaceBySandbox`,
   `GetChat`, `GetMemberChat`, `GetUserSettings`, `UserEnv`.
 - `internal/sandbox` — `Manager.For(workspace) -> *Sandbox`. `Sandbox.Exec`,

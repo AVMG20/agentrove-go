@@ -12,33 +12,30 @@ import (
 )
 
 func TestResolveSource(t *testing.T) {
-	endpoints := map[string]string{"Proxy.Example.com": "https://proxy.example.com/usage", "insecure.example": "http://x"}
-	global := map[string]string{"ANTHROPIC_BASE_URL": "https://proxy.example.com/v1", "ANTHROPIC_API_KEY": "k1"}
-	s := ResolveSource(global, endpoints, nil)
-	if s == nil || s.Provider != "proxy.example.com" || s.Token != "k1" || s.URL != "https://proxy.example.com/usage" || s.Headers != nil {
-		t.Fatalf("source = %+v", s)
+	// A custom base URL gets <base>/api/usage; AUTH_TOKEN wins over API_KEY.
+	global := map[string]string{"ANTHROPIC_BASE_URL": "https://Claude.Bitsec.dev/", "ANTHROPIC_API_KEY": "k1"}
+	s := ResolveSource(global, nil)
+	if s == nil || s.Provider != "claude.bitsec.dev" || s.Token != "k1" || s.URL != "https://Claude.Bitsec.dev/api/usage" || s.Headers != nil {
+		t.Fatalf("proxy = %+v", s)
 	}
-	// User vars override the deployment env; AUTH_TOKEN wins over API_KEY.
-	s = ResolveSource(global, endpoints, []models.CustomEnvVar{{Key: "ANTHROPIC_AUTH_TOKEN", Value: "t2"}})
+	// User vars override the deployment env.
+	s = ResolveSource(global, []models.CustomEnvVar{{Key: "ANTHROPIC_AUTH_TOKEN", Value: "t2"}})
 	if s == nil || s.Token != "t2" {
 		t.Fatalf("override = %+v", s)
 	}
-	if ResolveSource(map[string]string{"ANTHROPIC_BASE_URL": "https://proxy.example.com"}, endpoints, nil) != nil {
+	s = ResolveSource(map[string]string{"ANTHROPIC_BASE_URL": "https://proxy.example:8443/v1", "ANTHROPIC_AUTH_TOKEN": "k"}, nil)
+	if s == nil || s.URL != "https://proxy.example:8443/v1/api/usage" {
+		t.Fatalf("base path = %+v", s)
+	}
+	if ResolveSource(map[string]string{"ANTHROPIC_BASE_URL": "https://proxy.example.com"}, nil) != nil {
 		t.Error("missing token should be unavailable")
 	}
-
-	// Unmapped proxies get <origin>/api/oauth/usage, https only.
-	s = ResolveSource(map[string]string{"ANTHROPIC_BASE_URL": "https://Other.example:8443/v1", "ANTHROPIC_API_KEY": "k"}, endpoints, nil)
-	if s == nil || s.URL != "https://Other.example:8443/api/oauth/usage" || s.Provider != "other.example" || s.Headers != nil {
-		t.Fatalf("derived = %+v", s)
+	if ResolveSource(map[string]string{"ANTHROPIC_BASE_URL": "http://plain.example", "ANTHROPIC_API_KEY": "k"}, nil) != nil {
+		t.Error("http base URL must not get an endpoint")
 	}
-	if ResolveSource(map[string]string{"ANTHROPIC_BASE_URL": "http://plain.example", "ANTHROPIC_API_KEY": "k"}, endpoints, nil) != nil {
-		t.Error("http base URL must not derive an endpoint")
-	}
-	// A non-https mapping is ignored, so the host falls back to deriving.
-	s = ResolveSource(map[string]string{"ANTHROPIC_BASE_URL": "https://insecure.example", "ANTHROPIC_API_KEY": "k"}, endpoints, nil)
-	if s == nil || s.URL != "https://insecure.example/api/oauth/usage" {
-		t.Errorf("non-https mapping = %+v", s)
+	// A proxy never gets the OAuth token meant for Anthropic.
+	if ResolveSource(map[string]string{"ANTHROPIC_BASE_URL": "https://proxy.example.com", "CLAUDE_CODE_OAUTH_TOKEN": "o"}, nil) != nil {
+		t.Error("OAuth token must not go to a proxy")
 	}
 
 	// No base URL (or Anthropic's own) uses the official endpoint; the OAuth
@@ -49,30 +46,23 @@ func TestResolveSource(t *testing.T) {
 		for k, v := range official {
 			env[k] = v
 		}
-		s = ResolveSource(env, nil, nil)
+		s = ResolveSource(env, nil)
 		if s == nil || s.URL != "https://api.anthropic.com/api/oauth/usage" || s.Token != "oauth" || s.Provider != "api.anthropic.com" ||
 			s.Headers["anthropic-beta"] != "oauth-2025-04-20" {
 			t.Fatalf("official (%q) = %+v", base, s)
 		}
 	}
-	s = ResolveSource(map[string]string{"ANTHROPIC_API_KEY": "key"}, nil, nil)
+	s = ResolveSource(map[string]string{"ANTHROPIC_API_KEY": "key"}, nil)
 	if s == nil || s.Token != "key" {
 		t.Fatalf("official fallback token = %+v", s)
 	}
-	if ResolveSource(map[string]string{}, nil, nil) != nil {
+	if ResolveSource(map[string]string{}, nil) != nil {
 		t.Error("no token should be unavailable")
 	}
 	// The user's own base URL beats the deployment's official default.
-	s = ResolveSource(official, nil, []models.CustomEnvVar{{Key: "ANTHROPIC_BASE_URL", Value: "https://proxy.example.com"}})
-	if s == nil || s.URL != "https://proxy.example.com/api/oauth/usage" || s.Token != "auth" {
+	s = ResolveSource(official, []models.CustomEnvVar{{Key: "ANTHROPIC_BASE_URL", Value: "https://proxy.example.com"}})
+	if s == nil || s.URL != "https://proxy.example.com/api/usage" || s.Token != "auth" {
 		t.Fatalf("user proxy = %+v", s)
-	}
-
-	// The documented bitsec mapping keeps working.
-	bitsec := map[string]string{"claude.bitsec.dev": "https://claude-admin.bitsec.dev/api/usage"}
-	s = ResolveSource(map[string]string{"ANTHROPIC_BASE_URL": "https://claude.bitsec.dev", "ANTHROPIC_AUTH_TOKEN": "b", "CLAUDE_CODE_OAUTH_TOKEN": "o"}, bitsec, nil)
-	if s == nil || s.URL != "https://claude-admin.bitsec.dev/api/usage" || s.Token != "b" {
-		t.Fatalf("bitsec = %+v", s)
 	}
 }
 

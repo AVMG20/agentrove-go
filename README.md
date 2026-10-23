@@ -27,11 +27,7 @@ The API trusts `X-Forwarded-For` only from `TRUSTED_PROXIES` (default: loopback 
 
 ### Usage meter
 
-The chat input shows the 5-hour and weekly usage of the account the agents run on. With `ANTHROPIC_BASE_URL` unset or `https://api.anthropic.com`, it reads Anthropic's OAuth usage endpoint with `CLAUDE_CODE_OAUTH_TOKEN` (falling back to `ANTHROPIC_AUTH_TOKEN` / `ANTHROPIC_API_KEY`). With an https proxy as base URL, it reads `<proxy origin>/api/oauth/usage`. `CLAUDE_USAGE_ENDPOINTS` (`host=url`, comma-separated) overrides the endpoint for a host. To keep the bitsec proxy's meter working, set:
-
-```sh
-CLAUDE_USAGE_ENDPOINTS=claude.bitsec.dev=https://claude-admin.bitsec.dev/api/usage
-```
+The chat input shows the 5-hour and weekly usage of the account the agents run on. With `ANTHROPIC_BASE_URL` unset or `https://api.anthropic.com`, it reads Anthropic's OAuth usage endpoint with `CLAUDE_CODE_OAUTH_TOKEN` (falling back to `ANTHROPIC_AUTH_TOKEN` / `ANTHROPIC_API_KEY`). With an https proxy as base URL (e.g. `https://claude.bitsec.dev`), it reads `<ANTHROPIC_BASE_URL>/api/usage` with `ANTHROPIC_AUTH_TOKEN` / `ANTHROPIC_API_KEY`.
 
 ## Run locally without Compose
 

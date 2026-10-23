@@ -45,10 +45,6 @@ services:
       ANTHROPIC_BASE_URL: ${ANTHROPIC_BASE_URL:-}
       ANTHROPIC_AUTH_TOKEN: ${ANTHROPIC_AUTH_TOKEN:-}
       CLAUDE_CODE_OAUTH_TOKEN: ${CLAUDE_CODE_OAUTH_TOKEN:-}
-      # Usage meter endpoint per Claude proxy host (host=url,...); unset uses
-      # Anthropic's endpoint or <ANTHROPIC_BASE_URL origin>/api/oauth/usage.
-      # bitsec: claude.bitsec.dev=https://claude-admin.bitsec.dev/api/usage
-      CLAUDE_USAGE_ENDPOINTS: ${CLAUDE_USAGE_ENDPOINTS:-}
       AGENT_ENV: ${AGENT_ENV:-}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
     healthcheck:
