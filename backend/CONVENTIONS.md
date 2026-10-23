@@ -25,30 +25,80 @@ Scope changes vs Python:
   must hold `sandbox.Acquire()` / the release func from `Start`/`StartPTY`.
 
 ## Box networks
+Treat a box as hostile: the agent in it can be prompt-injected and has root
+through sudo. It may reach the internet and the API's HTTP port, nothing else.
+
 `SANDBOX_PER_USER_NETWORKS` (default on) gives each user's box its own
 bridge, `agentrove-user-net-<user id without dashes>` (labels
-`agentrove.managed`, `agentrove.instance`, `agentrove.user`), so boxes can't
-reach each other. The API only drives boxes over the Docker socket (exec);
-boxes call the API (MCP) at `AGENTROVE_INTERNAL_URL`, so the API container
-joins every user network with the alias `api` (plus that URL's host) and
-rejoins them at startup. It finds its own container by hostname (Docker's
-default, the short id) or `AGENTROVE_API_CONTAINER`; if neither works it logs
-a warning once and boxes stay on the shared `DOCKER_NETWORK`, as with the
-flag off. Existing boxes move networks by connect/disconnect the next time
-they start (not recreated, so installed packages survive). Boxes still get
-internet access through the bridge's NAT.
+`agentrove.managed`, `agentrove.instance`, `agentrove.user`; IPv6 off), so
+boxes can't reach each other. The API only drives boxes over the Docker
+socket (exec). Boxes call the API (MCP) at `AGENTROVE_INTERNAL_URL`, so the
+API container joins every user network with the alias `api` (plus that URL's
+host) and `GwPriority=-1`, so the API's own traffic never routes through a
+box bridge, and rejoins them at startup. It finds its own container by
+hostname (Docker's default, the short id) or `AGENTROVE_API_CONTAINER`. If
+neither works, it logs a warning once and boxes stay on the shared
+`DOCKER_NETWORK`, as with the flag off. Existing boxes move networks by
+connect/disconnect the next time they start. They aren't recreated, so
+installed packages survive.
 
-Verify on the host (`<id>` = user id without dashes):
+**Egress firewall** (`internal/sandbox/egress*.go`, `SANDBOX_EGRESS_FIREWALL`,
+default `on`). Docker alone leaves the host itself (gateway and any host IP,
+any port), published ports such as Coolify's `:8000`, the LAN/VPC and cloud
+metadata reachable from a box. The API closes that with nftables tables
+`inet` and `bridge` `agentrove_box_<instance>`, applied by a short-lived
+helper container: the API image with host network, `NET_ADMIN` only and a
+read-only root filesystem, running `nft`.
+- Generation is pure and golden-tested: `nftRuleset` / `nftBridgeRuleset`
+  turn an `egressPolicy` (bridges, subnets, API addresses, DNS upstreams,
+  exceptions) into atomic `nft -f` scripts. The apply step is
+  `egressApplyLocked` / `runEgressHelper`.
+- The policy is drop-only:
+  - Forwarded traffic from box bridges to private, CGNAT, link-local,
+    metadata or host addresses (IPv4 and IPv6) is dropped.
+  - Box → host (input) is dropped.
+  - On the bridge itself, only TCP to the API's port and replies from it
+    pass. These rules are stateless and don't name the API's address, so they
+    survive an API redeploy.
+  - DNS to the embedded resolver's upstreams is allowed. They're
+    discovered from `# ExtServers:` in the API's resolv.conf; when unknown,
+    port 53 is allowed to any address.
+  - The API's own address is exempt on the shared network.
+- The rules are applied at startup (`ReconnectNetworks`), synchronously in
+  `boxNetwork` before a box starts on a network they don't cover, and every
+  10 minutes as a repair. A failure is logged as an error and never blocks
+  boxes.
+- `off` removes this instance's tables. `dry-run` logs the ruleset and runs
+  `nft -c` only.
+- Other env: `SANDBOX_EGRESS_ALLOW`, `SANDBOX_EGRESS_DNS`,
+  `SANDBOX_EGRESS_HAIRPIN_PORTS`, `SANDBOX_EGRESS_IMAGE`.
+- `deploy/agentrove-egress.sh` (with a systemd unit) applies the same
+  policy from the host instead. Use one or the other. `deploy/README.md`
+  has the full reachability map.
+- `Manager.IsBoxAddr(ctx, userID, ip)` tells whether a peer address is
+  that user's running box, by exact IP on its per-user or the shared
+  network. Use it to pin box-only credentials (MCP tokens) to the box.
+
+Verify on the host (`<id>` = user id without dashes, `B=agentrove-sandbox-box-<id>`):
 ```sh
 docker network ls --filter label=agentrove.user        # one per user
 docker network inspect agentrove-user-net-<id>         # box + API container
-docker inspect -f '{{json .NetworkSettings.Networks}}' agentrove-sandbox-box-<id>
-docker exec agentrove-sandbox-box-<id> curl -fsS http://api:8080/health   # works
-docker exec agentrove-sandbox-box-<id> curl -m 3 http://<other box IP>:1  # times out; "refused" = reachable
-docker exec agentrove-sandbox-box-<id> curl -fsSI https://registry.npmjs.org # egress works
+nft list tables | grep agentrove_box_                  # inet + bridge tables
+GW=$(docker exec $B ip route | awk '/default/ {print $3}')
+docker exec $B curl -fsS http://api:8080/health        # works
+docker exec $B curl -fsSI https://registry.npmjs.org   # works (also: git ls-remote https://github.com/git/git, ssh -T git@github.com)
+docker exec $B curl -m 3 http://$GW:8000               # times out ("refused" = reachable!)
+docker exec $B nc -zvw3 $GW 22                         # times out
+docker exec $B curl -m 3 http://169.254.169.254/       # times out
+docker exec $B nc -zvw3 <other box IP> 22              # times out
+docker exec $B nc -zvw3 <LAN host / host LAN IP> 22    # times out
+docker exec $B nc -zvw3 <api IP> 22                    # times out (only :8080 on the API)
+docker exec $B ip -6 addr                              # no global IPv6
 ```
-Turn it off with `SANDBOX_PER_USER_NETWORKS=false`; boxes move back to the
-shared network on their next start.
+`deploy/README.md` has the full checklist, including IPv6 link-local to the
+host. Turn per-user networks off with `SANDBOX_PER_USER_NETWORKS=false`;
+boxes move back to the shared network on their next start, where the
+bridge-table rules still keep them from each other.
 
 ## Layout
 - `cmd/agentrove` — entrypoint.

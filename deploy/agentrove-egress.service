@@ -1,0 +1,22 @@
+# Host-side Agentrove box egress firewall (see deploy/README.md).
+#   install -m 755 deploy/agentrove-egress.sh /usr/local/sbin/agentrove-egress.sh
+#   install -m 644 deploy/agentrove-egress.service /etc/systemd/system/
+#   systemctl daemon-reload && systemctl enable --now agentrove-egress
+# Then set SANDBOX_EGRESS_FIREWALL=off on the API so only one of the two applies rules.
+# Stopping the service leaves the rules in place; remove them with
+#   /usr/local/sbin/agentrove-egress.sh remove
+[Unit]
+Description=Agentrove box egress firewall
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=simple
+# Environment=AGENTROVE_DOCKER_NETWORK=agentrove-sandbox-net
+# Environment=AGENTROVE_EGRESS_ALLOW=10.0.0.5:5432
+ExecStart=/usr/local/sbin/agentrove-egress.sh watch
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

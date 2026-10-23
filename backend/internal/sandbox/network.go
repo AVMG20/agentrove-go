@@ -20,7 +20,8 @@ import (
 // container joins every one of them (aliased so AGENTROVE_INTERNAL_URL still
 // resolves). Boxes reach the API and the internet, but not each other. The
 // backend itself only drives boxes through the Docker socket (exec), never
-// over the network.
+// over the network. The host firewall (egress*.go) narrows that further to
+// the API's port and the public internet.
 
 const (
 	userNetworkPrefix = "agentrove-user-net-"
@@ -96,8 +97,16 @@ func (d *DockerProvider) selfContainer() string {
 
 // boxNetwork is the network a user's box should be on, set up and joined
 // by the API. It falls back to the shared DOCKER_NETWORK when per-user
-// networks are off, the API's container is unknown, or setup fails.
+// networks are off, the API's container is unknown, or setup fails. The
+// egress firewall covers the network before this returns, so the box never
+// starts on an unfiltered bridge.
 func (d *DockerProvider) boxNetwork(ctx context.Context, userID string) string {
+	name := d.pickBoxNetwork(ctx, userID)
+	d.egressCover(ctx, name)
+	return name
+}
+
+func (d *DockerProvider) pickBoxNetwork(ctx context.Context, userID string) string {
 	if !d.cfg.SandboxPerUserNetworks || userID == "" || d.selfContainer() == "" {
 		d.ensureNetwork(ctx)
 		return d.cfg.DockerNetwork
@@ -109,7 +118,7 @@ func (d *DockerProvider) boxNetwork(ctx context.Context, userID string) string {
 		return name
 	}
 	if _, err := d.net.NetworkInspect(ctx, name, network.InspectOptions{}); err != nil {
-		_, err := d.net.NetworkCreate(ctx, name, network.CreateOptions{Driver: "bridge", Labels: d.userNetworkLabels(userID)})
+		_, err := d.net.NetworkCreate(ctx, name, userNetworkOptions(d.userNetworkLabels(userID)))
 		if err != nil && !alreadyExists(err) {
 			slog.Warn("create user box network; using the shared one", "network", name, "err", err)
 			d.ensureNetwork(ctx)
@@ -124,6 +133,21 @@ func (d *DockerProvider) boxNetwork(ctx context.Context, userID string) string {
 	return name
 }
 
+// userNetworkOptions creates a plain IPv4 bridge: IPv6 off even when the
+// daemon defaults it on, so the firewall's IPv4 policy is the whole story.
+func userNetworkOptions(labels map[string]string) network.CreateOptions {
+	ipv6 := false
+	return network.CreateOptions{Driver: "bridge", Labels: labels, EnableIPv6: &ipv6}
+}
+
+// apiEndpoint is how the API joins a box network: aliased for
+// AGENTROVE_INTERNAL_URL, and never its default gateway (Docker >= 28
+// honours GwPriority; older daemons pick the lexically first network, the
+// shared one), so the API's own egress doesn't cross a box bridge.
+func apiEndpoint() *network.EndpointSettings {
+	return &network.EndpointSettings{Aliases: apiAliases(os.Getenv("AGENTROVE_INTERNAL_URL")), GwPriority: -1}
+}
+
 // joinLocked connects the API container to a network; already connected is
 // fine. Callers hold netMu.
 func (d *DockerProvider) joinLocked(ctx context.Context, name string) error {
@@ -134,7 +158,7 @@ func (d *DockerProvider) joinLocked(ctx context.Context, name string) error {
 			return nil
 		}
 	}
-	err := d.net.NetworkConnect(ctx, name, d.self, &network.EndpointSettings{Aliases: apiAliases(os.Getenv("AGENTROVE_INTERNAL_URL"))})
+	err := d.net.NetworkConnect(ctx, name, d.self, apiEndpoint())
 	if err != nil && !alreadyExists(err) {
 		return err
 	}
@@ -144,8 +168,10 @@ func (d *DockerProvider) joinLocked(ctx context.Context, name string) error {
 
 // ReconnectNetworks rejoins every per-user network at startup: a redeploy
 // recreates the API container without the connections made at runtime, and
-// running boxes would otherwise lose the API.
+// running boxes would otherwise lose the API. It then starts the box
+// egress firewall (applied now and kept applied while ctx lives).
 func (d *DockerProvider) ReconnectNetworks(ctx context.Context) {
+	defer d.startEgressFirewall(ctx)
 	if !d.cfg.SandboxPerUserNetworks || d.selfContainer() == "" {
 		return
 	}

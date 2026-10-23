@@ -9,9 +9,10 @@ FROM debian:bookworm-slim
 ARG CLAUDE_VERSION=2.1.308
 
 # git/rg serve host-side reads of workspace files; the claude CLI handles title,
-# commit-message and other one-shot generations (run as uid 1000).
+# commit-message and other one-shot generations (run as uid 1000); nft is run
+# by the short-lived box egress firewall helper (same image, host network).
 RUN apt-get update && apt-get install -y --no-install-recommends \
-        ca-certificates curl git ripgrep tmux bash procps \
+        ca-certificates curl git ripgrep tmux bash procps nftables \
     && rm -rf /var/lib/apt/lists/* \
     && useradd -m -u 1000 -s /bin/bash agent \
     && curl -fsSL https://claude.ai/install.sh | bash -s ${CLAUDE_VERSION} \

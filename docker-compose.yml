@@ -41,5 +41,7 @@ services:
     env_file: .env
 
 networks:
+  # Shared box network; per-user box networks are created at runtime and
+  # firewalled by the API (SANDBOX_EGRESS_FIREWALL, deploy/README.md).
   sandbox:
     name: ${DOCKER_NETWORK:-agentrove-sandbox-net}

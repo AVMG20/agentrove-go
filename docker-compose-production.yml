@@ -37,6 +37,11 @@ services:
       DOCKER_NETWORK: ${DOCKER_NETWORK:-agentrove-sandbox-net}
       # How sandbox agents reach the API's MCP endpoint over the sandbox network.
       AGENTROVE_INTERNAL_URL: ${AGENTROVE_INTERNAL_URL:-http://api:8080}
+      # Host firewall for boxes (deploy/README.md): on | off | dry-run.
+      SANDBOX_EGRESS_FIREWALL: ${SANDBOX_EGRESS_FIREWALL:-on}
+      SANDBOX_EGRESS_ALLOW: ${SANDBOX_EGRESS_ALLOW:-}
+      SANDBOX_EGRESS_DNS: ${SANDBOX_EGRESS_DNS:-}
+      SANDBOX_EGRESS_HAIRPIN_PORTS: ${SANDBOX_EGRESS_HAIRPIN_PORTS:-}
       SANDBOX_IDLE_TTL_SECONDS: ${SANDBOX_IDLE_TTL_SECONDS:-900}
       ALLOWED_ORIGINS: ${APP_URL:-http://localhost}
       BASE_URL: ${APP_URL:-http://localhost}
@@ -65,5 +70,9 @@ services:
       - api
 
 networks:
+  # Shared box network (fallback when per-user networks are off). Boxes
+  # normally get their own agentrove-user-net-<id> bridges, created at
+  # runtime; the egress firewall covers both. Don't add driver_opts here:
+  # changing an existing network's options makes compose recreate it.
   sandbox:
     name: ${DOCKER_NETWORK:-agentrove-sandbox-net}

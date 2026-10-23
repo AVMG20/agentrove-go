@@ -2,6 +2,8 @@ package sandbox
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"net/netip"
@@ -26,12 +28,25 @@ type fakeNet struct {
 	labels     map[string]map[string]string // name -> labels
 	aliases    map[string][]string          // network -> aliases of the last connect
 	subnets    map[string]string            // network -> IPAM subnet
+	ips        map[string]map[string]string // network -> container id -> IPv4
+	creates    map[string]network.CreateOptions
+	endpoints  map[string]*network.EndpointSettings // network -> last connect settings
+	drivers    map[string]string                    // network -> driver ("" = bridge)
+	options    map[string]map[string]string         // network -> driver options
 	connects   int
 }
 
 func newFakeNet() *fakeNet {
 	return &fakeNet{containers: map[string]string{}, networks: map[string]map[string]bool{},
-		labels: map[string]map[string]string{}, aliases: map[string][]string{}, subnets: map[string]string{}}
+		labels: map[string]map[string]string{}, aliases: map[string][]string{}, subnets: map[string]string{},
+		ips: map[string]map[string]string{}, creates: map[string]network.CreateOptions{},
+		endpoints: map[string]*network.EndpointSettings{}, drivers: map[string]string{}, options: map[string]map[string]string{}}
+}
+
+// fakeNetID is a stable 64-hex network id, so bridge names are br-<id[:12]>.
+func fakeNetID(name string) string {
+	sum := sha256.Sum256([]byte(name))
+	return hex.EncodeToString(sum[:])
 }
 
 func (f *fakeNet) NetworkInspect(_ context.Context, name string, _ network.InspectOptions) (network.Inspect, error) {
@@ -39,12 +54,20 @@ func (f *fakeNet) NetworkInspect(_ context.Context, name string, _ network.Inspe
 	if !ok {
 		return network.Inspect{}, errdefs.NotFound(errors.New("network " + name + " not found"))
 	}
-	out := network.Inspect{Name: name, Labels: f.labels[name], Containers: map[string]network.EndpointResource{}}
+	driver := f.drivers[name]
+	if driver == "" {
+		driver = "bridge"
+	}
+	out := network.Inspect{Name: name, ID: fakeNetID(name), Driver: driver, Labels: f.labels[name], Options: f.options[name], Containers: map[string]network.EndpointResource{}}
 	if sub := f.subnets[name]; sub != "" {
 		out.IPAM.Config = []network.IPAMConfig{{Subnet: sub}}
 	}
 	for id := range members {
-		out.Containers[id] = network.EndpointResource{}
+		ep := network.EndpointResource{}
+		if ip := f.ips[name][id]; ip != "" {
+			ep.IPv4Address = ip + "/16"
+		}
+		out.Containers[id] = ep
 	}
 	return out, nil
 }
@@ -55,8 +78,9 @@ func (f *fakeNet) NetworkCreate(_ context.Context, name string, o network.Create
 	}
 	f.networks[name] = map[string]bool{}
 	f.labels[name] = o.Labels
+	f.creates[name] = o
 	f.subnets[name] = fmt.Sprintf("172.%d.0.0/16", 20+len(f.subnets))
-	return network.CreateResponse{ID: name}, nil
+	return network.CreateResponse{ID: fakeNetID(name)}, nil
 }
 
 func (f *fakeNet) NetworkList(_ context.Context, o network.ListOptions) ([]network.Summary, error) {
@@ -90,6 +114,17 @@ func (f *fakeNet) NetworkConnect(_ context.Context, name, id string, cfg *networ
 	f.connects++
 	if cfg != nil {
 		f.aliases[name] = cfg.Aliases
+		f.endpoints[name] = cfg
+	}
+	if sub := f.subnets[name]; sub != "" {
+		if f.ips[name] == nil {
+			f.ips[name] = map[string]string{}
+		}
+		base := netip.MustParsePrefix(sub).Addr().Next()
+		for range len(f.ips[name]) + 1 {
+			base = base.Next()
+		}
+		f.ips[name][id] = base.String()
 	}
 	return nil
 }
@@ -104,11 +139,12 @@ func (f *fakeNet) ContainerInspect(_ context.Context, ref string) (container.Ins
 	if !ok {
 		return container.InspectResponse{}, errdefs.NotFound(errors.New("no such container"))
 	}
-	info := container.InspectResponse{ContainerJSONBase: &container.ContainerJSONBase{ID: id, Name: "/" + ref},
+	info := container.InspectResponse{ContainerJSONBase: &container.ContainerJSONBase{ID: id, Name: "/" + ref,
+		Image: "sha256:img-" + id[:4], State: &container.State{Running: true}},
 		NetworkSettings: &container.NetworkSettings{Networks: map[string]*network.EndpointSettings{}}}
 	for name, members := range f.networks {
 		if members[id] {
-			info.NetworkSettings.Networks[name] = &network.EndpointSettings{}
+			info.NetworkSettings.Networks[name] = &network.EndpointSettings{IPAddress: f.ips[name][id]}
 		}
 	}
 	return info, nil
@@ -164,6 +200,12 @@ func TestBoxNetworkPerUser(t *testing.T) {
 	}
 	if !reflect.DeepEqual(f.aliases[name], []string{"api"}) {
 		t.Fatalf("aliases = %v", f.aliases[name])
+	}
+	if ep := f.endpoints[name]; ep == nil || ep.GwPriority >= 0 {
+		t.Fatalf("API may become its default gateway: %+v", ep)
+	}
+	if o := f.creates[name]; o.Driver != "bridge" || o.EnableIPv6 == nil || *o.EnableIPv6 {
+		t.Fatalf("create options = %+v", o)
 	}
 	// Idempotent: cached, and a fresh provider sees the existing membership.
 	d.boxNetwork(context.Background(), netUser)
