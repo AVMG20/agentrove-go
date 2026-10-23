@@ -10,6 +10,7 @@ import { ComposerAttachmentSlots } from './ComposerAttachmentSlots';
 import { SelectionAttachments } from './SelectionAttachments';
 import { InputSuggestionsPanel } from './InputSuggestionsPanel';
 import { ComposerUsage } from './ComposerUsage';
+import { PlanUsageIndicator } from './PlanUsageIndicator';
 import { InputProvider } from './InputProvider';
 import { useInputContext } from '@/hooks/useInputContext';
 import type { ContextUsageInfo } from '@/utils/contextUsage';
@@ -66,7 +67,7 @@ function InputLayout() {
       onSubmit={actions.handleSubmit}
       isDragging={state.isDragging}
       dragHandlers={meta.dragHandlers}
-      corner={<ComposerUsage contextUsage={state.contextUsage ?? null} />}
+      corner={state.contextUsage && <ComposerUsage contextUsage={state.contextUsage} />}
       attachments={
         <>
           <ComposerAttachmentSlots
@@ -132,6 +133,7 @@ function InputLayout() {
       }
     >
       <div className={styles['footer-row']}>
+        <PlanUsageIndicator />
         <InputControls />
       </div>
 

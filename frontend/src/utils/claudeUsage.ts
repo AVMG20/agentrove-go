@@ -76,3 +76,13 @@ export function nextResetMs(
   }
   return next;
 }
+
+// Percent used and time to reset for one window, as of `now`.
+export function summarizeWindow(window: ClaudeUsageWindow, now: number) {
+  const resetAt = resetAtMs(window);
+  // The window rolled over since the last fetch; a refetch is already scheduled.
+  const rolledOver = resetAt != null && resetAt <= now;
+  const used = rolledOver ? 0 : clampPercent(window.used_percent);
+  const resetLabel = resetAt != null && !rolledOver ? formatResetIn(resetAt - now) : null;
+  return { used, rolledOver, resetLabel, tone: usageTone(used) };
+}

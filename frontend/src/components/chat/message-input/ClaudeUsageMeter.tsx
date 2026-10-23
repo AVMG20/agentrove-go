@@ -1,27 +1,11 @@
-import { useEffect, useState } from 'react';
 import clsx from 'clsx';
 import { FloatingTooltip } from '@/components/ui/FloatingTooltip/FloatingTooltip';
 import { RefreshButton } from '@/components/ui/shared/RefreshButton/RefreshButton';
 import { useClaudeUsage } from '@/hooks/queries/useUsageQueries';
 import type { ClaudeUsageWindow } from '@/types/usage.types';
-import {
-  clampPercent,
-  describeUsageWindow,
-  formatResetIn,
-  resetAtMs,
-  usageTone,
-} from '@/utils/claudeUsage';
+import { describeUsageWindow, summarizeWindow } from '@/utils/claudeUsage';
+import { useNow } from '@/hooks/useNow';
 import styles from './ClaudeUsageMeter.module.scss';
-
-// Keeps the reset countdowns moving between polls.
-function useNow(intervalMs: number): number {
-  const [now, setNow] = useState(() => Date.now());
-  useEffect(() => {
-    const timer = setInterval(() => setNow(Date.now()), intervalMs);
-    return () => clearInterval(timer);
-  }, [intervalMs]);
-  return now;
-}
 
 function UsageWindow({
   label,
@@ -34,11 +18,7 @@ function UsageWindow({
   window: ClaudeUsageWindow;
   now: number;
 }) {
-  const resetAt = resetAtMs(window);
-  // The window rolled over since the last fetch; a refetch is already scheduled.
-  const rolledOver = resetAt != null && resetAt <= now;
-  const used = rolledOver ? 0 : clampPercent(window.used_percent);
-  const resetLabel = resetAt != null && !rolledOver ? formatResetIn(resetAt - now) : null;
+  const { used, rolledOver, resetLabel, tone } = summarizeWindow(window, now);
   return (
     <FloatingTooltip
       content={rolledOver ? `${name}: reset` : describeUsageWindow(name, window, now)}
@@ -55,7 +35,7 @@ function UsageWindow({
         aria-valuetext={`${Math.round(used)}% used${resetLabel ? `, resets in ${resetLabel}` : ''}`}
       >
         <span
-          className={clsx(styles.fill, styles[`fill--${usageTone(used)}`])}
+          className={clsx(styles.fill, styles[`fill--${tone}`])}
           style={{ width: `${used}%` }}
         />
       </span>
@@ -65,8 +45,8 @@ function UsageWindow({
   );
 }
 
-// The plan windows (5-hour and weekly), one row each, as shown in the composer's
-// usage popover.
+// The plan windows (5-hour and weekly), one row each, with reset times and a
+// refresh button: the body of the plan-usage popover under the composer.
 export function ClaudeUsageMeter() {
   const { usage, isRefreshing, refresh } = useClaudeUsage();
   const now = useNow(30_000);

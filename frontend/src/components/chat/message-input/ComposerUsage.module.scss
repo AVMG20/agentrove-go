@@ -49,38 +49,16 @@
 }
 
 // Green → amber → red as the context window fills.
-.tone--normal,
-.text--normal {
+.tone--normal {
   color: var(--theme-success);
 }
 
-.tone--warning,
-.text--warning {
+.tone--warning {
   color: var(--theme-warning);
 }
 
-.tone--danger,
-.text--danger {
+.tone--danger {
   color: var(--theme-error);
-}
-
-// Plan limit running low: a dot on the ring, visible without opening it.
-.flag {
-  position: absolute;
-  top: var(--space-1);
-  right: var(--space-1);
-  height: var(--space-1-5);
-  width: var(--space-1-5);
-  border-radius: var(--radius-full);
-  box-shadow: 0 0 0 1.5px var(--theme-surface-secondary);
-
-  &--warning {
-    background-color: var(--theme-warning);
-  }
-
-  &--danger {
-    background-color: var(--theme-error);
-  }
 }
 
 .panel {
@@ -95,15 +73,7 @@
   border-radius: var(--radius-xl);
   background-color: var(--theme-surface-secondary);
   box-shadow: var(--shadow-medium);
-  padding: var(--space-1) 0;
-}
-
-.section {
   padding: var(--space-2-5) var(--space-3);
-
-  & + & {
-    border-top: 1px solid var(--theme-border);
-  }
 }
 
 .heading {

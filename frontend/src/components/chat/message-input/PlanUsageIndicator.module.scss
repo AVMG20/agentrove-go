@@ -1,0 +1,92 @@
+@use '@/styles/globals/colors' as colors;
+@use '@/styles/globals/typography' as type;
+@use '@/styles/globals/animations' as anim;
+@use '@/styles/globals/controls' as controls;
+@use '@/styles/globals/responsive' as responsive;
+@use '@/styles/globals/zlayer' as z;
+
+.indicator {
+  position: relative;
+  min-width: 0;
+}
+
+.trigger {
+  @include type.type-meta;
+  @include type.type-noselect;
+  @include controls.focus-ring;
+  @include anim.transition-colors;
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: var(--space-2);
+  border-radius: var(--radius-md);
+  padding: var(--space-0-5) var(--space-1-5);
+  color: var(--theme-text-quaternary);
+
+  @include responsive.hover {
+    background-color: var(--theme-surface-hover);
+    color: var(--theme-text-tertiary);
+  }
+}
+
+.spark {
+  height: var(--space-3);
+  width: var(--space-3);
+  flex-shrink: 0;
+}
+
+.bar {
+  position: relative;
+  height: var(--space-1);
+  width: var(--space-14);
+  flex-shrink: 0;
+  overflow: hidden;
+  border-radius: var(--radius-full);
+  background-color: var(--theme-border-secondary);
+}
+
+.fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  border-radius: inherit;
+  transition: width 300ms ease;
+
+  // Light fill while there's room; amber, then red, as the window runs out.
+  &--normal {
+    background-color: var(--theme-text-secondary);
+  }
+
+  &--warning {
+    background-color: var(--theme-warning);
+  }
+
+  &--danger {
+    background-color: var(--theme-error);
+  }
+}
+
+.text {
+  @include type.type-overflow;
+  min-width: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.panel {
+  @include z.z('dropdown');
+  @include anim.fade-in(var(--duration-base), forwards);
+  position: absolute;
+  left: 0;
+  bottom: calc(100% + var(--space-1));
+  width: var(--space-72);
+  max-width: calc(100vw - var(--space-8));
+  border: 1px solid colors.theme-color('border', 0.6);
+  border-radius: var(--radius-xl);
+  background-color: var(--theme-surface-secondary);
+  box-shadow: var(--shadow-medium);
+  padding: var(--space-2-5) var(--space-3);
+}
+
+.heading {
+  @include type.type-default(500);
+  color: var(--theme-text-primary);
+}
