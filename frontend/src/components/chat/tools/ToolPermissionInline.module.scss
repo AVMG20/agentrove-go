@@ -15,7 +15,8 @@
 .permission {
   overflow: hidden;
   border-radius: var(--radius-lg);
-  border: 1px solid colors.theme-color('border', 0.5);
+  // Amber edge: the agent is waiting on you.
+  border: 1px solid colors.theme-color('warning', 0.35);
   background-color: var(--theme-surface-tertiary);
 }
 
@@ -37,7 +38,7 @@
 .shield {
   height: var(--space-3-5);
   width: var(--space-3-5);
-  color: var(--theme-text-tertiary);
+  color: var(--theme-warning);
 }
 
 .header-title {

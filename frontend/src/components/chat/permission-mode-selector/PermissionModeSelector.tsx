@@ -68,6 +68,7 @@ export const PermissionModeDropdown = memo(function PermissionModeDropdown({
       triggerVariant={variant}
       dropdownAlign={dropdownAlign}
       renderItem={renderPermissionItem}
+      triggerClassName={clsx(styles['mode-trigger'], styles[`mode-trigger--${selectedMode.value}`])}
     />
   );
 });

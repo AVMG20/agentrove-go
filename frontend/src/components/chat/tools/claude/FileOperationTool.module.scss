@@ -25,31 +25,26 @@
 }
 
 .gutter--removed {
-  color: colors.status-color('error', 600, 0.4);
-
-  :global([data-theme='dark']) & {
-    color: colors.status-color('error', 400, 0.4);
-  }
+  color: colors.theme-color('error', 0.8);
 }
 
 .gutter--added {
-  color: colors.status-color('success', 600, 0.4);
-
-  :global([data-theme='dark']) & {
-    color: colors.status-color('success', 400, 0.4);
-  }
+  color: colors.theme-color('success', 0.8);
 }
 
 .content {
+  flex: 1;
   white-space: pre;
   color: var(--theme-text-tertiary);
 }
 
 .content--removed {
+  background-color: colors.theme-color('error', 0.08);
   color: var(--theme-text-quaternary);
   text-decoration: line-through;
 }
 
 .content--added {
+  background-color: colors.theme-color('success', 0.1);
   color: var(--theme-text-secondary);
 }

@@ -1,5 +1,3 @@
-@use '@/styles/globals/colors' as colors;
-
 // Classic Tailwind `ping`: scale + fade from the element's own base state.
 @keyframes chat-status-ping {
   75%,
@@ -41,17 +39,18 @@
 }
 
 .dot--blocked {
-  background-color: colors.status-color('error', 500);
+  // Waiting on you (permission prompt, plan review, question): amber.
+  background-color: var(--theme-warning);
 }
 
 .dot--running {
-  background-color: colors.status-color('warning', 500);
+  background-color: var(--theme-accent);
 }
 
 .dot--completed {
-  background-color: colors.status-color('success', 500);
+  background-color: var(--theme-success);
 }
 
 .dot--unread {
-  background-color: colors.status-color('info', 500);
+  background-color: var(--theme-info);
 }

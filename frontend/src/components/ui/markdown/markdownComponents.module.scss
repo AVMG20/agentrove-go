@@ -1,3 +1,4 @@
+@use '@/styles/globals/colors' as colors;
 @use '@/styles/globals/typography' as type;
 @use '@/styles/globals/animations' as anim;
 @use '@/styles/globals/responsive' as responsive;
@@ -169,9 +170,9 @@
 
 .link {
   @include anim.transition-colors;
-  color: var(--theme-text-primary);
+  color: var(--theme-info);
   text-decoration: underline;
-  text-decoration-color: var(--theme-border-hover);
+  text-decoration-color: colors.theme-color('info', 0.4);
   text-underline-offset: 3px;
 
   @include responsive.hover {

@@ -1,4 +1,3 @@
-@use '@/styles/globals/colors' as colors;
 @use '@/styles/globals/animations' as anim;
 @use '@/styles/globals/responsive' as responsive;
 
@@ -26,11 +25,11 @@
   }
 
   &--primary {
-    background-color: var(--theme-text-primary);
+    background-color: var(--theme-accent);
     box-shadow: var(--shadow-xs);
 
     @include responsive.hover {
-      background-color: colors.theme-color('text-primary', 0.85);
+      background-color: var(--theme-accent-hover);
     }
   }
 
@@ -43,14 +42,14 @@
   @include anim.spin;
   height: var(--space-3-5);
   width: var(--space-3-5);
-  color: var(--theme-text-inverse);
+  color: var(--theme-accent-contrast);
 }
 
 .icon-stop {
   @include anim.pulse;
   height: var(--space-3);
   width: var(--space-3);
-  color: var(--theme-surface);
+  color: var(--theme-accent-contrast);
 }
 
 .icon-send {
@@ -60,6 +59,6 @@
   color: var(--theme-text-tertiary);
 
   &--active {
-    color: var(--theme-text-inverse);
+    color: var(--theme-accent-contrast);
   }
 }

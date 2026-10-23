@@ -7,7 +7,7 @@
 @use 'animations' as anim;
 @use 'responsive' as responsive;
 
-// Monochrome focus ring (never brand-colored); $offset emulates a ring gap by
+// Accent focus ring (Claude clay at 40%); $offset emulates a ring gap by
 // painting the surface color underneath.
 @mixin focus-ring($width: 3px, $offset: 0px) {
   outline: none;
@@ -15,11 +15,11 @@
   &:focus-visible {
     outline: none;
     @if $offset == 0px {
-      box-shadow: 0 0 0 $width colors.theme-color('text-quaternary', 0.35);
+      box-shadow: 0 0 0 $width colors.theme-color('accent', 0.4);
     } @else {
       box-shadow:
         0 0 0 $offset var(--theme-surface),
-        0 0 0 calc(#{$offset} + #{$width}) colors.theme-color('text-quaternary', 0.35);
+        0 0 0 calc(#{$offset} + #{$width}) colors.theme-color('accent', 0.4);
     }
   }
 }
@@ -164,10 +164,10 @@
 
   &:focus-visible {
     outline: none;
-    border-color: var(--theme-border-hover);
+    border-color: colors.theme-color('accent', 0.6);
     box-shadow:
       var(--shadow-xs),
-      0 0 0 3px colors.theme-color('text-quaternary', 0.25);
+      0 0 0 3px colors.theme-color('accent', 0.18);
   }
 
   &:disabled {

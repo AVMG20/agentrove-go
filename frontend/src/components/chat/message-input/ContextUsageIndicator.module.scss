@@ -24,15 +24,16 @@
 }
 
 .ring-progress {
+  // Green → amber → red as the context window fills.
   &--normal {
-    color: var(--theme-text-primary);
+    color: var(--theme-success);
   }
 
   &--warning {
-    color: var(--theme-warning-text);
+    color: var(--theme-warning);
   }
 
   &--danger {
-    color: var(--theme-error-text);
+    color: var(--theme-error);
   }
 }

@@ -41,7 +41,8 @@
   height: var(--space-0-5);
   width: var(--space-0-5);
   border-radius: var(--radius-full);
-  background-color: var(--theme-text-quaternary);
+  // Live thinking pulses in the accent.
+  background-color: var(--theme-accent);
 }
 
 .thinking-preview {

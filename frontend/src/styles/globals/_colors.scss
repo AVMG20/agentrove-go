@@ -122,6 +122,39 @@ $theme-tokens: (
     --token-highlight,
     --token-dark-highlight,
   ),
+  // Accent: Claude's clay. Used sparingly — the Claude mark, the active thread,
+  // focus rings, the send button and live (streaming/thinking) indicators.
+  'accent': (
+      --accent,
+      --accent-dark,
+    ),
+  'accent-hover': (
+    --accent-hover,
+    --accent-dark-hover,
+  ),
+  // Foreground on an accent fill.
+  'accent-contrast': (
+      --accent-contrast,
+      --accent-dark-contrast,
+    ),
+  // Semantic indicator colours (icons, dots, bars, meters), tuned per theme for
+  // at least 3:1 against the surface. Small status text uses --theme-*-text.
+  'success': (
+      --success,
+      --success-dark,
+    ),
+  'warning': (
+    --warning,
+    --warning-dark,
+  ),
+  'error': (
+    --error,
+    --error-dark,
+  ),
+  'info': (
+    --info,
+    --info-dark,
+  ),
   // Inverted pair — light theme reads the dark set and vice versa (primary buttons,
   // tooltips: dark-on-light / light-on-dark).
   'surface-inverse': (
@@ -177,6 +210,14 @@ $theme-tokens: (
     --text-tertiary: 113 113 122;
     --text-quaternary: 140 140 149;
     --token-highlight: 180 83 9;
+    // Clay darkened for white surfaces (#c15f3c, 4.2:1 on white).
+    --accent: 193 95 60;
+    --accent-hover: 172 82 49;
+    --accent-contrast: 255 255 255;
+    --success: 22 163 74;
+    --warning: 217 119 6;
+    --error: 220 38 38;
+    --info: 37 99 235;
 
     --surface-dark: 10 10 11;
     --surface-dark-secondary: 18 18 20;
@@ -191,6 +232,14 @@ $theme-tokens: (
     --text-dark-tertiary: 161 161 170;
     --text-dark-quaternary: 126 126 135;
     --token-dark-highlight: 255 184 99;
+    // Claude clay #d97757 (6.3:1 on the dark surface).
+    --accent-dark: 217 119 87;
+    --accent-dark-hover: 228 140 111;
+    --accent-dark-contrast: 255 255 255;
+    --success-dark: 74 222 128;
+    --warning-dark: 251 191 36;
+    --error-dark: 248 113 113;
+    --info-dark: 96 165 250;
 
     @each $name, $scale in $status-colors {
       @each $step, $hex in $scale {

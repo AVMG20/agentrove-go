@@ -50,7 +50,8 @@
   width: var(--space-1-5);
   flex-shrink: 0;
   border-radius: var(--radius-full);
-  background-color: colors.status-color('success', 500);
+  // Running work reads in the accent, like the other live indicators.
+  background-color: var(--theme-accent);
 }
 
 .header-label {

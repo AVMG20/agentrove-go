@@ -94,6 +94,6 @@
   color: var(--theme-text-tertiary);
 
   .item[aria-current='page'] & {
-    color: var(--theme-text-primary);
+    color: var(--theme-accent);
   }
 }

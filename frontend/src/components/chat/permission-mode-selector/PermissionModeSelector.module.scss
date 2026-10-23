@@ -28,3 +28,16 @@
   @include type.type-meta;
   color: var(--theme-text-quaternary);
 }
+
+// Modes that change how Claude acts carry a colour cue on the trigger: plan
+// (read-only, info blue) and bypass (no prompts, amber). Doubled class so it
+// wins over the dropdown's own trigger colours.
+.mode-trigger.mode-trigger--plan,
+.mode-trigger.mode-trigger--plan svg {
+  color: var(--theme-info);
+}
+
+.mode-trigger.mode-trigger--bypassPermissions,
+.mode-trigger.mode-trigger--bypassPermissions svg {
+  color: var(--theme-warning);
+}

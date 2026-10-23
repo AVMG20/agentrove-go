@@ -36,6 +36,18 @@
   &:global(.#{state.$state-active}) {
     background-color: var(--theme-surface-active);
     color: var(--theme-text-primary);
+
+    // Accent tick marks the open thread (and split panes).
+    &::before {
+      content: '';
+      position: absolute;
+      left: 0;
+      top: var(--space-1-5);
+      bottom: var(--space-1-5);
+      width: 2px;
+      border-radius: var(--radius-full);
+      background-color: var(--theme-accent);
+    }
   }
 }
 

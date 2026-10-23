@@ -1,3 +1,4 @@
+@use '@/styles/globals/colors' as colors;
 @use '@/styles/globals/controls' as controls;
 @use '@/styles/globals/animations' as anim;
 @use '@/styles/globals/responsive' as responsive;
@@ -5,11 +6,12 @@
 .link {
   @include controls.focus-ring(1px);
   @include anim.transition-colors;
-  color: var(--theme-text-primary);
+  color: var(--theme-info);
   text-decoration: underline;
+  text-decoration-color: colors.theme-color('info', 0.4);
 
   @include responsive.hover {
-    color: var(--theme-text-secondary);
+    text-decoration-color: currentColor;
   }
 }
 

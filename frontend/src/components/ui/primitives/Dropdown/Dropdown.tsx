@@ -53,6 +53,8 @@ export interface DropdownProps<T> {
   onOpenChange?: (isOpen: boolean) => void;
   // 'toolbar' matches ToggleDropdown's composer-toolbar trigger (icon always shown).
   triggerVariant?: 'default' | 'text' | 'toolbar';
+  // Extra class on the trigger button (e.g. a colour cue for the selected value).
+  triggerClassName?: string;
   dropdownAlign?: 'left' | 'right';
 }
 
@@ -143,6 +145,7 @@ const Dropdown = memo(function Dropdown<T>({
   renderFooter,
   onOpenChange,
   triggerVariant = 'default',
+  triggerClassName,
   dropdownAlign = 'left',
 }: DropdownProps<T>) {
   const { isOpen, dropdownRef, setIsOpen } = useDropdown();
@@ -204,6 +207,7 @@ const Dropdown = memo(function Dropdown<T>({
               ? styles['trigger-toolbar']
               : styles.trigger,
           isOpen && !disabled && stateClasses.OPEN,
+          triggerClassName,
         )}
       >
         {LeftIcon && (triggerVariant === 'text' ? showIconOnly : true) && (
