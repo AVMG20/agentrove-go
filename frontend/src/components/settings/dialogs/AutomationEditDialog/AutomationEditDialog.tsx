@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { Clock, Brain, Shield, GitFork, Github } from 'lucide-react';
 import type { Persona } from '@/types/user.types';
 import type { AutomationForm, AutomationTriggerType } from '@/types/automation.types';
@@ -89,6 +89,18 @@ export function AutomationEditDialog({
       onChange('workspace_id', workspaces[0].id);
     }
   }, [workspaces, form.workspace_id, onChange]);
+
+  // New GitHub automations default to a worktree: several PRs can run at
+  // once in one project and would otherwise fight over its checkout. Only
+  // until the user picks a worktree setting themselves.
+  const worktreeTouched = useRef(false);
+  useEffect(() => {
+    if (isOpen) worktreeTouched.current = false;
+  }, [isOpen]);
+  const changeTrigger = (value: AutomationTriggerType) => {
+    onChange('trigger_type', value);
+    if (!isEditing && !worktreeTouched.current) onChange('worktree', value === 'github');
+  };
 
   const selectedModel = models.find((m) => m.model_id === form.model_id);
 
@@ -220,18 +232,28 @@ export function AutomationEditDialog({
             <ToggleDropdown
               options={WORKTREE_OPTIONS}
               value={form.worktree}
-              onSelect={(enabled) => onChange('worktree', enabled)}
+              onSelect={(enabled) => {
+                worktreeTouched.current = true;
+                onChange('worktree', enabled);
+              }}
               icon={GitFork}
               width="9rem"
             />
           </div>
+          {isGithub && (
+            <p className={styles.hint}>
+              {form.worktree
+                ? 'Each run gets its own worktree, so several PRs can be handled at once in this project.'
+                : 'Without a worktree, runs for different PRs share one checkout and can get in each other’s way.'}
+            </p>
+          )}
 
           <div>
             <Label className={styles.label}>Trigger</Label>
             <SegmentedControl
               options={TRIGGER_OPTIONS}
               value={form.trigger_type}
-              onChange={(value) => onChange('trigger_type', value)}
+              onChange={changeTrigger}
               size="sm"
               className={styles.trigger}
             />
