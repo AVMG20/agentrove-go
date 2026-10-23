@@ -52,17 +52,46 @@ func TestResolveSource(t *testing.T) {
 			t.Fatalf("official (%q) = %+v", base, s)
 		}
 	}
-	s = ResolveSource(map[string]string{"ANTHROPIC_API_KEY": "key"}, nil)
-	if s == nil || s.Token != "key" {
-		t.Fatalf("official fallback token = %+v", s)
+	// Only an OAuth token goes to the official endpoint; an API key never works there.
+	if s = ResolveSource(map[string]string{"ANTHROPIC_API_KEY": "sk-ant-api03-x"}, nil); s != nil {
+		t.Fatalf("API key on official = %+v", s)
+	}
+	s = ResolveSource(map[string]string{"ANTHROPIC_AUTH_TOKEN": "sk-ant-oat01-x"}, nil)
+	if s == nil || s.Token != "sk-ant-oat01-x" {
+		t.Fatalf("official OAuth fallback = %+v", s)
 	}
 	if ResolveSource(map[string]string{}, nil) != nil {
 		t.Error("no token should be unavailable")
 	}
 	// The user's own base URL beats the deployment's official default.
 	s = ResolveSource(official, []models.CustomEnvVar{{Key: "ANTHROPIC_BASE_URL", Value: "https://proxy.example.com"}})
-	if s == nil || s.URL != "https://proxy.example.com/api/usage" || s.Token != "auth" {
+	if s == nil || s.URL != "https://proxy.example.com/api/usage" || s.Token != "auth" || !s.PublicOnly {
 		t.Fatalf("user proxy = %+v", s)
+	}
+	// A deployment-set proxy may be internal.
+	if s = ResolveSource(global, nil); s == nil || s.PublicOnly {
+		t.Fatalf("deployment proxy = %+v", s)
+	}
+}
+
+func TestPublicOnlyControl(t *testing.T) {
+	for _, addr := range []string{"127.0.0.1:443", "10.0.0.5:443", "172.18.0.2:443", "192.168.1.1:443", "169.254.169.254:80", "[::1]:443", "[fd00::1]:443", "0.0.0.0:443"} {
+		if publicOnlyControl("tcp", addr, nil) == nil {
+			t.Errorf("%s should be refused", addr)
+		}
+	}
+	for _, addr := range []string{"1.1.1.1:443", "[2606:4700::1111]:443"} {
+		if err := publicOnlyControl("tcp", addr, nil); err != nil {
+			t.Errorf("%s: %v", addr, err)
+		}
+	}
+	m := New(nil)
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`{"five_hour":{"utilization":10}}`))
+	}))
+	defer srv.Close()
+	if r := m.fetch(context.Background(), &Source{Provider: "p", URL: srv.URL, Token: "t", PublicOnly: true}); r.Status != "error" {
+		t.Fatalf("loopback fetch with PublicOnly = %+v", r)
 	}
 }
 

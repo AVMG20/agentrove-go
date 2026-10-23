@@ -12,11 +12,14 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
+	"net"
 	"net/http"
+	"net/netip"
 	"net/url"
 	"strconv"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"agentrove/internal/app"
@@ -53,6 +56,7 @@ const (
 	officialHost     = "api.anthropic.com"
 	officialEndpoint = "https://api.anthropic.com/api/oauth/usage"
 	proxyUsagePath   = "/api/usage"
+	oauthTokenPrefix = "sk-ant-oat"
 )
 
 type Source struct {
@@ -60,6 +64,9 @@ type Source struct {
 	URL      string
 	Token    string
 	Headers  map[string]string
+	// PublicOnly is set when a user's own var picked the host: the server
+	// must not be steerable at internal addresses.
+	PublicOnly bool
 }
 
 // ResolveSource applies the precedence the agent sees (deployment env, then
@@ -71,8 +78,12 @@ func ResolveSource(globalEnv map[string]string, custom []models.CustomEnvVar) *S
 	for k, v := range globalEnv {
 		env[k] = v
 	}
+	userBase := false
 	for _, ev := range custom {
 		env[ev.Key] = ev.Value
+		if ev.Key == "ANTHROPIC_BASE_URL" {
+			userBase = true
+		}
 	}
 	var base *url.URL
 	if raw := strings.TrimSpace(env["ANTHROPIC_BASE_URL"]); raw != "" {
@@ -85,14 +96,21 @@ func ResolveSource(globalEnv map[string]string, custom []models.CustomEnvVar) *S
 	src := &Source{Provider: officialHost}
 	switch {
 	case base == nil || strings.EqualFold(base.Hostname(), officialHost):
-		// The official endpoint wants the OAuth token the CLI logs in with.
+		// The official endpoint only takes the OAuth token the CLI logs in
+		// with; an API key would just be rejected on every poll.
 		src.URL = officialEndpoint
-		src.Token = firstEnv(env, "CLAUDE_CODE_OAUTH_TOKEN", "ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_API_KEY")
+		src.Token = firstEnv(env, "CLAUDE_CODE_OAUTH_TOKEN")
+		if src.Token == "" {
+			if t := firstEnv(env, "ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_API_KEY"); strings.HasPrefix(t, oauthTokenPrefix) {
+				src.Token = t
+			}
+		}
 		src.Headers = map[string]string{"anthropic-beta": "oauth-2025-04-20"}
 	case base.Scheme == "https":
 		src.Provider = strings.ToLower(base.Hostname())
 		src.URL = "https://" + base.Host + strings.TrimRight(base.Path, "/") + proxyUsagePath
 		src.Token = firstEnv(env, "ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_API_KEY")
+		src.PublicOnly = userBase
 	}
 	if src.URL == "" || src.Token == "" {
 		return nil
@@ -191,6 +209,8 @@ type cacheEntry struct {
 type Module struct {
 	a      *app.App
 	client *http.Client
+	// publicClient refuses non-public addresses, for user-picked hosts.
+	publicClient *http.Client
 
 	mu    sync.Mutex
 	cache map[string]cacheEntry
@@ -199,13 +219,38 @@ type Module struct {
 
 func New(a *app.App) *Module {
 	return &Module{
-		a: a,
-		client: &http.Client{Timeout: fetchTimeout, CheckRedirect: func(*http.Request, []*http.Request) error {
-			return http.ErrUseLastResponse
-		}},
-		cache: map[string]cacheEntry{},
-		locks: map[string]*sync.Mutex{},
+		a:            a,
+		client:       newClient(nil),
+		publicClient: newClient(publicOnlyControl),
+		cache:        map[string]cacheEntry{},
+		locks:        map[string]*sync.Mutex{},
 	}
+}
+
+func newClient(control func(network, address string, c syscall.RawConn) error) *http.Client {
+	tr := http.DefaultTransport.(*http.Transport).Clone()
+	tr.DialContext = (&net.Dialer{Timeout: fetchTimeout, Control: control}).DialContext
+	return &http.Client{Timeout: fetchTimeout, Transport: tr, CheckRedirect: func(*http.Request, []*http.Request) error {
+		return http.ErrUseLastResponse
+	}}
+}
+
+// publicOnlyControl runs after DNS resolution, so a public name that
+// resolves to an internal address is refused too.
+func publicOnlyControl(_, address string, _ syscall.RawConn) error {
+	host, _, err := net.SplitHostPort(address)
+	if err != nil {
+		return err
+	}
+	ip, err := netip.ParseAddr(host)
+	if err != nil {
+		return err
+	}
+	ip = ip.Unmap()
+	if !ip.IsGlobalUnicast() || ip.IsPrivate() {
+		return fmt.Errorf("usage endpoint %s is not a public address", ip)
+	}
+	return nil
 }
 
 func (m *Module) Routes(mux *http.ServeMux) {
@@ -279,7 +324,11 @@ func (m *Module) fetch(ctx context.Context, src *Source) Response {
 	for k, v := range src.Headers {
 		req.Header.Set(k, v)
 	}
-	resp, err := m.client.Do(req)
+	client := m.client
+	if src.PublicOnly {
+		client = m.publicClient
+	}
+	resp, err := client.Do(req)
 	if err != nil {
 		return errorResponse(src.Provider, "Usage endpoint unreachable")
 	}

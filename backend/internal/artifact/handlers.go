@@ -46,8 +46,9 @@ func (m *Module) Routes(mux *http.ServeMux) {
 	mux.HandleFunc("DELETE "+p+"/{id}/state/{key}", m.withActor(m.deleteState))
 }
 
-// actor is the caller: a user session/MCP token, or the artifacts-only agent
+// actor is the caller: a user session token, or the artifacts-only agent
 // token, which may publish and edit but not delete or change visibility.
+// MCP tokens are refused here; agents reach artifacts through /mcp.
 type actor struct {
 	user        *models.User
 	agentScoped bool

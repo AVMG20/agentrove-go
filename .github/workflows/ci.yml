@@ -59,6 +59,11 @@ jobs:
         with:
           bun-version: "1.4.4"
 
+      # bun run executes vite/vitest under Node; Vite 7 needs >= 20.19.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
       - name: Install
         run: bun install --frozen-lockfile
 
