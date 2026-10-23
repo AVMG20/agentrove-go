@@ -111,7 +111,11 @@ bridge-table rules still keep them from each other.
   session tokens only; MCP / artifact-agent tokens are scoped to their own
   endpoints (`/api/v1/mcp`, artifacts). The MCP token lives
   `AGENTROVE_MCP_TOKEN_LIFETIME_SECONDS` (default 72h) and is re-minted at
-  half-life, which restarts the chat's CLI with `--resume`. Use
+  half-life, which restarts the chat's CLI with `--resume`. Agent tokens
+  carry their chat (the box's `X-Agentrove-Chat-Id` header is ignored) and,
+  with `AGENTROVE_AGENT_TOKENS_BOX_ONLY` (default on), are only accepted
+  from the owning user's box (`sandbox.Manager.FromUserBox`, by TCP peer).
+  Agents may only edit or delete agent-created personas and automations. Use
   `httpx.ClientIP(r, cfg.TrustedProxies, authService.BoxSubnets)` for the
   client address, never `X-Forwarded-For` directly: box network subnets
   (recorded by the Docker provider) are never trusted as proxies.

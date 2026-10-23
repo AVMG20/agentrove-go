@@ -140,6 +140,10 @@ func (m *Module) authenticate(r *http.Request) *caller {
 	if err != nil || !u.IsActive {
 		return nil
 	}
+	if m.a.Sandboxes != nil && !m.a.Sandboxes.FromUserBox(r, u.ID) {
+		slog.Warn("agent token used from outside its box", "user", u.ID, "peer", r.RemoteAddr)
+		return nil
+	}
 	c.userID, c.chatID = u.ID, claims.Chat
 	return c
 }

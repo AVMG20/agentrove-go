@@ -5,6 +5,8 @@ import (
 	"context"
 	"errors"
 	"io"
+	"net/http"
+	"net/http/httptest"
 	"net/netip"
 	"os"
 	"os/exec"
@@ -560,5 +562,48 @@ func TestIsBoxAddr(t *testing.T) {
 	v.(*boxAddrEntry).fetched = time.Time{}
 	if d.IsBoxAddr(ctx, netUser, mustAddr("192.168.50.5")) {
 		t.Fatal("address on an operator network accepted")
+	}
+}
+
+func TestFromUserBox(t *testing.T) {
+	d, f := newNetProvider(true, "", "abcdef123456")
+	ctx := context.Background()
+	f.containers[containerName(BoxID(netUser))] = "boxid"
+	name := d.boxNetwork(ctx, netUser)
+	if err := f.NetworkConnect(ctx, name, "boxid", nil); err != nil {
+		t.Fatal(err)
+	}
+	boxIP := f.ips[name]["boxid"]
+	t.Cleanup(func() { boxAddrCache.Delete(boxAddrKey{d, netUser}) })
+	d.cfg.AgentTokensBoxOnly = true
+	m := &Manager{cfg: d.cfg, providers: map[string]Provider{KindDocker: d}}
+	req := func(peer string) *http.Request {
+		r := httptest.NewRequest(http.MethodPost, "/api/v1/mcp", nil)
+		r.RemoteAddr = peer
+		r.Header.Set("X-Forwarded-For", boxIP) // never trusted
+		return r
+	}
+	if !m.FromUserBox(req(boxIP+":41000"), netUser) {
+		t.Fatal("request from the user's own box refused")
+	}
+	for _, peer := range []string{"203.0.113.7:41000", "172.17.0.1:41000", "garbage"} {
+		if m.FromUserBox(req(peer), netUser) {
+			t.Errorf("request from %s accepted", peer)
+		}
+	}
+	if m.FromUserBox(req(boxIP+":41000"), "other-user") {
+		t.Error("another user's token accepted from this box")
+	}
+	// Pinning off, or no own container (API on the host): everything passes.
+	d.cfg.AgentTokensBoxOnly = false
+	if !m.FromUserBox(req("203.0.113.7:41000"), netUser) {
+		t.Error("pinning off should accept any peer")
+	}
+	d.cfg.AgentTokensBoxOnly = true
+	h, _ := newNetProvider(true, "", "nope")
+	h.cfg.AgentTokensBoxOnly = true
+	hm := &Manager{cfg: h.cfg, providers: map[string]Provider{KindDocker: h}}
+	if !hm.FromUserBox(req("203.0.113.7:41000"), netUser) {
+		t.Error("API outside a container should not pin")
 	}
 }

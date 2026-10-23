@@ -70,7 +70,11 @@ type Config struct {
 	// boxes can't reach each other. APIContainer names the API's own
 	// container when its hostname isn't the container id.
 	SandboxPerUserNetworks bool
-	APIContainer           string
+	// AgentTokensBoxOnly accepts agent (MCP / artifact-agent) tokens only
+	// from the owning user's box, so one leaked out of it is useless. It
+	// applies when the API runs as a container on the boxes' Docker daemon.
+	AgentTokensBoxOnly bool
+	APIContainer       string
 
 	// How long a Claude CLI process may sit idle before it's closed. The
 	// session id is persisted so the next turn resumes it losslessly.
@@ -134,6 +138,7 @@ func Load() (*Config, error) {
 	}
 
 	c.SandboxPerUserNetworks = envBool("SANDBOX_PER_USER_NETWORKS", true)
+	c.AgentTokensBoxOnly = envBool("AGENTROVE_AGENT_TOKENS_BOX_ONLY", true)
 	c.APIContainer = strings.TrimSpace(env("AGENTROVE_API_CONTAINER", ""))
 
 	// The API is only published through the frontend proxy (nginx, behind

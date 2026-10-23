@@ -63,7 +63,8 @@ func (m *Module) resolveActor(r *http.Request) (*actor, error) {
 	}
 	if token != "" {
 		if sub, err := m.a.Keys.VerifyToken(token, auth.AudienceArtifactAgent); err == nil {
-			if u, err := m.a.Auth.GetUser(r.Context(), sub); err == nil && u.IsActive {
+			if u, err := m.a.Auth.GetUser(r.Context(), sub); err == nil && u.IsActive &&
+				(m.a.Sandboxes == nil || m.a.Sandboxes.FromUserBox(r, u.ID)) {
 				return &actor{user: u, agentScoped: true}, nil
 			}
 		}
