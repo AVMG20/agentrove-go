@@ -3,6 +3,7 @@ package sandboxapi
 import (
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -166,5 +167,29 @@ func TestHostFileOps(t *testing.T) {
 	}
 	if _, err := readFile(sb, "dir"); err == nil {
 		t.Error("reading a directory must fail")
+	}
+}
+
+// The agent controls file sizes; opening a huge file must not load it.
+func TestReadFileSizeCap(t *testing.T) {
+	ws := t.TempDir()
+	sb := &sandbox.Sandbox{Kind: sandbox.KindDocker, Root: "/home/user/workspace", WorkspacePath: ws}
+	big := filepath.Join(ws, "big.txt")
+	f, err := os.Create(big)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := f.Truncate(maxReadBytes + 1); err != nil {
+		t.Fatal(err)
+	}
+	f.Close()
+	if _, err := readFile(sb, "big.txt"); !errors.Is(err, errTooLarge) {
+		t.Errorf("oversized file: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(ws, "ok.txt"), []byte("hi"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if fc, err := readFile(sb, "ok.txt"); err != nil || fc.Content != "hi" {
+		t.Errorf("small file = %+v, %v", fc, err)
 	}
 }

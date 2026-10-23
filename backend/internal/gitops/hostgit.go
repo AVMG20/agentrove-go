@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 
@@ -21,8 +22,12 @@ type HostRepo struct {
 	Dir string
 	// WorkTree is set when the git dir had to be translated from a sandbox path.
 	WorkTree string
-	opts     []string
-	env      []string
+	// root is the host workspace dir; the git dir and work tree must stay in it.
+	root string
+	opts []string
+	env  []string
+	// trusted skips Verify (set while Verify itself runs git).
+	trusted bool
 }
 
 type Result struct {
@@ -86,6 +91,7 @@ func OpenHost(sb *sandbox.Sandbox, rel string) (*HostRepo, error) {
 	}
 	r := &HostRepo{
 		Dir:  dir,
+		root: sb.WorkspacePath,
 		opts: []string{"-c", "safe.directory=*", "-c", "core.fsmonitor=false", "-c", "color.ui=false"},
 		// GIT_OPTIONAL_LOCKS=0 keeps `git status` from rewriting the index: the
 		// API may run as a different uid than the sandbox user.
@@ -149,17 +155,106 @@ func (r *HostRepo) Run(ctx context.Context, args ...string) (Result, error) {
 	return r.RunIn(ctx, r.Dir, nil, args...)
 }
 
+// maxHostGitOutput bounds one command's stdout: the agent controls the repo,
+// so a multi-GB untracked file must not turn a diff into an API OOM.
+const maxHostGitOutput = 64 << 20
+
+// capBuffer collects up to max bytes. Past that it either fails the write
+// (which stops the command) or, with drop, silently discards the rest.
+type capBuffer struct {
+	buf      bytes.Buffer
+	max      int
+	drop     bool
+	overflow bool
+}
+
+func (c *capBuffer) Write(p []byte) (int, error) {
+	if c.buf.Len()+len(p) > c.max {
+		if c.drop {
+			return len(p), nil
+		}
+		c.overflow = true
+		return 0, errors.New("git output too large")
+	}
+	return c.buf.Write(p)
+}
+
+// unsafeConfigRE matches repo-local settings that make git run a program (or
+// read another tree) when it diffs or stats the work tree. The repo config is
+// written by the agent, and these commands run on the host, outside the box.
+var unsafeConfigRE = regexp.MustCompile(`^(include\.|includeif\.|core\.worktree$|diff\.external$|diff\..+\.(textconv|command)$|filter\..+\.(clean|smudge|process)$)`)
+
+// unsafeConfigKey returns the first agent-controlled (local or worktree scope)
+// setting in `git config --list --show-scope -z` output that isn't safe on
+// the host. System and global config belong to the operator and are ignored.
+func unsafeConfigKey(out string) string {
+	// -z with --show-scope: "scope\0key\nvalue\0" per entry.
+	recs := strings.Split(out, "\x00")
+	for i := 0; i+1 < len(recs); i += 2 {
+		if scope := recs[i]; scope != "local" && scope != "worktree" {
+			continue
+		}
+		key, _, _ := strings.Cut(recs[i+1], "\n")
+		if unsafeConfigRE.MatchString(strings.ToLower(key)) {
+			return key
+		}
+	}
+	return ""
+}
+
+// Verify refuses a repository that could make host-side git execute agent
+// code (filters, external diff drivers) or read outside the workspace (an
+// absolute core.worktree, a `.git` file or commondir pointing elsewhere). A
+// non-repo passes: the commands that follow simply fail.
+func (r *HostRepo) Verify(ctx context.Context) error {
+	if r.trusted {
+		return nil
+	}
+	t := *r
+	t.trusted = true
+	res, err := t.Run(ctx, "rev-parse", "--path-format=absolute", "--absolute-git-dir", "--git-common-dir", "--show-toplevel")
+	if err != nil {
+		return err
+	}
+	lines := strings.Split(strings.TrimSpace(res.Stdout), "\n")
+	if len(lines) < 2 || lines[0] == "" {
+		return nil
+	}
+	for _, p := range lines {
+		if !withinReal(r.root, p) {
+			return httpx.BadRequest("Repository points outside the workspace; not inspecting it on the host")
+		}
+	}
+	cfg, err := t.Run(ctx, "config", "--list", "--show-scope", "-z")
+	if err != nil {
+		return err
+	}
+	if cfg.Exit != 0 {
+		return httpx.BadRequest("Could not read the repository config")
+	}
+	if key := unsafeConfigKey(cfg.Stdout); key != "" {
+		return httpx.BadRequest("Repository config sets " + key + ", which is not allowed for host-side git; remove it in the terminal")
+	}
+	return nil
+}
+
 // RunIn executes git in dir with extra env entries.
 func (r *HostRepo) RunIn(ctx context.Context, dir string, env []string, args ...string) (Result, error) {
+	if err := r.Verify(ctx); err != nil {
+		return Result{}, err
+	}
 	ctx, cancel := context.WithTimeout(ctx, hostGitTimeout)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, "git", append(append([]string{}, r.opts...), args...)...)
 	cmd.Dir = dir
 	cmd.Env = append(append([]string{}, r.env...), env...)
-	var stdout, stderr bytes.Buffer
-	cmd.Stdout, cmd.Stderr = &stdout, &stderr
+	stdout, stderr := &capBuffer{max: maxHostGitOutput}, &capBuffer{max: 1 << 20, drop: true}
+	cmd.Stdout, cmd.Stderr = stdout, stderr
 	err := cmd.Run()
-	res := Result{Stdout: stdout.String(), Stderr: stderr.String()}
+	if stdout.overflow {
+		return Result{}, httpx.BadRequest("git output is too large to show")
+	}
+	res := Result{Stdout: stdout.buf.String(), Stderr: stderr.buf.String()}
 	var exitErr *exec.ExitError
 	if errors.As(err, &exitErr) {
 		res.Exit = exitErr.ExitCode()

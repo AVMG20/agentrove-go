@@ -293,3 +293,74 @@ func TestRestoreScript(t *testing.T) {
 		t.Errorf("rename script: %s", r)
 	}
 }
+
+// The repo config is agent-written; host git must not honor settings that run
+// programs or read outside the workspace.
+func TestHostRepoRejectsUnsafeRepo(t *testing.T) {
+	ctx := context.Background()
+	outside := setupRepo(t)
+	write(t, filepath.Join(outside, "secret.txt"), "host secret\n")
+	git(t, outside, "add", "-A")
+	git(t, outside, "commit", "-qm", "secret")
+	write(t, filepath.Join(outside, "secret.txt"), "host secret changed\n")
+
+	var marker string
+	cases := map[string]func(ws string){
+		"external diff": func(ws string) {
+			git(t, ws, "config", "diff.external", "touch "+marker+" #")
+		},
+		"filter": func(ws string) {
+			git(t, ws, "config", "filter.x.clean", "touch "+marker+"; cat")
+			write(t, filepath.Join(ws, ".gitattributes"), "* filter=x\n")
+		},
+		"core.worktree": func(ws string) {
+			git(t, ws, "config", "core.worktree", outside)
+		},
+		"include": func(ws string) {
+			write(t, filepath.Join(ws, "extra.cfg"), "[diff]\n\texternal = touch "+marker+" #\n")
+			git(t, ws, "config", "include.path", filepath.Join(ws, "extra.cfg"))
+		},
+		"gitdir elsewhere": func(ws string) {
+			if err := os.RemoveAll(filepath.Join(ws, ".git")); err != nil {
+				t.Fatal(err)
+			}
+			write(t, filepath.Join(ws, ".git"), "gitdir: "+filepath.Join(outside, ".git")+"\n")
+		},
+	}
+	for name, plant := range cases {
+		t.Run(name, func(t *testing.T) {
+			marker = filepath.Join(t.TempDir(), "pwned")
+			ws := setupRepo(t)
+			write(t, filepath.Join(ws, "a.txt"), "changed\n")
+			plant(ws)
+			sb := &sandbox.Sandbox{Kind: sandbox.KindDocker, Root: "/home/user/workspace", WorkspacePath: ws}
+			r, err := OpenHost(sb, "")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := r.Verify(ctx); err == nil {
+				t.Error("Verify accepted an unsafe repo")
+			}
+			if out, err := Diff(ctx, r, "all", false); err == nil && out.HasChanges {
+				t.Errorf("diff ran on an unsafe repo: %q", out.Diff)
+			}
+			if _, err := os.Stat(marker); err == nil {
+				t.Fatal("host git executed the repo's program")
+			}
+		})
+	}
+}
+
+func TestCapBuffer(t *testing.T) {
+	c := &capBuffer{max: 4}
+	if _, err := c.Write([]byte("abc")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.Write([]byte("de")); err == nil || !c.overflow {
+		t.Error("write past the cap should fail")
+	}
+	d := &capBuffer{max: 2, drop: true}
+	if n, err := d.Write([]byte("abcd")); n != 4 || err != nil || d.buf.Len() != 0 {
+		t.Errorf("drop mode = %d, %v, %q", n, err, d.buf.String())
+	}
+}

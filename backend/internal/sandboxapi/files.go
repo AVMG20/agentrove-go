@@ -127,7 +127,14 @@ type FileContent struct {
 	IsBinary bool   `json:"is_binary"`
 }
 
-var errNotAFile = errors.New("not a file")
+var (
+	errNotAFile = errors.New("not a file")
+	errTooLarge = errors.New("file is too large to open")
+)
+
+// maxReadBytes caps one file read into memory (the response is base64/JSON
+// encoded on top of it).
+const maxReadBytes = 25 << 20
 
 // readFile reads a workspace-relative file on the host. os.Root refuses
 // anything (including symlinks) that escapes the workspace.
@@ -144,9 +151,19 @@ func readFile(sb *sandbox.Sandbox, rel string) (FileContent, error) {
 	if !fi.Mode().IsRegular() {
 		return FileContent{}, errNotAFile
 	}
-	data, err := root.ReadFile(rel)
+	// The agent controls file sizes: never buffer more than the cap (the file
+	// may also grow between the stat and the read).
+	f, err := root.Open(rel)
 	if err != nil {
 		return FileContent{}, err
+	}
+	defer f.Close()
+	data, err := io.ReadAll(io.LimitReader(f, maxReadBytes+1))
+	if err != nil {
+		return FileContent{}, err
+	}
+	if len(data) > maxReadBytes {
+		return FileContent{}, errTooLarge
 	}
 	content, binary := EncodeContent(rel, data)
 	return FileContent{Content: content, Path: rel, Type: "file", IsBinary: binary}, nil

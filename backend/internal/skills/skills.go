@@ -55,15 +55,58 @@ func ClaudeConfigDir(cfg *config.Config, ws *models.Workspace) string {
 	return filepath.Join(cfg.AgentHomeDir(ws.UserID), "claude")
 }
 
+// skillRoot is a directory of skills plus the tree it must stay inside. The
+// workspace and the Claude config dir are written by the agent, so a symlink
+// there must not lead the API (which runs outside the box) to other host files.
+type skillRoot struct{ base, root string }
+
 type Service struct {
-	paths []string // search order: workspace first, then user, then plugins
+	paths []skillRoot // search order: workspace first, then user, then plugins
+}
+
+// maxSkillFile bounds one file the API reads from an agent-writable skill
+// dir; it matches the size Update accepts.
+const maxSkillFile = 10_000_000
+
+// strictlyWithin reports whether p, with symlinks resolved, is below root.
+func strictlyWithin(root, p string) bool {
+	realRoot, err := filepath.EvalSymlinks(root)
+	if err != nil {
+		return false
+	}
+	realP, err := filepath.EvalSymlinks(p)
+	if err != nil {
+		return false
+	}
+	rel, err := filepath.Rel(realRoot, realP)
+	return err == nil && rel != "." && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) && !filepath.IsAbs(rel)
+}
+
+// readSkillFile reads dir/rel without following symlinks out of dir.
+func readSkillFile(dir, rel string) ([]byte, error) {
+	root, err := os.OpenRoot(dir)
+	if err != nil {
+		return nil, err
+	}
+	defer root.Close()
+	fi, err := root.Stat(rel)
+	if err != nil {
+		return nil, err
+	}
+	if !fi.Mode().IsRegular() {
+		return nil, fmt.Errorf("%s is not a regular file", rel)
+	}
+	if fi.Size() > maxSkillFile {
+		return nil, fmt.Errorf("%s is larger than %d bytes", rel, maxSkillFile)
+	}
+	return root.ReadFile(rel)
 }
 
 func NewService(cfg *config.Config, ws *models.Workspace) *Service {
 	claudeDir := ClaudeConfigDir(cfg, ws)
-	paths := []string{
-		filepath.Join(ws.WorkspacePath, ".claude", "skills"),
-		filepath.Join(claudeDir, "skills"),
+	paths := []skillRoot{
+		{filepath.Join(ws.WorkspacePath, ".claude", "skills"), ws.WorkspacePath},
+		{filepath.Join(claudeDir, "skills"), claudeDir},
 	}
 	containerClaude := ""
 	if ws.SandboxProvider == sandbox.KindDocker {
@@ -76,7 +119,7 @@ func NewService(cfg *config.Config, ws *models.Workspace) *Service {
 // pluginSkillPaths cross-references settings.json (enabledPlugins) with
 // plugins/installed_plugins.json (install paths). Install paths recorded
 // inside a Docker sandbox are mapped back onto the host config dir.
-func pluginSkillPaths(claudeDir, containerClaude string) []string {
+func pluginSkillPaths(claudeDir, containerClaude string) []skillRoot {
 	var settings struct {
 		EnabledPlugins map[string]any `json:"enabledPlugins"`
 	}
@@ -94,7 +137,7 @@ func pluginSkillPaths(claudeDir, containerClaude string) []string {
 		ids = append(ids, id)
 	}
 	sort.Strings(ids)
-	var out []string
+	var out []skillRoot
 	for _, id := range ids {
 		if enabled, _ := settings.EnabledPlugins[id].(bool); !enabled {
 			continue
@@ -114,8 +157,15 @@ func pluginSkillPaths(claudeDir, containerClaude string) []string {
 				}
 			}
 			dir := filepath.Join(p, "skills")
-			if fi, err := os.Stat(dir); err == nil && fi.IsDir() {
-				out = append(out, dir)
+			// installed_plugins.json is agent-writable: in a Docker sandbox the
+			// install path must resolve inside the config dir, not to any
+			// host directory (another user's workspace) named "skills".
+			root := p
+			if containerClaude != "" {
+				root = claudeDir
+			}
+			if fi, err := os.Stat(dir); err == nil && fi.IsDir() && strictlyWithin(root, dir) {
+				out = append(out, skillRoot{dir, root})
 			}
 		}
 	}
@@ -149,7 +199,11 @@ func (s *Service) List() []CustomSkill {
 	out := []CustomSkill{}
 	seenDirs := map[string]bool{}
 	seenNames := map[string]bool{}
-	for _, base := range s.paths {
+	for _, sr := range s.paths {
+		base := sr.base
+		if !strictlyWithin(sr.root, base) {
+			continue
+		}
 		entries, err := os.ReadDir(base)
 		if err != nil {
 			continue
@@ -157,7 +211,7 @@ func (s *Service) List() []CustomSkill {
 		for _, e := range entries {
 			dir := filepath.Join(base, e.Name())
 			fi, err := os.Stat(dir)
-			if err != nil || !fi.IsDir() || seenNames[e.Name()] {
+			if err != nil || !fi.IsDir() || seenNames[e.Name()] || !strictlyWithin(base, dir) {
 				continue
 			}
 			md := filepath.Join(dir, skillMD)
@@ -172,7 +226,7 @@ func (s *Service) List() []CustomSkill {
 				seenNames[e.Name()] = true
 				continue
 			}
-			content, err := os.ReadFile(md)
+			content, err := readSkillFile(dir, skillMD)
 			if err != nil || !utf8.Valid(content) {
 				continue
 			}
@@ -197,10 +251,13 @@ func (s *Service) find(source, name string) (string, error) {
 	if source != Source || !validName(name) {
 		return "", fmt.Errorf("%w: Skill '%s' not found", ErrNotFound, name)
 	}
-	for _, base := range s.paths {
-		dir := filepath.Join(base, name)
+	for _, sr := range s.paths {
+		dir := filepath.Join(sr.base, name)
+		if !strictlyWithin(sr.root, sr.base) || !strictlyWithin(sr.base, dir) {
+			continue
+		}
 		if fi, err := os.Stat(dir); err == nil && fi.IsDir() {
-			if _, err := os.Stat(filepath.Join(dir, skillMD)); err == nil {
+			if _, err := readSkillFile(dir, skillMD); err == nil {
 				return dir, nil
 			}
 		}
@@ -214,25 +271,32 @@ func (s *Service) Files(source, name string) ([]FileEntry, error) {
 	if err != nil {
 		return nil, err
 	}
+	root, err := os.OpenRoot(dir)
+	if err != nil {
+		return nil, err
+	}
+	defer root.Close()
 	var paths []string
-	_ = filepath.WalkDir(dir, func(p string, d fs.DirEntry, err error) error {
-		if err != nil {
+	_ = fs.WalkDir(root.FS(), ".", func(p string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() {
 			return nil
 		}
-		if fi, err := os.Stat(p); err == nil && fi.Mode().IsRegular() {
+		// Stat follows symlinks, but only to targets inside the skill dir.
+		if fi, err := root.Stat(p); err == nil && fi.Mode().IsRegular() {
 			paths = append(paths, p)
 		}
 		return nil
 	})
 	sort.Strings(paths)
 	files := []FileEntry{}
-	for _, p := range paths {
-		data, err := os.ReadFile(p)
+	for _, rel := range paths {
+		data, err := readSkillFile(dir, rel)
 		if err != nil {
+			if fi, serr := root.Stat(rel); serr == nil && fi.Size() > maxSkillFile {
+				return nil, fmt.Errorf("%w: %s is too large to edit", ErrInvalid, rel)
+			}
 			continue
 		}
-		rel, _ := filepath.Rel(dir, p)
-		rel = filepath.ToSlash(rel)
 		if utf8.Valid(data) {
 			files = append(files, FileEntry{Path: rel, Content: string(data)})
 		} else {

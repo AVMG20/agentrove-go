@@ -59,6 +59,12 @@ func ApplyEdits(html string, edits []Edit) (string, error) {
 		case n > 1 && !e.ReplaceAll:
 			return "", httpx.Unprocessable(fmt.Sprintf("edit %d: old_string matches %d times; add surrounding text to make it unique, or set replace_all", i+1, n))
 		}
+		// Check the size before building it: replace_all of a short string by a
+		// long one multiplies the page (an agent-sized request could allocate
+		// terabytes). MaxHTMLLength counts runes, at most 4 bytes each.
+		if grown := len(html) + strings.Count(html, e.Old)*(len(e.New)-len(e.Old)); grown > 4*MaxHTMLLength {
+			return "", httpx.Unprocessable(fmt.Sprintf("edit %d: the page would exceed %d characters", i+1, MaxHTMLLength))
+		}
 		html = strings.ReplaceAll(html, e.Old, e.New)
 	}
 	return html, nil

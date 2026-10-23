@@ -232,3 +232,16 @@ func TestHistoryErrorsAndState(t *testing.T) {
 		t.Fatalf("state after delete: %v", st)
 	}
 }
+
+// replace_all of a short string by a long one multiplies the page; it must be
+// refused before the result is built.
+func TestApplyEditsRefusesAmplification(t *testing.T) {
+	page := strings.Repeat("a", MaxHTMLLength)
+	huge := strings.Repeat("b", 1<<20)
+	if _, err := ApplyEdits(page, []Edit{{Old: "a", New: huge, ReplaceAll: true}}); err == nil {
+		t.Fatal("amplifying edit accepted")
+	}
+	if got, err := ApplyEdits("<p>a</p>", []Edit{{Old: "a", New: "bb", ReplaceAll: true}}); err != nil || got != "<p>bb</p>" {
+		t.Errorf("small edit = %q, %v", got, err)
+	}
+}

@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"agentrove/internal/config"
@@ -117,5 +118,73 @@ func TestServiceListFilesUpdate(t *testing.T) {
 	b, err := os.ReadFile(filepath.Join(claude, "skills", "mine", "refs", "data.bin"))
 	if err != nil || len(b) != 2 || b[1] != 1 {
 		t.Errorf("binary file = %v %v", b, err)
+	}
+}
+
+// The skill dirs are written by the agent inside the box; symlinks and the
+// plugin manifest must not make the API read or delete other host files.
+func TestSkillsStayInsideTheirRoots(t *testing.T) {
+	storage := t.TempDir()
+	cfg := &config.Config{StoragePath: storage}
+	ws := &models.Workspace{ID: "w", UserID: "u1", SandboxProvider: "docker", WorkspacePath: filepath.Join(storage, "ws")}
+	claude := ClaudeConfigDir(cfg, ws)
+	skills := filepath.Join(ws.WorkspacePath, ".claude", "skills")
+
+	// Another user's data on the same host.
+	victim := filepath.Join(storage, "workspaces", "u2", "proj")
+	writeSkill(t, victim, "stolen", "other user's skill")
+	secret := filepath.Join(storage, "secret.txt")
+	if err := os.WriteFile(secret, []byte("---\ndescription: top secret\n---\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	writeSkill(t, skills, "ok", "fine")
+	// A file inside the skill linking out.
+	if err := os.Symlink(secret, filepath.Join(skills, "ok", "leak.md")); err != nil {
+		t.Fatal(err)
+	}
+	// A skill whose SKILL.md links out.
+	if err := os.MkdirAll(filepath.Join(skills, "linkmd"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(secret, filepath.Join(skills, "linkmd", skillMD)); err != nil {
+		t.Fatal(err)
+	}
+	// A skill dir linking to another tree that holds a SKILL.md.
+	if err := os.Symlink(filepath.Join(victim, "stolen"), filepath.Join(skills, "stolen")); err != nil {
+		t.Fatal(err)
+	}
+	// A plugin whose recorded install path is a host dir outside the config dir.
+	_ = os.MkdirAll(filepath.Join(claude, "plugins"), 0o755)
+	_ = os.WriteFile(filepath.Join(claude, "settings.json"), []byte(`{"enabledPlugins":{"p@m":true}}`), 0o644)
+	_ = os.WriteFile(filepath.Join(claude, "plugins", "installed_plugins.json"),
+		[]byte(`{"plugins":{"p@m":[{"installPath":"`+filepath.Dir(victim)+`"}]}}`), 0o644)
+	writeSkill(t, filepath.Join(filepath.Dir(victim), "skills"), "viaplugin", "other user's plugin skill")
+
+	s := NewService(cfg, ws)
+	for _, sk := range s.List() {
+		if sk.Name != "ok" {
+			t.Errorf("listed %q (%s) from outside its root", sk.Name, sk.Description)
+		}
+	}
+	files, err := s.Files("claude", "ok")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, f := range files {
+		if f.Path == "leak.md" {
+			t.Errorf("followed a symlink out of the skill: %q", f.Content)
+		}
+	}
+	for _, name := range []string{"stolen", "linkmd", "viaplugin"} {
+		if _, err := s.Files("claude", name); !errors.Is(err, ErrNotFound) {
+			t.Errorf("Files(%s) = %v, want not found", name, err)
+		}
+		if _, err := s.Update("claude", name, []FileEntry{{Path: "SKILL.md", Content: "---\ndescription: x\n---\n"}}); !errors.Is(err, ErrNotFound) {
+			t.Errorf("Update(%s) = %v, want not found", name, err)
+		}
+	}
+	if b, err := os.ReadFile(filepath.Join(victim, "stolen", skillMD)); err != nil || !strings.Contains(string(b), "other user's skill") {
+		t.Errorf("victim skill was modified: %q %v", b, err)
 	}
 }
