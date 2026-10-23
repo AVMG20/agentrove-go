@@ -47,6 +47,17 @@ func TestRefreshReuseRevokesAll(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// A second tab replaying the just-rotated token only fails.
+	if _, _, err := s.RotateRefreshToken(ctx, old, "ua", "ip"); !errors.Is(err, ErrInvalidRefresh) {
+		t.Fatalf("grace reuse: %v", err)
+	}
+	if n := activeRefreshTokens(t, s); n != 2 {
+		t.Fatalf("grace reuse revoked tokens: %d active", n)
+	}
+	// Past the grace window it's theft: everything goes.
+	if _, err := s.DB.Exec(`UPDATE refresh_tokens SET revoked_at = ? WHERE token_hash = ?`, db.T(time.Now().Add(-2*rotationGrace)), HashToken(old)); err != nil {
+		t.Fatal(err)
+	}
 	if _, _, err := s.RotateRefreshToken(ctx, old, "ua", "ip"); !errors.Is(err, ErrInvalidRefresh) {
 		t.Fatalf("reuse: %v", err)
 	}
@@ -57,6 +68,23 @@ func TestRefreshReuseRevokesAll(t *testing.T) {
 		if _, _, err := s.RotateRefreshToken(ctx, tok, "ua", "ip"); err == nil {
 			t.Fatal("token still usable after reuse revoke")
 		}
+	}
+}
+
+// A token revoked by logout gets no grace, however recent.
+func TestLoggedOutTokenReuseRevokesAll(t *testing.T) {
+	s := newService(t)
+	ctx := context.Background()
+	gone, _ := s.CreateRefreshToken(ctx, s.DB, testUser, "ua", "ip")
+	_, _ = s.CreateRefreshToken(ctx, s.DB, testUser, "ua", "ip")
+	if err := s.RevokeRefreshToken(ctx, gone); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := s.RotateRefreshToken(ctx, gone, "ua", "ip"); !errors.Is(err, ErrInvalidRefresh) {
+		t.Fatalf("reuse: %v", err)
+	}
+	if n := activeRefreshTokens(t, s); n != 0 {
+		t.Fatalf("%d tokens survived reuse of a logged-out token", n)
 	}
 }
 

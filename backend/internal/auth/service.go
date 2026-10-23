@@ -20,6 +20,9 @@ type Service struct {
 	DB   *db.DB
 	Cfg  *config.Config
 	Keys *Keys
+	// BoxSubnets are the sandbox networks' subnets, never trusted as proxies
+	// (httpx.ClientIP). Filled in by the sandbox provider; nil = none.
+	BoxSubnets *httpx.PrefixSet
 }
 
 type ctxKey struct{}
@@ -127,8 +130,14 @@ func (s *Service) CreateRefreshToken(ctx context.Context, q db.Querier, userID, 
 
 var ErrInvalidRefresh = errors.New("invalid or expired refresh token")
 
+// rotationGrace is how long a token replaced by a refresh may be replayed
+// without counting as theft: tabs (or a waking laptop) refresh at once, and
+// the losers pick up the rotated token from storage (frontend/src/utils/storage.ts).
+const rotationGrace = 60 * time.Second
+
 // RotateRefreshToken validates token, revokes it and issues a replacement.
-// Reusing a revoked token revokes every token of that user (theft signal).
+// Reusing a revoked token revokes every token of that user (theft signal),
+// except a just-rotated one within rotationGrace, which only fails.
 func (s *Service) RotateRefreshToken(ctx context.Context, token, userAgent, ip string) (*models.User, string, error) {
 	var user *models.User
 	var newToken, reusedBy string
@@ -136,20 +145,23 @@ func (s *Service) RotateRefreshToken(ctx context.Context, token, userAgent, ip s
 		var id, userID string
 		var expires db.Time
 		var revoked db.NullTime
-		err := tx.QueryRowContext(ctx, `SELECT id, user_id, expires_at, revoked_at FROM refresh_tokens WHERE token_hash = ?`, HashToken(token)).
-			Scan(&id, &userID, &expires, &revoked)
+		var reason sql.NullString
+		err := tx.QueryRowContext(ctx, `SELECT id, user_id, expires_at, revoked_at, revoked_reason FROM refresh_tokens WHERE token_hash = ?`, HashToken(token)).
+			Scan(&id, &userID, &expires, &revoked, &reason)
 		if err != nil {
 			return ErrInvalidRefresh
 		}
 		now := db.Now()
 		if revoked.Valid {
-			reusedBy = userID
+			if reason.String != "rotated" || time.Since(revoked.Time.Time) > rotationGrace {
+				reusedBy = userID
+			}
 			return ErrInvalidRefresh
 		}
 		if time.Now().After(expires.Time) {
 			return ErrInvalidRefresh
 		}
-		if _, err := tx.ExecContext(ctx, `UPDATE refresh_tokens SET revoked_at = ?, updated_at = ? WHERE id = ?`, now, now, id); err != nil {
+		if _, err := tx.ExecContext(ctx, `UPDATE refresh_tokens SET revoked_at = ?, revoked_reason = 'rotated', updated_at = ? WHERE id = ?`, now, now, id); err != nil {
 			return err
 		}
 		u := &models.User{}

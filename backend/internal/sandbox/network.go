@@ -4,6 +4,7 @@ import (
 	"context"
 	"log/slog"
 	"net"
+	"net/netip"
 	"net/url"
 	"os"
 	"sort"
@@ -127,6 +128,7 @@ func (d *DockerProvider) boxNetwork(ctx context.Context, userID string) string {
 // fine. Callers hold netMu.
 func (d *DockerProvider) joinLocked(ctx context.Context, name string) error {
 	if info, err := d.net.NetworkInspect(ctx, name, network.InspectOptions{}); err == nil {
+		d.recordSubnets(info)
 		if _, ok := info.Containers[d.self]; ok {
 			d.joined[name] = true
 			return nil
@@ -157,6 +159,36 @@ func (d *DockerProvider) ReconnectNetworks(ctx context.Context) {
 	for _, n := range list {
 		if err := d.joinLocked(ctx, n.Name); err != nil {
 			slog.Warn("rejoin user box network", "network", n.Name, "err", err)
+		}
+	}
+}
+
+// LoadBoxSubnets records the subnets of the shared and every per-user box
+// network, so requests from boxes are never taken for a trusted proxy
+// (httpx.ClientIP). Networks created later are recorded as they are joined.
+func (d *DockerProvider) LoadBoxSubnets(ctx context.Context) {
+	if d.cfg.DockerNetwork != "" {
+		if info, err := d.net.NetworkInspect(ctx, d.cfg.DockerNetwork, network.InspectOptions{}); err == nil {
+			d.recordSubnets(info)
+		}
+	}
+	list, err := d.net.NetworkList(ctx, network.ListOptions{Filters: d.userNetworkFilters()})
+	if err != nil {
+		slog.Warn("list user box networks", "err", err)
+		return
+	}
+	for _, n := range list {
+		d.recordSubnets(n)
+	}
+}
+
+func (d *DockerProvider) recordSubnets(info network.Inspect) {
+	if d.subnets == nil {
+		return
+	}
+	for _, c := range info.IPAM.Config {
+		if p, err := netip.ParsePrefix(c.Subnet); err == nil {
+			d.subnets.Add(p)
 		}
 	}
 }

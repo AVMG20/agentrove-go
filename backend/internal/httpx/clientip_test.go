@@ -29,7 +29,7 @@ func TestClientIP(t *testing.T) {
 			for _, v := range tc.xff {
 				r.Header.Add("X-Forwarded-For", v)
 			}
-			if got := ClientIP(r, trusted); got != tc.want {
+			if got := ClientIP(r, trusted, nil); got != tc.want {
 				t.Fatalf("ClientIP = %q, want %q", got, tc.want)
 			}
 		})
@@ -38,7 +38,36 @@ func TestClientIP(t *testing.T) {
 	r := httptest.NewRequest("GET", "/", nil)
 	r.RemoteAddr = "10.0.0.2:80"
 	r.Header.Set("X-Forwarded-For", "198.51.100.7")
-	if got := ClientIP(r, nil); got != "10.0.0.2" {
+	if got := ClientIP(r, nil, nil); got != "10.0.0.2" {
 		t.Fatalf("untrusted config: %q", got)
+	}
+}
+
+// Box networks are private but never proxies, even when TRUSTED_PROXIES
+// covers them, so code in a box can't forge X-Forwarded-For.
+func TestClientIPBoxSubnets(t *testing.T) {
+	trusted := []netip.Prefix{netip.MustParsePrefix("172.16.0.0/12")}
+	boxes := NewPrefixSet()
+	var nilSet *PrefixSet
+	if nilSet.Contains(netip.MustParseAddr("172.20.0.5")) {
+		t.Fatal("nil set not empty")
+	}
+	boxes.Add(netip.MustParsePrefix("172.20.0.9/16"), netip.MustParsePrefix("172.20.0.0/16"))
+	ip := func(remote string, xff string) string {
+		r := httptest.NewRequest("GET", "/", nil)
+		r.RemoteAddr = remote
+		r.Header.Set("X-Forwarded-For", xff)
+		return ClientIP(r, trusted, boxes)
+	}
+	if got := ip("172.20.0.5:4000", "6.6.6.6"); got != "172.20.0.5" {
+		t.Fatalf("box peer honoured XFF: %q", got)
+	}
+	// nginx on another private network still forwards the real client.
+	if got := ip("172.19.0.3:4000", "198.51.100.7, 172.18.0.2"); got != "198.51.100.7" {
+		t.Fatalf("proxy chain: %q", got)
+	}
+	// A box address in the chain is a client, not a hop to skip.
+	if got := ip("172.19.0.3:4000", "6.6.6.6, 172.20.0.5"); got != "172.20.0.5" {
+		t.Fatalf("box hop: %q", got)
 	}
 }

@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"agentrove/internal/config"
+	"agentrove/internal/httpx"
 	"agentrove/internal/models"
 )
 
@@ -35,7 +36,9 @@ type Manager struct {
 	Working func(sandboxID string) bool
 }
 
-func NewManager(cfg *config.Config) *Manager {
+// NewManager sets up the providers; boxSubnets is filled with the box
+// networks' subnets (see DockerProvider.LoadBoxSubnets).
+func NewManager(cfg *config.Config, boxSubnets *httpx.PrefixSet) *Manager {
 	m := &Manager{
 		cfg:       cfg,
 		providers: map[string]Provider{},
@@ -44,10 +47,14 @@ func NewManager(cfg *config.Config) *Manager {
 		starting:  map[string]*sync.Mutex{},
 		userEnv:   map[string]map[string]string{},
 	}
-	if d, err := NewDockerProvider(cfg); err != nil {
+	if d, err := NewDockerProvider(cfg, boxSubnets); err != nil {
 		slog.Warn("docker sandbox provider unavailable", "err", err)
 	} else {
 		m.providers[KindDocker] = d
+		// Before serving, so a box can't pass as a proxy in the first seconds.
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		d.LoadBoxSubnets(ctx)
+		cancel()
 	}
 	return m
 }

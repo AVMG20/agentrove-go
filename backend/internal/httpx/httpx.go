@@ -12,8 +12,10 @@ import (
 	"net/http"
 	"net/netip"
 	"runtime/debug"
+	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -269,13 +271,15 @@ func Chain(h http.Handler, mws ...func(http.Handler) http.Handler) http.Handler 
 // direct peer is used unless it is one of trusted (our reverse proxies);
 // then X-Forwarded-For is walked from the right, skipping trusted hops, since
 // only the entries appended by our own proxies can't be forged by the client.
-func ClientIP(r *http.Request, trusted []netip.Prefix) string {
+// untrusted (the box networks) overrides trusted: code in a box reaches the
+// API from a private address but is never a proxy.
+func ClientIP(r *http.Request, trusted []netip.Prefix, untrusted *PrefixSet) string {
 	host := r.RemoteAddr
 	if h, _, err := net.SplitHostPort(host); err == nil {
 		host = h
 	}
 	peer, err := netip.ParseAddr(host)
-	if err != nil || !isTrusted(peer.Unmap(), trusted) {
+	if err != nil || !isTrusted(peer.Unmap(), trusted, untrusted) {
 		return host
 	}
 	var hops []string
@@ -294,7 +298,7 @@ func ClientIP(r *http.Request, trusted []netip.Prefix) string {
 		if !ok {
 			return hops[i]
 		}
-		if !isTrusted(addr, trusted) {
+		if !isTrusted(addr, trusted, untrusted) {
 			return addr.String()
 		}
 	}
@@ -314,8 +318,47 @@ func parseHop(s string) (netip.Addr, bool) {
 	return netip.Addr{}, false
 }
 
-func isTrusted(a netip.Addr, trusted []netip.Prefix) bool {
+func isTrusted(a netip.Addr, trusted []netip.Prefix, untrusted *PrefixSet) bool {
+	if untrusted.Contains(a) {
+		return false
+	}
 	for _, p := range trusted {
+		if p.Contains(a) {
+			return true
+		}
+	}
+	return false
+}
+
+// PrefixSet is a concurrency-safe set of networks that grows at runtime
+// (box network subnets as the sandbox provider learns them). A nil set is
+// empty.
+type PrefixSet struct {
+	mu       sync.RWMutex
+	prefixes []netip.Prefix
+}
+
+func NewPrefixSet() *PrefixSet { return &PrefixSet{} }
+
+func (s *PrefixSet) Add(ps ...netip.Prefix) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, p := range ps {
+		p = p.Masked()
+		if !p.IsValid() || slices.Contains(s.prefixes, p) {
+			continue
+		}
+		s.prefixes = append(s.prefixes, p)
+	}
+}
+
+func (s *PrefixSet) Contains(a netip.Addr) bool {
+	if s == nil {
+		return false
+	}
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	for _, p := range s.prefixes {
 		if p.Contains(a) {
 			return true
 		}

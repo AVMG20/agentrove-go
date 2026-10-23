@@ -110,9 +110,11 @@ func Load() (*Config, error) {
 		GitAuthorName:            env("GIT_AUTHOR_NAME", ""),
 		GitAuthorEmail:           env("GIT_AUTHOR_EMAIL", ""),
 		MCPEnabled:               envBool("AGENTROVE_MCP_ENABLED", true),
-		// The token is re-minted at half-life between turns (server.mcpConfigs),
-		// so 24h leaves any single agent turn at least 12h.
-		MCPTokenLifetime:       time.Duration(envInt("AGENTROVE_MCP_TOKEN_LIFETIME_SECONDS", 86400)) * time.Second,
+		// The token only works on the MCP endpoint. It is re-minted at
+		// half-life between turns (server.mcpConfigs), and a new token restarts
+		// the chat's CLI (killing its background shells), so 72h means a turn
+		// starts with >=36h left and restarts happen at most every ~36h.
+		MCPTokenLifetime:       time.Duration(envInt("AGENTROVE_MCP_TOKEN_LIFETIME_SECONDS", 259200)) * time.Second,
 		ArtifactsEnabled:       envBool("AGENTROVE_ARTIFACTS_ENABLED", true),
 		ArtifactViewTokenTTL:   time.Duration(envInt("ARTIFACT_VIEW_TOKEN_LIFETIME_SECONDS", 1800)) * time.Second,
 		AgentEnv:               ParseEnvLines(env("AGENT_ENV", "")),
@@ -137,7 +139,8 @@ func Load() (*Config, error) {
 	// The API is only published through the frontend proxy (nginx, behind
 	// Coolify's Traefik), which reaches it over Docker's private networks;
 	// a public client connecting directly has a public address and its
-	// X-Forwarded-For is ignored.
+	// X-Forwarded-For is ignored. Boxes are private too, so their network
+	// subnets are excluded at runtime (auth.Service.BoxSubnets).
 	trustedRaw := strings.TrimSpace(env("TRUSTED_PROXIES", ""))
 	if trustedRaw == "" {
 		trustedRaw = "127.0.0.0/8,::1/128,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,fc00::/7"

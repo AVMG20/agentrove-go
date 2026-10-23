@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"agentrove/internal/config"
+	"agentrove/internal/httpx"
 
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/filters"
@@ -40,9 +41,11 @@ type DockerProvider struct {
 	self     string // the API's own container id; "" = not in a container
 	netMu    sync.Mutex
 	joined   map[string]bool // per-user networks the API is connected to
+	// subnets collects the box networks' subnets for httpx.ClientIP.
+	subnets *httpx.PrefixSet
 }
 
-func NewDockerProvider(cfg *config.Config) (*DockerProvider, error) {
+func NewDockerProvider(cfg *config.Config, subnets *httpx.PrefixSet) (*DockerProvider, error) {
 	opts := []client.Opt{client.FromEnv, client.WithAPIVersionNegotiation()}
 	if cfg.DockerHost != "" {
 		opts = append(opts, client.WithHost(cfg.DockerHost))
@@ -57,7 +60,7 @@ func NewDockerProvider(cfg *config.Config) (*DockerProvider, error) {
 		cli.Close()
 		return nil, fmt.Errorf("docker daemon unreachable: %w", err)
 	}
-	return &DockerProvider{cfg: cfg, cli: cli, net: cli, hostname: os.Hostname, joined: map[string]bool{}}, nil
+	return &DockerProvider{cfg: cfg, cli: cli, net: cli, hostname: os.Hostname, joined: map[string]bool{}, subnets: subnets}, nil
 }
 
 func (d *DockerProvider) Kind() string { return KindDocker }
@@ -80,11 +83,16 @@ func (d *DockerProvider) ensureNetwork(ctx context.Context) {
 		if d.cfg.DockerNetwork == "" {
 			return
 		}
-		if _, err := d.cli.NetworkInspect(ctx, d.cfg.DockerNetwork, network.InspectOptions{}); err == nil {
+		if info, err := d.net.NetworkInspect(ctx, d.cfg.DockerNetwork, network.InspectOptions{}); err == nil {
+			d.recordSubnets(info)
 			return
 		}
-		if _, err := d.cli.NetworkCreate(ctx, d.cfg.DockerNetwork, network.CreateOptions{Driver: "bridge"}); err != nil {
+		if _, err := d.net.NetworkCreate(ctx, d.cfg.DockerNetwork, network.CreateOptions{Driver: "bridge"}); err != nil {
 			slog.Warn("create docker network", "network", d.cfg.DockerNetwork, "err", err)
+			return
+		}
+		if info, err := d.net.NetworkInspect(ctx, d.cfg.DockerNetwork, network.InspectOptions{}); err == nil {
+			d.recordSubnets(info)
 		}
 	})
 }

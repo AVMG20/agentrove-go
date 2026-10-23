@@ -23,7 +23,7 @@ Open http://localhost:3000. The first account you register becomes the superuser
 
 For production (e.g. Coolify), use `docker-compose-production.yml`. It builds the sandbox image, serves the built frontend through nginx (`web`, port 80) and keeps data in `/data/agentrove-go/storage`. Set `SECRET_KEY` and `APP_URL`.
 
-The API trusts `X-Forwarded-For` only from `TRUSTED_PROXIES` (default: loopback and private ranges, which covers nginx/Traefik on the Docker network). Don't publish the API port directly on a network where untrusted clients have private addresses.
+The API trusts `X-Forwarded-For` only from `TRUSTED_PROXIES` (default: loopback and private ranges, which covers nginx/Traefik on the Docker network). Requests from the box networks never count as a proxy, so code in a box can't forge its address. Don't publish the API port directly on a network where untrusted clients have private addresses.
 
 ### Usage meter
 

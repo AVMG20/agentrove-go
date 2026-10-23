@@ -3,11 +3,14 @@ package sandbox
 import (
 	"context"
 	"errors"
+	"fmt"
+	"net/netip"
 	"reflect"
 	"strings"
 	"testing"
 
 	"agentrove/internal/config"
+	"agentrove/internal/httpx"
 
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/network"
@@ -22,12 +25,13 @@ type fakeNet struct {
 	networks   map[string]map[string]bool   // name -> container ids
 	labels     map[string]map[string]string // name -> labels
 	aliases    map[string][]string          // network -> aliases of the last connect
+	subnets    map[string]string            // network -> IPAM subnet
 	connects   int
 }
 
 func newFakeNet() *fakeNet {
 	return &fakeNet{containers: map[string]string{}, networks: map[string]map[string]bool{},
-		labels: map[string]map[string]string{}, aliases: map[string][]string{}}
+		labels: map[string]map[string]string{}, aliases: map[string][]string{}, subnets: map[string]string{}}
 }
 
 func (f *fakeNet) NetworkInspect(_ context.Context, name string, _ network.InspectOptions) (network.Inspect, error) {
@@ -36,6 +40,9 @@ func (f *fakeNet) NetworkInspect(_ context.Context, name string, _ network.Inspe
 		return network.Inspect{}, errdefs.NotFound(errors.New("network " + name + " not found"))
 	}
 	out := network.Inspect{Name: name, Labels: f.labels[name], Containers: map[string]network.EndpointResource{}}
+	if sub := f.subnets[name]; sub != "" {
+		out.IPAM.Config = []network.IPAMConfig{{Subnet: sub}}
+	}
 	for id := range members {
 		out.Containers[id] = network.EndpointResource{}
 	}
@@ -48,6 +55,7 @@ func (f *fakeNet) NetworkCreate(_ context.Context, name string, o network.Create
 	}
 	f.networks[name] = map[string]bool{}
 	f.labels[name] = o.Labels
+	f.subnets[name] = fmt.Sprintf("172.%d.0.0/16", 20+len(f.subnets))
 	return network.CreateResponse{ID: name}, nil
 }
 
@@ -63,7 +71,8 @@ func (f *fakeNet) NetworkList(_ context.Context, o network.ListOptions) ([]netwo
 			}
 		}
 		if match {
-			out = append(out, network.Summary{Name: name})
+			info, _ := f.NetworkInspect(context.Background(), name, network.InspectOptions{})
+			out = append(out, info)
 		}
 	}
 	return out, nil
@@ -112,7 +121,7 @@ func newNetProvider(perUser bool, apiContainer, hostname string) (*DockerProvide
 	f.containers["abcdef123456"] = apiID
 	f.networks["agentrove-sandbox-net"] = map[string]bool{apiID: true}
 	cfg := &config.Config{DockerNetwork: "agentrove-sandbox-net", SandboxPerUserNetworks: perUser, APIContainer: apiContainer, HostStoragePath: "/s"}
-	d := &DockerProvider{cfg: cfg, net: f, joined: map[string]bool{},
+	d := &DockerProvider{cfg: cfg, net: f, joined: map[string]bool{}, subnets: httpx.NewPrefixSet(),
 		hostname: func() (string, error) { return hostname, nil }}
 	d.netOnce.Do(func() {}) // shared network exists; skip the real client
 	return d, f
@@ -236,5 +245,27 @@ func TestMoveBox(t *testing.T) {
 	}
 	if !f.networks["agentrove-sandbox-net"][apiID] {
 		t.Fatal("API left the shared network")
+	}
+}
+
+func TestBoxSubnetsRecorded(t *testing.T) {
+	d, f := newNetProvider(true, "", "abcdef123456")
+	f.subnets["agentrove-sandbox-net"] = "172.18.0.0/16"
+	existing := UserNetworkName("ffff")
+	f.networks[existing], f.labels[existing], f.subnets[existing] = map[string]bool{}, d.userNetworkLabels("ffff"), "10.99.0.0/24"
+	d.LoadBoxSubnets(context.Background())
+	for _, ip := range []string{"172.18.0.4", "10.99.0.7"} {
+		if !d.subnets.Contains(netip.MustParseAddr(ip)) {
+			t.Errorf("%s not recorded at startup", ip)
+		}
+	}
+	// A network created later is recorded when the API joins it.
+	name := d.boxNetwork(context.Background(), netUser)
+	sub := netip.MustParsePrefix(f.subnets[name])
+	if !d.subnets.Contains(sub.Addr().Next()) {
+		t.Fatalf("new network %s (%s) not recorded", name, sub)
+	}
+	if d.subnets.Contains(netip.MustParseAddr("192.168.1.1")) {
+		t.Fatal("unrelated address recorded")
 	}
 }

@@ -59,9 +59,12 @@ shared network on their next start.
 - `internal/auth` — `Service.Require(handler)` for authed routes,
   `auth.UserFrom(r.Context())` for the current user. `Require` accepts
   session tokens only; MCP / artifact-agent tokens are scoped to their own
-  endpoints (`/api/v1/mcp`, artifacts). Use `httpx.ClientIP(r,
-  cfg.TrustedProxies)` for the client address, never `X-Forwarded-For`
-  directly.
+  endpoints (`/api/v1/mcp`, artifacts). The MCP token lives
+  `AGENTROVE_MCP_TOKEN_LIFETIME_SECONDS` (default 72h) and is re-minted at
+  half-life, which restarts the chat's CLI with `--resume`. Use
+  `httpx.ClientIP(r, cfg.TrustedProxies, authService.BoxSubnets)` for the
+  client address, never `X-Forwarded-For` directly: box network subnets
+  (recorded by the Docker provider) are never trusted as proxies.
 - `internal/usage` — usage meter. Endpoint follows `ANTHROPIC_BASE_URL`
   (official `https://api.anthropic.com/api/oauth/usage`, else
   `<ANTHROPIC_BASE_URL>/api/usage`).
