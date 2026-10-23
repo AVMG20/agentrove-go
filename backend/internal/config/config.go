@@ -183,17 +183,34 @@ func (c *Config) UploadsDir() string { return filepath.Join(c.StoragePath, "uplo
 
 // AgentGlobalEnv is the deployment-wide env for agent sessions and terminals:
 // passthrough keys first so an explicit AGENT_ENV line wins.
+// Deployment secrets never reach a box, even if AGENT_ENV or
+// AGENT_ENV_PASSTHROUGH names them by mistake: SECRET_KEY signs every token.
 func (c *Config) AgentGlobalEnv() map[string]string {
 	out := map[string]string{}
 	for _, k := range c.AgentEnvPassthroughKey {
-		if v := os.Getenv(k); v != "" {
+		if v := os.Getenv(k); v != "" && !DeploymentSecret(k) {
 			out[k] = v
 		}
 	}
 	for k, v := range c.AgentEnv {
-		out[k] = v
+		if !DeploymentSecret(k) {
+			out[k] = v
+		}
 	}
 	return out
+}
+
+// deploymentKeys are the API's own settings that must stay on the host.
+var deploymentKeys = map[string]bool{
+	"SECRET_KEY": true, "DATABASE_PATH": true, "DATABASE_URL": true, "STORAGE_PATH": true, "HOST_STORAGE_PATH": true,
+	"MAIL_USERNAME": true, "MAIL_PASSWORD": true, "MAIL_SERVER": true, "DOCKER_HOST": true, "AGENTROVE_API_CONTAINER": true,
+}
+
+// DeploymentSecret reports whether key is an API setting that must not be
+// handed to agents.
+func DeploymentSecret(key string) bool {
+	k := strings.ToUpper(strings.TrimSpace(key))
+	return deploymentKeys[k] || strings.HasPrefix(k, "DOCKER_TLS") || strings.HasPrefix(k, "DOCKER_CERT")
 }
 
 func (c *Config) IsProduction() bool { return c.Environment == "production" }

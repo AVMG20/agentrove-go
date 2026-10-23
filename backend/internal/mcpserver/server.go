@@ -87,7 +87,7 @@ func ServerConfigForChat(a *app.App, userID, chatID string, fullAccess bool) (ma
 	if fullAccess {
 		audience = auth.AudienceMCP
 	}
-	token, err := a.Keys.IssueToken(userID, audience, ttl)
+	token, err := a.Keys.IssueChatToken(userID, audience, chatID, ttl)
 	if err != nil {
 		return nil, err
 	}
@@ -121,21 +121,26 @@ func (m *Module) authenticate(r *http.Request) *caller {
 	if !strings.EqualFold(scheme, "bearer") || token == "" {
 		return nil
 	}
-	c := &caller{chatID: strings.TrimSpace(r.Header.Get(ChatIDHeader))}
-	if u, err := m.a.Auth.AuthenticateMCP(r.Context(), token); err == nil {
+	c := &caller{}
+	if u, err := m.a.Auth.Authenticate(r.Context(), token); err == nil {
+		// A session token already grants the whole API, so its header is
+		// believed.
 		c.userID, c.fullAccess = u.ID, true
-	} else if u, err := m.a.Auth.Authenticate(r.Context(), token); err == nil {
-		// A session token already grants the whole API.
-		c.userID, c.fullAccess = u.ID, true
-	} else if sub, err := m.a.Keys.VerifyToken(token, auth.AudienceArtifactAgent); err == nil {
-		u, err := m.a.Auth.GetUser(r.Context(), sub)
-		if err != nil || !u.IsActive {
-			return nil
-		}
-		c.userID = u.ID
-	} else {
+		c.chatID = strings.TrimSpace(r.Header.Get(ChatIDHeader))
+		return c
+	}
+	// Agent tokens carry their chat; the header is box-supplied and ignored.
+	claims, err := m.a.Keys.VerifyClaims(token, auth.AudienceMCP)
+	if err == nil {
+		c.fullAccess = true
+	} else if claims, err = m.a.Keys.VerifyClaims(token, auth.AudienceArtifactAgent); err != nil {
 		return nil
 	}
+	u, err := m.a.Auth.GetUser(r.Context(), claims.Subject)
+	if err != nil || !u.IsActive {
+		return nil
+	}
+	c.userID, c.chatID = u.ID, claims.Chat
 	return c
 }
 

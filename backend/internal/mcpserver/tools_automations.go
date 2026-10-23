@@ -10,11 +10,29 @@ import (
 
 // --- automations ---
 
+// maxAgentAutomations bounds how many schedules agents can leave behind.
+const maxAgentAutomations = 20
+
+// agentOwned loads an automation an agent may change: the user's own are
+// read-only here (they could otherwise be rewritten into a hidden
+// persistent prompt the user still trusts).
+func (m *Module) agentOwned(ctx context.Context, c *caller, id string) error {
+	x, err := m.automations.Get(ctx, id, c.userID)
+	if err != nil {
+		return err
+	}
+	if !x.CreatedByAgent {
+		return errorf("Automation %q was created by the user; only the user can change or delete it (in Automations).", x.Name)
+	}
+	return nil
+}
+
 func automationSummary(x *automation.Automation) map[string]any {
 	return map[string]any{
 		"id": x.ID, "name": x.Name, "prompt": x.Prompt, "cron_expression": x.CronExpression, "timezone": x.Timezone,
 		"enabled": x.Enabled, "model_id": x.ModelID, "workspace_id": x.WorkspaceID, "thinking_mode": x.ThinkingMode,
 		"worktree": x.Worktree, "persona": x.SelectedPersonaName, "next_run_at": x.NextRunAt, "last_run_at": x.LastRunAt,
+		"created_by_agent": x.CreatedByAgent,
 	}
 }
 
@@ -53,6 +71,11 @@ func (m *Module) createAutomation(ctx context.Context, c *caller, args json.RawM
 	if err != nil {
 		return nil, err
 	}
+	if n, err := m.automations.CountByAgent(ctx, c.userID); err != nil {
+		return nil, err
+	} else if n >= maxAgentAutomations {
+		return nil, errorf("Agents can keep at most %d automations; delete one first.", maxAgentAutomations)
+	}
 	ws, err := m.resolveWorkspace(ctx, c.userID, a.WorkspaceID)
 	if err != nil {
 		return nil, err
@@ -65,6 +88,7 @@ func (m *Module) createAutomation(ctx context.Context, c *caller, args json.RawM
 	in := &automation.Input{
 		WorkspaceID: &ws, Name: &a.Name, Prompt: &a.Prompt, ModelID: &model, CronExpression: &a.CronExpression,
 		Timezone: &a.Timezone, PermissionMode: &mode, Worktree: &a.Worktree, Enabled: &enabled, Set: map[string]bool{},
+		CreatedByAgent: true,
 	}
 	if a.ThinkingMode != nil && *a.ThinkingMode != "" {
 		in.ThinkingMode = a.ThinkingMode
@@ -99,6 +123,9 @@ func (m *Module) updateAutomation(ctx context.Context, c *caller, args json.RawM
 	if err := validEffort(a.ThinkingMode); err != nil {
 		return nil, err
 	}
+	if err := m.agentOwned(ctx, c, a.AutomationID); err != nil {
+		return nil, err
+	}
 	in := &automation.Input{Set: map[string]bool{}}
 	setStr := func(key string, dst **string, v *string) {
 		if v != nil {
@@ -118,9 +145,9 @@ func (m *Module) updateAutomation(ctx context.Context, c *caller, args json.RawM
 		if err != nil {
 			return nil, err
 		}
-		mode := models.FullAccessPermissionMode
+		// Permission mode is left alone: a model switch must not lift a
+		// user's plan/default-mode automation to bypassPermissions.
 		setStr("model_id", &in.ModelID, &model)
-		setStr("permission_mode", &in.PermissionMode, &mode)
 	}
 	if a.Worktree != nil {
 		in.Worktree, in.Set["worktree"] = a.Worktree, true
@@ -142,6 +169,9 @@ type automationIDArgs struct {
 func (m *Module) deleteAutomation(ctx context.Context, c *caller, args json.RawMessage) (any, error) {
 	var a automationIDArgs
 	if err := decode(args, &a); err != nil {
+		return nil, err
+	}
+	if err := m.agentOwned(ctx, c, a.AutomationID); err != nil {
 		return nil, err
 	}
 	if err := m.automations.Delete(ctx, a.AutomationID, c.userID); err != nil {

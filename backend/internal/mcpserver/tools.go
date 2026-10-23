@@ -130,7 +130,8 @@ func (m *Module) buildTools() []*tool {
 		},
 		{
 			name: "update_persona",
-			description: "Replace an existing persona's system prompt.\n\n`name` must match an existing persona (see list_personas); " +
+			description: "Replace an existing persona's system prompt.\n\n`name` must match a persona created with create_persona; " +
+				"personas the user wrote can only be changed by the user. " +
 				"`content` fully replaces its current system prompt. Chats already streaming keep the prompt they started with; " +
 				"new turns pick up the updated one. Returns the updated persona's name.",
 			schema:  object(props{"name": str(""), "content": str("")}, "name", "content"),
@@ -138,7 +139,8 @@ func (m *Module) buildTools() []*tool {
 		},
 		{
 			name: "delete_persona",
-			description: "Delete a custom persona permanently.\n\n`name` must match an existing persona (see list_personas). Chats " +
+			description: "Delete a custom persona permanently.\n\n`name` must match a persona created with create_persona (the " +
+				"user's own personas can't be deleted here). Chats " +
 				"that used it keep their history, but new turns can no longer select it. Returns {\"deleted\": true}.",
 			schema:  object(props{"name": str("")}, "name"),
 			handler: m.deletePersona,
@@ -373,7 +375,8 @@ func (m *Module) buildTools() []*tool {
 		},
 		{
 			name: "update_automation",
-			description: "Update an existing automation; only the arguments you pass are changed.\n\nPass model_id to switch " +
+			description: "Update an automation created with create_automation; only the arguments you pass are changed. " +
+				"Automations the user created can only be changed by the user.\n\nPass model_id to switch " +
 				"models, enabled to pause/resume, or cron_expression/timezone to reschedule (next_run_at is recomputed). Returns " +
 				"the updated automation.",
 			schema: object(props{
@@ -384,10 +387,11 @@ func (m *Module) buildTools() []*tool {
 			handler: m.updateAutomation,
 		},
 		{
-			name:        "delete_automation",
-			description: "Delete a scheduled automation permanently. Returns {\"deleted\": true}.",
-			schema:      object(props{"automation_id": str("")}, "automation_id"),
-			handler:     m.deleteAutomation,
+			name: "delete_automation",
+			description: "Delete a scheduled automation created with create_automation permanently (the user's own automations " +
+				"can't be deleted here). Returns {\"deleted\": true}.",
+			schema:  object(props{"automation_id": str("")}, "automation_id"),
+			handler: m.deleteAutomation,
 		},
 		{
 			name: "run_automation",

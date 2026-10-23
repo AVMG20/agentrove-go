@@ -991,7 +991,7 @@ func (m *Module) oneShot(userID string) claude.OneShot {
 		env[k] = v
 	}
 	return claude.OneShot{Binary: m.a.Cfg.ClaudeBinary, Env: env,
-		HomeDir: home, ConfigDir: claude.ConfigDirFor(home), AsUID: sandbox.ContainerUID}
+		ConfigDir: claude.ConfigDirFor(home), AsUID: sandbox.ContainerUID}
 }
 
 func (m *Module) generateText(ctx context.Context, userID, modelID, systemPrompt, prompt string) (string, error) {

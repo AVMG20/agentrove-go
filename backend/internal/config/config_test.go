@@ -29,3 +29,22 @@ func TestParsePrefixes(t *testing.T) {
 		t.Errorf("empty = %v, %v", p, err)
 	}
 }
+
+func TestAgentGlobalEnvDropsDeploymentSecrets(t *testing.T) {
+	t.Setenv("SECRET_KEY", "x")
+	t.Setenv("ANTHROPIC_API_KEY", "k")
+	c := &Config{
+		AgentEnvPassthroughKey: []string{"SECRET_KEY", "ANTHROPIC_API_KEY"},
+		AgentEnv:               map[string]string{"MAIL_PASSWORD": "p", "FOO": "bar"},
+	}
+	got := c.AgentGlobalEnv()
+	if _, ok := got["SECRET_KEY"]; ok {
+		t.Fatal("SECRET_KEY passed through")
+	}
+	if _, ok := got["MAIL_PASSWORD"]; ok {
+		t.Fatal("MAIL_PASSWORD passed through")
+	}
+	if got["ANTHROPIC_API_KEY"] != "k" || got["FOO"] != "bar" {
+		t.Fatalf("env = %v", got)
+	}
+}

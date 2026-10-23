@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"io"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -125,5 +126,24 @@ func TestSessionDoneBoundedWhenOutputStaysOpen(t *testing.T) {
 	case <-s.Done():
 	case <-time.After(3 * time.Second):
 		t.Fatal("Done blocked on open stdout")
+	}
+}
+
+func TestOneShotEnvDropsHostSecretsAndUnsafeUserVars(t *testing.T) {
+	host := []string{"PATH=/usr/bin", "SECRET_KEY=s3cret", "MAIL_PASSWORD=x", "HTTPS_PROXY=http://p:3128"}
+	extra := map[string]string{"ANTHROPIC_API_KEY": "k", "LD_PRELOAD": "/x.so", "NODE_OPTIONS": "--require /x.js", "PATH": "/evil"}
+	got := map[string]string{}
+	for _, kv := range oneShotEnv(host, extra) {
+		k, v, _ := strings.Cut(kv, "=")
+		got[k] = v
+	}
+	want := map[string]string{"PATH": "/usr/bin", "HTTPS_PROXY": "http://p:3128", "ANTHROPIC_API_KEY": "k"}
+	if len(got) != len(want) {
+		t.Fatalf("env = %v, want %v", got, want)
+	}
+	for k, v := range want {
+		if got[k] != v {
+			t.Fatalf("env[%s] = %q, want %q (env %v)", k, got[k], v, got)
+		}
 	}
 }

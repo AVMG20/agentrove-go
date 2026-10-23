@@ -39,6 +39,10 @@ type CustomEnvVar struct {
 type Persona struct {
 	Name    string `json:"name"`
 	Content string `json:"content"`
+	// CreatedByAgent marks a persona made through MCP. Agents may only change
+	// or delete those, so injected instructions can't be planted into a
+	// persona the user wrote and keeps selecting.
+	CreatedByAgent bool `json:"created_by_agent,omitempty"`
 }
 
 type StreamAction struct {

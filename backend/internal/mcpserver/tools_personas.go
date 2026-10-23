@@ -78,7 +78,7 @@ func (m *Module) createPersona(ctx context.Context, c *caller, args json.RawMess
 			return nil, errorf("A persona named %q already exists.", a.Name)
 		}
 	}
-	if err := m.savePersonas(ctx, c.userID, append(list, models.Persona{Name: a.Name, Content: a.Content})); err != nil {
+	if err := m.savePersonas(ctx, c.userID, append(list, models.Persona{Name: a.Name, Content: a.Content, CreatedByAgent: true})); err != nil {
 		return nil, err
 	}
 	return map[string]any{"persona": map[string]any{"name": a.Name}}, nil
@@ -95,6 +95,9 @@ func (m *Module) updatePersona(ctx context.Context, c *caller, args json.RawMess
 	}
 	for i := range list {
 		if list[i].Name == a.Name {
+			if !list[i].CreatedByAgent {
+				return nil, errUserPersona(a.Name)
+			}
 			list[i].Content = a.Content
 			if err := m.savePersonas(ctx, c.userID, list); err != nil {
 				return nil, err
@@ -118,6 +121,8 @@ func (m *Module) deletePersona(ctx context.Context, c *caller, args json.RawMess
 	for _, p := range list {
 		if p.Name != a.Name {
 			kept = append(kept, p)
+		} else if !p.CreatedByAgent {
+			return nil, errUserPersona(a.Name)
 		}
 	}
 	if len(kept) == len(list) {
@@ -127,4 +132,9 @@ func (m *Module) deletePersona(ctx context.Context, c *caller, args json.RawMess
 		return nil, err
 	}
 	return map[string]any{"deleted": true}, nil
+}
+
+func errUserPersona(name string) error {
+	return errorf("Persona %q was created by the user; only the user can change or delete it (in Settings). "+
+		"Create a new persona instead.", name)
 }
