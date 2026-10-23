@@ -13,9 +13,9 @@ import { useSetChatInputMessage } from '@/hooks/useChatInputMessageContext';
 import { useCheckpointRestore } from '@/hooks/useCheckpointRestore';
 import styles from './Message.module.scss';
 
-export function MessageRow({ children }: { children: ReactNode }) {
+export function MessageRow({ children, mine }: { children: ReactNode; mine?: boolean }) {
   return (
-    <div className={styles.message}>
+    <div className={mine ? `${styles.message} ${styles.mine}` : styles.message}>
       <div className={styles['message-row']}>
         <div className={styles['message-body']}>{children}</div>
       </div>
@@ -60,7 +60,7 @@ export const UserMessage = memo(function UserMessage({
   const { chatId } = useChatContext();
 
   return (
-    <MessageRow>
+    <MessageRow mine>
       <UserBubble>
         <UserMessageContent
           contentRender={contentRender}

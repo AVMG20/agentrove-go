@@ -21,6 +21,16 @@
   flex: 1;
 }
 
+.mine .message-body {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+}
+
+.mine .user-bubble {
+  max-width: 85%;
+}
+
 .user-bubble {
   display: inline-block;
   max-width: 100%;
