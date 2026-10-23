@@ -28,7 +28,7 @@ export function RenameModal({
   isLoading = false,
   onGenerateTitle,
   isGenerating = false,
-  title: modalTitle = 'Rename Chat',
+  title: modalTitle = 'Rename thread',
 }: RenameModalProps) {
   const [title, setTitle] = useState(currentTitle);
   const inputRef = useRef<HTMLInputElement>(null);

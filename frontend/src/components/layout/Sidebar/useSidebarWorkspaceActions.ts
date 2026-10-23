@@ -68,8 +68,8 @@ export function useSidebarWorkspaceActions({
   });
 
   const handleNewWorkspaceThread = useCallback(
-    (e: React.MouseEvent, workspaceId: string) => {
-      e.stopPropagation();
+    (e: React.MouseEvent | null, workspaceId: string) => {
+      e?.stopPropagation();
       navigate('/', { state: { workspaceId } });
       if (isMobile) {
         useUIStore.getState().setSidebarOpen(false);

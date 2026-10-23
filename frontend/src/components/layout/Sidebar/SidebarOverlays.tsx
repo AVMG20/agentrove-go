@@ -33,16 +33,17 @@ export function SidebarOverlays({ chat, workspace, workspaces }: SidebarOverlays
         <WorkspaceContextMenu
           ref={workspace.workspaceDropdownRef}
           position={workspace.workspaceDropdown.position}
-          onNewThread={(e) => {
+          onNewThread={() => {
             const { workspaceId } = workspace.workspaceDropdown!;
             workspace.setWorkspaceDropdown(null);
-            workspace.handleNewWorkspaceThread(e, workspaceId);
+            workspace.handleNewWorkspaceThread(null, workspaceId);
           }}
           onRename={() => {
             const ws = workspaces.find((w) => w.id === workspace.workspaceDropdown!.workspaceId);
             if (ws) workspace.handleRenameWorkspace(ws);
           }}
           onDelete={() => workspace.handleDeleteWorkspace(workspace.workspaceDropdown!.workspaceId)}
+          onClose={() => workspace.setWorkspaceDropdown(null)}
         />
       )}
 
@@ -81,6 +82,7 @@ export function SidebarOverlays({ chat, workspace, workspaces }: SidebarOverlays
         onClose={() => workspace.setWorkspaceToRename(null)}
         onSave={workspace.handleSaveWorkspaceRename}
         currentTitle={workspace.workspaceToRename?.name || ''}
+        title="Rename project"
         isLoading={workspace.updateWorkspace.isPending}
       />
     </>
