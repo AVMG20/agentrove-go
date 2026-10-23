@@ -40,6 +40,7 @@ interface UseChatStreamingParams {
   onPermissionRequest?: (request: PermissionRequest) => void;
   onElicitationRequest?: (request: ElicitationRequest) => void;
   onElicitationDismissed?: (requestId: string) => void;
+  onPermissionResolved?: (requestId: string) => void;
 }
 
 interface UseChatStreamingResult {
@@ -86,6 +87,7 @@ export function useChatStreaming({
   onPermissionRequest,
   onElicitationRequest,
   onElicitationDismissed,
+  onPermissionResolved,
 }: UseChatStreamingParams): UseChatStreamingResult {
   const [messages, setMessages] = useState<Message[]>([]);
   const [streamState, setStreamState] = useState<StreamState>('idle');
@@ -135,6 +137,7 @@ export function useChatStreaming({
     onPermissionRequest,
     onElicitationRequest,
     onElicitationDismissed,
+    onPermissionResolved,
     setMessages,
     setStreamState,
     setCurrentMessageId,

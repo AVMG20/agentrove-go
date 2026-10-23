@@ -12,6 +12,7 @@ interface UsePermissionRequestReturn {
   isLoading: boolean;
   error: string | null;
   handlePermissionRequest: (request: PermissionRequest) => void;
+  handlePermissionResolved: (requestId: string) => void;
   handleApprove: (optionId: string) => Promise<void>;
   handleReject: (optionId: string) => Promise<void>;
 }
@@ -52,6 +53,20 @@ export function usePermissionRequest(chatId: string | undefined): UsePermissionR
       }
     },
     [chatId, notifyBackground],
+  );
+
+  // The backend withdrew the prompt (permission_resolved). Record its seq too,
+  // so a replay of the original request after reconnect stays dismissed.
+  const handlePermissionResolved = useCallback(
+    (requestId: string) => {
+      if (!chatId) return;
+      const pending = usePermissionStore
+        .getState()
+        .pendingRequests.get(chatId)
+        ?.find((request) => request.request_id === requestId);
+      if (pending) clearPermissionRequest(chatId, requestId, pending.seq);
+    },
+    [chatId],
   );
 
   const handleApprove = useCallback(
@@ -95,6 +110,7 @@ export function usePermissionRequest(chatId: string | undefined): UsePermissionR
     isLoading,
     error,
     handlePermissionRequest,
+    handlePermissionResolved,
     handleApprove,
     handleReject,
   };

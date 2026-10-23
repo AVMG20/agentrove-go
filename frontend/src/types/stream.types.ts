@@ -11,6 +11,7 @@ export type StreamKind =
   | 'tool_failed'
   | 'system'
   | 'permission_request'
+  | 'permission_resolved'
   | 'elicitation_request'
   | 'elicitation_dismissed'
   | 'prompt_suggestions'

@@ -60,6 +60,8 @@ interface UseStreamCallbacksParams {
   onPermissionRequest?: (request: PermissionRequest) => void;
   onElicitationRequest?: (request: ElicitationRequest) => void;
   onElicitationDismissed?: (requestId: string) => void;
+  // Claude withdrew a pending permission prompt (e.g. after an interrupt).
+  onPermissionResolved?: (requestId: string) => void;
   setMessages: Dispatch<SetStateAction<Message[]>>;
   setStreamState: Dispatch<SetStateAction<StreamState>>;
   setCurrentMessageId: Dispatch<SetStateAction<string | null>>;
@@ -98,6 +100,7 @@ export function useStreamCallbacks({
   onPermissionRequest,
   onElicitationRequest,
   onElicitationDismissed,
+  onPermissionResolved,
   setMessages,
   setStreamState,
   setCurrentMessageId,
@@ -294,6 +297,14 @@ export function useStreamCallbacks({
         return;
       }
 
+      if (envelope.kind === 'permission_resolved') {
+        const payload = envelope.payload as Record<string, unknown>;
+        if (onPermissionResolved && typeof payload.request_id === 'string') {
+          onPermissionResolved(payload.request_id);
+        }
+        return;
+      }
+
       if (envelope.kind === 'system') {
         const payload = envelope.payload as Record<string, unknown>;
         const nestedData = extractPayloadData(payload);
@@ -357,6 +368,7 @@ export function useStreamCallbacks({
       onContextUsageUpdate,
       onElicitationDismissed,
       onElicitationRequest,
+      onPermissionResolved,
       onPermissionRequest,
       pendingStopRef,
       queryClient,

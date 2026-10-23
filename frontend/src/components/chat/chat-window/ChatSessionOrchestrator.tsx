@@ -111,6 +111,7 @@ export function ChatSessionOrchestrator({
     isLoading: isPermissionLoading,
     error: permissionError,
     handlePermissionRequest,
+    handlePermissionResolved,
     handleApprove,
     handleReject,
   } = usePermissionRequest(chatId);
@@ -142,6 +143,7 @@ export function ChatSessionOrchestrator({
     onPermissionRequest: handlePermissionRequest,
     onElicitationRequest: handleElicitationRequest,
     onElicitationDismissed: handleElicitationDismissed,
+    onPermissionResolved: handlePermissionResolved,
   });
 
   const { messages, sendMessage, isLoading, isStreaming, wasAborted, setMessages } = streamingState;

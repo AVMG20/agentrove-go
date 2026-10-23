@@ -138,4 +138,18 @@ describe('usePermissionRequest', () => {
     });
     expect(h.executePermissionResponse).not.toHaveBeenCalled();
   });
+
+  it('clears a request the backend withdrew (permission_resolved) by its seq', () => {
+    h.storeState.pendingRequests.set('chat-1', [makeRequest({ request_id: 'req-9', seq: 42 })]);
+    const { result } = renderHook(() => usePermissionRequest('chat-1'));
+    act(() => result.current.handlePermissionResolved('req-9'));
+    expect(h.clearPermissionRequest).toHaveBeenCalledWith('chat-1', 'req-9', 42);
+  });
+
+  it('ignores a withdrawal for a request it never queued', () => {
+    h.storeState.pendingRequests.set('chat-1', [makeRequest({ request_id: 'req-9', seq: 42 })]);
+    const { result } = renderHook(() => usePermissionRequest('chat-1'));
+    act(() => result.current.handlePermissionResolved('other'));
+    expect(h.clearPermissionRequest).not.toHaveBeenCalled();
+  });
 });
