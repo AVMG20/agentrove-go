@@ -20,4 +20,3 @@ export const stateClasses = {
   CURRENT: 'is-current',
 } as const;
 
-export type StateClass = (typeof stateClasses)[keyof typeof stateClasses];

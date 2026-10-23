@@ -1,6 +1,5 @@
 import { describe, it, expect } from 'vitest';
 import {
-  mergeByName,
   createDefaultEnvVarForm,
   validateEnvVarForm,
   resolvePersona,
@@ -11,18 +10,6 @@ import {
   getGeneralSecretFields,
 } from './settings';
 import type { CustomEnvVar, Persona, StreamAction } from '@/types/user.types';
-
-describe('mergeByName', () => {
-  it('returns primary unchanged when secondary is empty', () => {
-    const primary = [{ name: 'a' }];
-    expect(mergeByName(primary, [])).toBe(primary);
-  });
-
-  it('appends only secondary items whose names are not already present (case-insensitive)', () => {
-    const merged = mergeByName([{ name: 'Alpha' }], [{ name: 'alpha' }, { name: 'Beta' }]);
-    expect(merged.map((i) => i.name)).toEqual(['Alpha', 'Beta']);
-  });
-});
 
 describe('validateEnvVarForm', () => {
   const form = (over: Partial<CustomEnvVar> = {}): CustomEnvVar => ({
