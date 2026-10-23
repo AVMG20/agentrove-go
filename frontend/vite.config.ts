@@ -43,18 +43,24 @@ export default defineConfig({
   build: {
     target: 'esnext',
     commonjsOptions: {
-      include: [/mermaid/, /antd/, /@tanstack/, /node_modules/],
+      include: [/node_modules/],
       transformMixedEsModules: true,
     },
     rollupOptions: {
       output: {
-        manualChunks: {
-          'react-vendor': ['react', 'react-dom', 'react-router-dom'],
-          'query-vendor': ['@tanstack/react-query', '@tanstack/react-query-devtools'],
-          monaco: ['monaco-editor', '@monaco-editor/react'],
-          terminal: ['@xterm/xterm', '@xterm/addon-fit', '@xterm/addon-clipboard'],
-          mermaid: ['mermaid'],
-          markdown: ['react-markdown', 'remark-gfm', 'remark-math', 'rehype-katex'],
+        // Long-lived vendor chunks for caching. Everything else (Monaco, xterm,
+        // mermaid, markdown, Shiki grammars) is split by its dynamic imports;
+        // grouping those by hand pulled Vite's preload helper, and with it
+        // Monaco's CSS, into the initial load.
+        manualChunks(id) {
+          if (!id.includes('/node_modules/')) return undefined;
+          if (
+            /\/node_modules\/(react|react-dom|react-router|react-router-dom|scheduler)\//.test(id)
+          ) {
+            return 'react-vendor';
+          }
+          if (id.includes('/node_modules/@tanstack/')) return 'query-vendor';
+          return undefined;
         },
       },
     },

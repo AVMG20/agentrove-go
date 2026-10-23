@@ -1,8 +1,11 @@
 import { Suspense } from 'react';
 import { Navigate, Outlet, useLocation } from 'react-router-dom';
-import { Layout } from '@/components/layout/Layout/Layout';
 import { LoadingScreen } from '@/components/ui/LoadingScreen/LoadingScreen';
+import { lazyNamed } from '@/utils/lazyNamed';
 import { viewLoadingFallback } from '@/components/ui/shared/ViewLoadingFallback/ViewLoadingFallback';
+
+// Lazy so the sign-in page doesn't download the app shell.
+const Layout = lazyNamed(() => import('@/components/layout/Layout/Layout'), 'Layout');
 
 interface AppShellRouteProps {
   isAuthenticated: boolean;
@@ -24,10 +27,12 @@ export function AppShellRoute({ isAuthenticated, isLoading }: AppShellRouteProps
   }
 
   return (
-    <Layout>
-      <Suspense fallback={viewLoadingFallback}>
-        <Outlet />
-      </Suspense>
-    </Layout>
+    <Suspense fallback={<LoadingScreen />}>
+      <Layout>
+        <Suspense fallback={viewLoadingFallback}>
+          <Outlet />
+        </Suspense>
+      </Layout>
+    </Suspense>
   );
 }

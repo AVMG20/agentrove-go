@@ -1,16 +1,16 @@
-import { useEffect, useRef, useState } from 'react';
+import { Suspense, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Edit2, Plus, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/primitives/Button/Button';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog/ConfirmDialog';
 import { RenameModal } from '@/components/ui/RenameModal/RenameModal';
-import { CreateChannelDialog } from '@/components/channels/CreateChannelDialog';
 import {
   useChannelsQuery,
   useDeleteChannelMutation,
   useRenameChannelMutation,
 } from '@/hooks/queries/useChannelQueries';
 import { useMountEffect } from '@/hooks/useMountEffect';
+import { lazyNamed } from '@/utils/lazyNamed';
 import { apiClient } from '@/lib/api';
 import '@/services/streamService';
 import { streamConnection } from '@/services/streamConnection';
@@ -24,6 +24,12 @@ import { SidebarChannelItem } from './SidebarChannelItem';
 import { SidebarMenu, SidebarMenuItem } from './SidebarMenu';
 import { SidebarSection } from './SidebarSection';
 import styles from './SidebarChannels.module.scss';
+
+// Only needed once someone creates a channel; keeps it out of the shell bundle.
+const CreateChannelDialog = lazyNamed(
+  () => import('@/components/channels/CreateChannelDialog'),
+  'CreateChannelDialog',
+);
 
 interface SidebarChannelsProps {
   workspaces: Workspace[];
@@ -194,11 +200,13 @@ export function SidebarChannels({
       />
 
       {createOpen && (
-        <CreateChannelDialog
-          defaultWorkspaceId={workspaceId ?? workspaces[0]?.id ?? null}
-          onClose={() => setCreateOpen(false)}
-          onCreated={navigateToChannel}
-        />
+        <Suspense fallback={null}>
+          <CreateChannelDialog
+            defaultWorkspaceId={workspaceId ?? workspaces[0]?.id ?? null}
+            onClose={() => setCreateOpen(false)}
+            onCreated={navigateToChannel}
+          />
+        </Suspense>
       )}
     </div>
   );

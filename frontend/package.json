@@ -20,7 +20,6 @@
     "@pierre/trees": "^1.0.0-beta.5",
     "@tanstack/query-sync-storage-persister": "^5.101.2",
     "@tanstack/react-query": "^5.101.2",
-    "@tanstack/react-query-devtools": "^5.101.2",
     "@tanstack/react-query-persist-client": "^5.101.2",
     "@xterm/addon-clipboard": "^0.2.0",
     "@xterm/addon-fit": "^0.10.0",
@@ -31,6 +30,7 @@
     "dompurify": "^3.3.0",
     "fuzzysort": "^3.1.0",
     "jszip": "^3.10.1",
+    "katex": "^0.16.25",
     "lucide-react": "^0.525.0",
     "material-file-icons": "^2.4.0",
     "mermaid": "^10.6.1",
@@ -61,7 +61,6 @@
     "eslint-plugin-react-refresh": "^0.4.11",
     "globals": "^15.9.0",
     "jsdom": "^29.1.1",
-    "lint-staged": "^15.2.10",
     "postcss": "^8.5.6",
     "prettier": "^3.4.2",
     "sass-embedded": "^1.100.0",
@@ -69,15 +68,6 @@
     "typescript-eslint": "^8.18.2",
     "vite": "^5.4.2",
     "vitest": "^4.1.10"
-  },
-  "lint-staged": {
-    "*.{ts,tsx}": [
-      "eslint --fix",
-      "prettier --write"
-    ],
-    "*.{json,css,scss,md}": [
-      "prettier --write"
-    ]
   },
   "overrides": {
     "chevrotain": "^11.0.3"
