@@ -29,6 +29,35 @@ async function deleteArtifact(artifactId: string): Promise<void> {
   });
 }
 
+// Script errors the owner's viewer caught on a version; the agent reads them.
+async function reportErrors(
+  artifactId: string,
+  version: number,
+  messages: string[],
+): Promise<void> {
+  await serviceCall(async () => {
+    await apiClient.post(`/artifacts/${artifactId}/errors`, { version, messages });
+  });
+}
+
+// Kit.store state: JSON values by key, owner-only.
+async function getState(artifactId: string): Promise<Record<string, unknown>> {
+  return serviceCall(async () => {
+    const response = await apiClient.get<{ state: Record<string, unknown> }>(
+      `/artifacts/${artifactId}/state`,
+    );
+    return ensureResponse(response, 'Failed to load artifact state').state;
+  });
+}
+
+async function setState(artifactId: string, key: string, value: unknown): Promise<void> {
+  await serviceCall(async () => {
+    const path = `/artifacts/${artifactId}/state/${encodeURIComponent(key)}`;
+    if (value === undefined || value === null) await apiClient.delete(path);
+    else await apiClient.put(path, { value });
+  });
+}
+
 // The sandboxed page itself, served by the API with its own CSP sandbox.
 function getContentUrl(view: ArtifactView): string {
   return `${apiClient.getBaseUrl()}${view.content_path}`;
@@ -44,6 +73,9 @@ export const artifactService = {
   getArtifactView,
   updateArtifact,
   deleteArtifact,
+  reportErrors,
+  getState,
+  setState,
   getContentUrl,
   getShareUrl,
 };

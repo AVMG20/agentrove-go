@@ -42,6 +42,8 @@ const artifactLoader: ToolModuleLoader = () =>
 export const ARTIFACT_TOOL_NAMES = new Set([
   'mcp__agentrove__create_artifact',
   'mcp__agentrove__update_artifact',
+  'mcp__agentrove__edit_artifact',
+  'mcp__agentrove__restore_artifact',
 ]);
 
 const lazyToolComponents = new Map<string, ToolComponent>();

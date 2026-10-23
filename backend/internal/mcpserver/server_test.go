@@ -118,7 +118,7 @@ func TestDispatch(t *testing.T) {
 				for _, x := range out["result"].(map[string]any)["tools"].([]any) {
 					names = append(names, x.(map[string]any)["name"].(string))
 				}
-				if strings.Join(names, ",") != "create_artifact,update_artifact,list_artifacts,get_artifact" {
+				if strings.Join(names, ",") != "create_artifact,update_artifact,edit_artifact,restore_artifact,list_artifacts,get_artifact,get_artifact_state,set_artifact_state" {
 					t.Fatalf("got %v", names)
 				}
 			}},
@@ -201,6 +201,27 @@ func TestArtifactAndPersonaTools(t *testing.T) {
 	if list := callTool(t, m, c, "list_artifacts", map[string]any{})["artifacts"].([]any); len(list) != 1 {
 		t.Fatalf("list: %v", list)
 	}
+	edited := callTool(t, m, c, "edit_artifact", map[string]any{"artifact_id": id,
+		"edits": []any{map[string]any{"old_string": "v2", "new_string": "v3"}}})["artifact"].(map[string]any)
+	if edited["version"].(float64) != 3 {
+		t.Fatalf("edited: %v", edited)
+	}
+	callTool(t, m, c, "restore_artifact", map[string]any{"artifact_id": id, "version": 1})
+	got = callTool(t, m, c, "get_artifact", map[string]any{"artifact_id": id, "version": 3})["artifact"].(map[string]any)
+	if got["html"] != "<p>v3</p>" || got["current_version"].(float64) != 4 || len(got["versions"].([]any)) != 4 {
+		t.Fatalf("got v3: %v", got)
+	}
+	if _, ok := got["page_errors"].([]any); !ok {
+		t.Fatalf("page_errors: %v", got)
+	}
+	callTool(t, m, c, "set_artifact_state", map[string]any{"artifact_id": id, "key": "done", "value": []any{1, 2}})
+	st := callTool(t, m, c, "get_artifact_state", map[string]any{"artifact_id": id})["state"].(map[string]any)
+	if len(st["done"].([]any)) != 2 {
+		t.Fatalf("state: %v", st)
+	}
+	if list := callTool(t, m, c, "list_artifacts", map[string]any{"this_chat": true})["artifacts"].([]any); len(list) != 0 {
+		t.Fatalf("this_chat list (artifact is unlinked): %v", list)
+	}
 
 	full := &caller{userID: userID, fullAccess: true}
 	callTool(t, m, full, "create_persona", map[string]any{"name": "Critic", "content": "Be harsh"})
@@ -245,7 +266,7 @@ func TestHTTPAuth(t *testing.T) {
 	for _, tc := range []struct {
 		full bool
 		want int
-	}{{true, len(m.tools)}, {false, 4}} {
+	}{{true, len(m.tools)}, {false, 8}} {
 		cfg, err := ServerConfig(m.a, userID, tc.full)
 		if err != nil {
 			t.Fatal(err)

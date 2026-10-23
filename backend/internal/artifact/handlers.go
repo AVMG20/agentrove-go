@@ -39,6 +39,11 @@ func (m *Module) Routes(mux *http.ServeMux) {
 	mux.HandleFunc("DELETE "+p+"/{id}", m.withActor(m.delete))
 	mux.HandleFunc("GET "+p+"/{id}/view", httpx.Wrap(m.view))
 	mux.HandleFunc("GET "+p+"/{id}/content", httpx.Wrap(m.content))
+	mux.HandleFunc("GET "+p+"/{id}/versions", m.withActor(m.versions))
+	mux.HandleFunc("POST "+p+"/{id}/errors", m.withActor(m.reportErrors))
+	mux.HandleFunc("GET "+p+"/{id}/state", m.withActor(m.state))
+	mux.HandleFunc("PUT "+p+"/{id}/state/{key}", m.withActor(m.setState))
+	mux.HandleFunc("DELETE "+p+"/{id}/state/{key}", m.withActor(m.deleteState))
 }
 
 // actor is the caller: a user session/MCP token, or the artifacts-only agent
@@ -234,6 +239,59 @@ func (m *Module) content(w http.ResponseWriter, r *http.Request) error {
 		h.Set("Cache-Control", "private, no-store")
 	}
 	w.WriteHeader(http.StatusOK)
-	_, err = w.Write([]byte(a.HTML))
+	_, err = w.Write([]byte(WithErrorReporter(a.HTML)))
 	return err
+}
+
+func (m *Module) versions(w http.ResponseWriter, r *http.Request) error {
+	list, err := m.svc.Versions(r.Context(), r.PathValue("id"), actorFrom(r).user.ID)
+	if err != nil {
+		return err
+	}
+	return httpx.OK(w, list)
+}
+
+func (m *Module) reportErrors(w http.ResponseWriter, r *http.Request) error {
+	var body struct {
+		Version  int      `json:"version"`
+		Messages []string `json:"messages"`
+	}
+	if err := httpx.Decode(r, &body); err != nil {
+		return err
+	}
+	if len(body.Messages) > 20 {
+		body.Messages = body.Messages[:20]
+	}
+	if err := m.svc.ReportErrors(r.Context(), r.PathValue("id"), actorFrom(r).user.ID, body.Version, body.Messages); err != nil {
+		return err
+	}
+	return httpx.NoContent(w)
+}
+
+func (m *Module) state(w http.ResponseWriter, r *http.Request) error {
+	st, err := m.svc.State(r.Context(), r.PathValue("id"), actorFrom(r).user.ID)
+	if err != nil {
+		return err
+	}
+	return httpx.OK(w, map[string]any{"state": st})
+}
+
+func (m *Module) setState(w http.ResponseWriter, r *http.Request) error {
+	var body struct {
+		Value json.RawMessage `json:"value"`
+	}
+	if err := httpx.Decode(r, &body); err != nil {
+		return err
+	}
+	if err := m.svc.SetState(r.Context(), r.PathValue("id"), actorFrom(r).user.ID, r.PathValue("key"), body.Value); err != nil {
+		return err
+	}
+	return httpx.NoContent(w)
+}
+
+func (m *Module) deleteState(w http.ResponseWriter, r *http.Request) error {
+	if err := m.svc.SetState(r.Context(), r.PathValue("id"), actorFrom(r).user.ID, r.PathValue("key"), nil); err != nil {
+		return err
+	}
+	return httpx.NoContent(w)
 }

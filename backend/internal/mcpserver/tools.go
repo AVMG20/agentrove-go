@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"strconv"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -201,35 +202,79 @@ func (m *Module) buildTools() []*tool {
 				"document (<!doctype html>...) with inline <style> and <script>. Scripts, stylesheets and fonts from public CDNs " +
 				"(cdn.jsdelivr.net, unpkg.com, cdnjs.cloudflare.com, Google Fonts) and fetch() to public CORS APIs work. The page " +
 				"runs sandboxed with an opaque origin: cookies, localStorage, sessionStorage and AgentRove's API are unavailable, " +
-				"so keep state in memory. Make it responsive and readable on its own; it is shown full-screen.\n\nArtifacts start " +
+				"so keep state that must survive a reload in Kit.store (see the artifacts skill). Make it responsive and readable on " +
+				"its own; it is shown full-screen.\n\nArtifacts start " +
 				"private: only the user, signed in, can open the link; they can make it public from the page. Returns the " +
 				"artifact's id, url, version and visibility. Always give the user the url (as a markdown link) in your reply. To " +
-				"revise it later, call update_artifact with its id instead of creating a new one. The artifacts skill documents the styling kit (layout, charts, tables, diagrams, diffs).",
+				"revise it later, call edit_artifact (small changes) or update_artifact with its id instead of creating a new one. " +
+				"The artifacts skill documents the styling kit (layout, charts, tables, diagrams, diffs, persistent state).",
 			schema:  object(props{"title": str(""), "html": str("")}, "title", "html"),
 			handler: m.createArtifact,
 		},
 		{
 			name: "update_artifact", artifact: true,
 			description: "Replace an existing artifact's HTML, and optionally its title.\n\n`html` is the complete new document, " +
-				"not a diff (read the current one with get_artifact first when making targeted edits). The link stays the same " +
+				"not a diff; for targeted changes use edit_artifact instead. The link stays the same " +
 				"and the version increments; open viewers pick up the new version on reload. Visibility is left unchanged. " +
 				"Returns the updated artifact's id, url, version and visibility; share the url with the user again.",
 			schema:  object(props{"artifact_id": str(""), "html": str(""), "title": optStr()}, "artifact_id", "html"),
 			handler: m.updateArtifact,
 		},
 		{
+			name: "edit_artifact", artifact: true,
+			description: "Change part of an artifact's HTML with exact find-and-replace edits, without resending the page.\n\n" +
+				"Edits apply in order, all or none. Each old_string must match the current HTML exactly once (include enough " +
+				"surrounding text to make it unique) unless replace_all is set. Optionally renames the artifact. The version " +
+				"increments like update_artifact. Returns the artifact's id, url, version and visibility.",
+			schema: object(props{
+				"artifact_id": str(""),
+				"edits": map[string]any{"type": "array", "minItems": 1, "items": object(props{
+					"old_string":  str("Exact text to replace"),
+					"new_string":  str("Replacement text"),
+					"replace_all": map[string]any{"type": "boolean", "default": false},
+				}, "old_string", "new_string")},
+				"title": optStr(),
+			}, "artifact_id", "edits"),
+			handler: m.editArtifact,
+		},
+		{
+			name: "restore_artifact", artifact: true,
+			description: "Roll an artifact back to an earlier version.\n\nPublishes that version's title and HTML as a new " +
+				"version (history is kept; the last " + strconv.Itoa(artifact.KeepVersions) + " versions are available). " +
+				"get_artifact lists the versions. Returns the artifact's id, url, version and visibility.",
+			schema:  object(props{"artifact_id": str(""), "version": map[string]any{"type": "integer"}}, "artifact_id", "version"),
+			handler: m.restoreArtifact,
+		},
+		{
 			name: "list_artifacts", artifact: true,
-			description: "List the user's artifacts, most recently updated first.\n\nReturns each artifact's id, title, url, " +
-				"is_public, version and updated_at. Use an id with get_artifact or update_artifact.",
-			schema:  object(props{}),
+			description: "List the user's artifacts, most recently updated first.\n\nWith this_chat, only those published from " +
+				"the current chat. Returns each artifact's id, title, url, is_public, version and updated_at. Use an id with " +
+				"get_artifact, edit_artifact or update_artifact.",
+			schema:  object(props{"this_chat": map[string]any{"type": "boolean", "default": false}}),
 			handler: m.listArtifacts,
 		},
 		{
 			name: "get_artifact", artifact: true,
-			description: "Get an artifact's metadata and its full current HTML.\n\nUse it to read the page before revising it " +
-				"with update_artifact. Returns id, title, url, is_public, version, updated_at and html.",
-			schema:  object(props{"artifact_id": str("")}, "artifact_id"),
+			description: "Get an artifact's metadata and its full HTML, by default the current version.\n\nAlso returns " +
+				"`versions` (history, newest first) and `page_errors`: script errors, failed loads and console.error " +
+				"output the user's browser hit on the current version. Check page_errors after the user has opened a " +
+				"new version. Pass `version` to read an earlier one.",
+			schema:  object(props{"artifact_id": str(""), "version": map[string]any{"type": []string{"integer", "null"}}}, "artifact_id"),
 			handler: m.getArtifact,
+		},
+		{
+			name: "get_artifact_state", artifact: true,
+			description: "Read the state an artifact's page saved with Kit.store: a JSON object of key to value.\n\nUse it " +
+				"to pick up what the user entered or checked off on the page (answers, selections, checklists).",
+			schema:  object(props{"artifact_id": str("")}, "artifact_id"),
+			handler: m.getArtifactState,
+		},
+		{
+			name: "set_artifact_state", artifact: true,
+			description: "Set one Kit.store key of an artifact's page; a null value deletes it.\n\nThe page sees the new " +
+				"value on its next load. Values are any JSON up to " + strconv.Itoa(artifact.MaxStateValue/1000) + " KB.",
+			schema:  object(props{"artifact_id": str(""), "key": str(""), "value": map[string]any{}}, "artifact_id", "key", "value"),
+			handler: m.setArtifactState,
 		},
 		{
 			name: "stop_chat",
@@ -1170,13 +1215,58 @@ func (m *Module) updateArtifact(ctx context.Context, c *caller, args json.RawMes
 	return map[string]any{"artifact": m.artifactSummary(x)}, nil
 }
 
-func (m *Module) listArtifacts(ctx context.Context, c *caller, _ json.RawMessage) (any, error) {
+func (m *Module) editArtifact(ctx context.Context, c *caller, args json.RawMessage) (any, error) {
+	var a struct {
+		ArtifactID string          `json:"artifact_id"`
+		Edits      []artifact.Edit `json:"edits"`
+		Title      *string         `json:"title"`
+	}
+	if err := decode(args, &a); err != nil {
+		return nil, err
+	}
+	if a.Title != nil && *a.Title == "" {
+		a.Title = nil
+	}
+	x, err := m.artifacts.Edit(ctx, a.ArtifactID, c.userID, a.Edits, a.Title)
+	if err != nil {
+		return nil, err
+	}
+	return map[string]any{"artifact": m.artifactSummary(x)}, nil
+}
+
+func (m *Module) restoreArtifact(ctx context.Context, c *caller, args json.RawMessage) (any, error) {
+	var a struct {
+		ArtifactID string `json:"artifact_id"`
+		Version    int    `json:"version"`
+	}
+	if err := decode(args, &a); err != nil {
+		return nil, err
+	}
+	x, err := m.artifacts.Restore(ctx, a.ArtifactID, c.userID, a.Version)
+	if err != nil {
+		return nil, err
+	}
+	return map[string]any{"artifact": m.artifactSummary(x)}, nil
+}
+
+func (m *Module) listArtifacts(ctx context.Context, c *caller, args json.RawMessage) (any, error) {
+	var a struct {
+		ThisChat bool `json:"this_chat"`
+	}
+	if len(args) > 0 {
+		if err := decode(args, &a); err != nil {
+			return nil, err
+		}
+	}
 	list, err := m.artifacts.List(ctx, c.userID)
 	if err != nil {
 		return nil, err
 	}
 	out := []map[string]any{}
 	for _, x := range list {
+		if a.ThisChat && (x.ChatID == nil || *x.ChatID != c.chatID) {
+			continue
+		}
 		out = append(out, m.artifactSummary(x))
 	}
 	return map[string]any{"artifacts": out}, nil
@@ -1185,15 +1275,62 @@ func (m *Module) listArtifacts(ctx context.Context, c *caller, _ json.RawMessage
 func (m *Module) getArtifact(ctx context.Context, c *caller, args json.RawMessage) (any, error) {
 	var a struct {
 		ArtifactID string `json:"artifact_id"`
+		Version    *int   `json:"version"`
 	}
 	if err := decode(args, &a); err != nil {
 		return nil, err
 	}
-	x, err := m.artifacts.Get(ctx, a.ArtifactID, c.userID)
+	current, err := m.artifacts.Get(ctx, a.ArtifactID, c.userID)
+	if err != nil {
+		return nil, err
+	}
+	x := current
+	if a.Version != nil && *a.Version != current.Version {
+		if x, err = m.artifacts.AtVersion(ctx, a.ArtifactID, c.userID, *a.Version); err != nil {
+			return nil, err
+		}
+	}
+	versions, err := m.artifacts.Versions(ctx, a.ArtifactID, c.userID)
+	if err != nil {
+		return nil, err
+	}
+	pageErrors, err := m.artifacts.Errors(ctx, current.ID, current.Version)
 	if err != nil {
 		return nil, err
 	}
 	s := m.artifactSummary(x)
 	s["html"] = x.HTML
+	s["current_version"] = current.Version
+	s["versions"] = versions
+	s["page_errors"] = pageErrors
 	return map[string]any{"artifact": s}, nil
+}
+
+func (m *Module) getArtifactState(ctx context.Context, c *caller, args json.RawMessage) (any, error) {
+	var a struct {
+		ArtifactID string `json:"artifact_id"`
+	}
+	if err := decode(args, &a); err != nil {
+		return nil, err
+	}
+	st, err := m.artifacts.State(ctx, a.ArtifactID, c.userID)
+	if err != nil {
+		return nil, err
+	}
+	return map[string]any{"state": st}, nil
+}
+
+func (m *Module) setArtifactState(ctx context.Context, c *caller, args json.RawMessage) (any, error) {
+	var a struct {
+		ArtifactID string          `json:"artifact_id"`
+		Key        string          `json:"key"`
+		Value      json.RawMessage `json:"value"`
+	}
+	if err := decode(args, &a); err != nil {
+		return nil, err
+	}
+	if err := m.artifacts.SetState(ctx, a.ArtifactID, c.userID, a.Key, a.Value); err != nil {
+		return nil, err
+	}
+	return map[string]any{"ok": true}, nil
 }

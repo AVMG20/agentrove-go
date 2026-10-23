@@ -375,8 +375,10 @@ func (s *store) loadAttachments(ctx context.Context, msgs []*Message) error {
 
 // Results the chat shows outside the collapsed trace; they're a few fields.
 var keptResultTools = map[string]bool{
-	"mcp__agentrove__create_artifact": true,
-	"mcp__agentrove__update_artifact": true,
+	"mcp__agentrove__create_artifact":  true,
+	"mcp__agentrove__update_artifact":  true,
+	"mcp__agentrove__edit_artifact":    true,
+	"mcp__agentrove__restore_artifact": true,
 }
 
 // omitResults drops tool results from a finished turn's render: they dominate

@@ -9,9 +9,11 @@ An artifact is a single self-contained HTML page published with the `create_arti
 
 - Use an artifact instead of writing an `.html` file whenever the page is meant to be viewed or shared.
 - Always reply with the link as a markdown link: `[Title](url)`.
-- To change one, call `update_artifact` with its id and the complete new HTML; the link stays the same. Use `get_artifact` to read the current HTML first and `list_artifacts` to find one.
+- To change one, prefer `edit_artifact` (exact find-and-replace edits) over resending the page with `update_artifact`; the link stays the same either way. Read the current HTML with `get_artifact` first. `list_artifacts` with `this_chat: true` finds the ones from this chat.
+- Every content change is a new version. `get_artifact` lists them (`versions`) and reads an old one with `version`; `restore_artifact` rolls back.
+- After the user has opened a new version, check `page_errors` from `get_artifact`: script errors, failed loads and `console.error` output their browser hit. Fix them before calling the page done.
 - Artifacts start private: only the user, signed in, can open them. The user makes one public (anyone with the link) with the toggle on the artifact page; you can't change visibility.
-- The page runs sandboxed with an opaque origin: no cookies, localStorage or sessionStorage, so keep state in memory. Scripts and styles from public CDNs and `fetch()` to public CORS APIs work.
+- The page runs sandboxed with an opaque origin: no cookies, localStorage or sessionStorage. Use `Kit.store` (below) for state that should survive a reload. Scripts and styles from public CDNs and `fetch()` to public CORS APIs work.
 
 ## Kit
 
@@ -85,5 +87,17 @@ JS (kit.js, call it from a script at the end of `<body>`):
 - `<pre class="mermaid">…</pre>` renders a mermaid diagram (flowchart, sequence, class, state, gantt, timeline).
 - `<pre class="diff">…</pre>` colours a unified diff (`+`, `-` and `@@` lines). It is good for showing code changes.
 - `Kit.format(value, unit, digits)` formats a number the same way, and `Kit.colors()` returns the series colors.
+- `Kit.store` keeps JSON state across reloads: `await Kit.store.ready`, then `Kit.store.get(key, fallback)`, `Kit.store.set(key, value)`, `Kit.store.remove(key)` and `Kit.store.all()`. It is saved when the artifact's owner views it (`Kit.store.persistent` is true) and kept in memory for anyone else. You read it with `get_artifact_state` and can seed or change it with `set_artifact_state`, so a page can collect input for you: a form, a checklist, a choice between options. Tell the user to fill it in and say when they're done, then read the state.
+
+```html
+<label><input type="checkbox" id="ok"> Looks good</label>
+<script>
+  Kit.store.ready.then(function (store) {
+    var box = document.getElementById('ok');
+    box.checked = store.get('approved', false);
+    box.onchange = function () { store.set('approved', box.checked); };
+  });
+</script>
+```
 
 React or any other library can still be loaded from a CDN when a page needs it, but plain HTML with the kit covers most pages.

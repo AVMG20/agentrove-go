@@ -43,7 +43,9 @@
     return 'rgba(' + (n >> 16) + ',' + ((n >> 8) & 255) + ',' + (n & 255) + ',' + a + ')';
   }
 
+  // Shown in the page and logged, so the viewer reports it to the agent.
   function fail(el, err) {
+    console.error('Kit:', err);
     el.innerHTML = '';
     var p = document.createElement('p');
     p.className = 'kit-error';
@@ -259,6 +261,7 @@
       });
       return window.mermaid.run({ nodes: blocks });
     }).catch(function (err) {
+      console.error('Kit: mermaid:', err);
       Array.prototype.forEach.call(blocks, function (b) {
         var p = document.createElement('p');
         p.className = 'kit-error';
@@ -286,6 +289,58 @@
     });
   }
 
+  /* Kit.store: JSON state that survives reloads. Saved for the artifact's
+     owner (the agent reads it with get_artifact_state); other viewers and
+     pages opened outside AgentRove keep it in memory only.
+       await Kit.store.ready;  Kit.store.get(key, fallback);  Kit.store.set(key, value);
+       Kit.store.remove(key);  Kit.store.all();  Kit.store.persistent */
+  var framed = window.parent !== window;
+  var cache = {};
+  var early = {};
+  var persistent = false;
+  var has = function (o, k) { return Object.prototype.hasOwnProperty.call(o, k); };
+  var clone = function (v) { return v === undefined ? undefined : JSON.parse(JSON.stringify(v)); };
+  var ready = new Promise(function (resolve) {
+    if (!framed) return resolve();
+    var done = false;
+    function finish() {
+      if (done) return;
+      done = true;
+      window.removeEventListener('message', onInit);
+      // Writes made before the saved state arrived win over it.
+      for (var k in early) {
+        if (early[k] === null) delete cache[k];
+        else cache[k] = early[k];
+      }
+      resolve();
+    }
+    function onInit(e) {
+      var d = e.data;
+      if (e.source !== window.parent || !d || d.agentrove !== 'state:init') return;
+      cache = d.state && typeof d.state === 'object' ? d.state : {};
+      persistent = !!d.persistent;
+      finish();
+    }
+    window.addEventListener('message', onInit);
+    window.parent.postMessage({ agentrove: 'state:load' }, '*');
+    setTimeout(finish, 3000);
+  });
+  var store = {
+    get: function (key, fallback) { return has(cache, key) ? clone(cache[key]) : fallback; },
+    set: function (key, value) {
+      key = String(key);
+      value = value === undefined ? null : clone(value);
+      if (value === null) delete cache[key];
+      else cache[key] = value;
+      early[key] = value;
+      if (framed) window.parent.postMessage({ agentrove: 'state:set', key: key, value: value }, '*');
+    },
+    remove: function (key) { store.set(key, null); },
+    all: function () { return clone(cache); },
+  };
+  Object.defineProperty(store, 'persistent', { get: function () { return persistent; } });
+  store.ready = ready.then(function () { early = {}; return store; });
+
   function init() {
     diffs();
     diagrams();
@@ -293,5 +348,5 @@
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
   else init();
 
-  window.Kit = { chart: chart, table: table, format: format, diagrams: diagrams, diffs: diffs, colors: palette };
+  window.Kit = { chart: chart, table: table, format: format, diagrams: diagrams, diffs: diffs, colors: palette, store: store };
 })();

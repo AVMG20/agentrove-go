@@ -21,14 +21,14 @@ const extractArtifact = (result: unknown): PublishedArtifact | null => {
   return { id, title, version };
 };
 
-// create_artifact / update_artifact: a card linking to the published page once
+// create/update/edit/restore_artifact: a card linking to the published page once
 // the call succeeded; the generic AgentRove line while running or on failure.
 export const ArtifactTool = memo(function ArtifactTool({ tool }: { tool: ToolAggregate }) {
   const artifact = tool.status === 'completed' ? extractArtifact(tool.result) : null;
   if (!artifact) return <AgentRoveTool tool={tool} />;
 
   const href = `/artifacts/${artifact.id}`;
-  const verb = tool.name.endsWith('update_artifact') ? 'Updated' : 'Published';
+  const verb = tool.name.endsWith('create_artifact') ? 'Published' : 'Updated';
 
   return (
     <div className={styles.card}>

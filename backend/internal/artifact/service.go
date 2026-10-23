@@ -134,8 +134,13 @@ func (s *Service) Create(ctx context.Context, userID, title, html string, chatID
 	}
 	now := db.Now()
 	a := &Artifact{ID: uuid.NewString(), UserID: userID, ChatID: chatID, Title: title, HTML: html, Version: 1, CreatedAt: now, UpdatedAt: now}
-	_, err := s.DB.ExecContext(ctx, `INSERT INTO artifacts (`+columns+`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		a.ID, a.UserID, a.ChatID, a.Title, a.HTML, a.IsPublic, a.Version, a.CreatedAt, a.UpdatedAt)
+	err := s.DB.Tx(ctx, func(tx *sql.Tx) error {
+		if _, err := tx.ExecContext(ctx, `INSERT INTO artifacts (`+columns+`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			a.ID, a.UserID, a.ChatID, a.Title, a.HTML, a.IsPublic, a.Version, a.CreatedAt, a.UpdatedAt); err != nil {
+			return err
+		}
+		return saveVersion(ctx, tx, a)
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -173,8 +178,16 @@ func (s *Service) Update(ctx context.Context, id, userID string, title, html *st
 		a.Version++
 	}
 	a.UpdatedAt = db.Now()
-	_, err = s.DB.ExecContext(ctx, `UPDATE artifacts SET title = ?, html = ?, is_public = ?, version = ?, updated_at = ? WHERE id = ?`,
-		a.Title, a.HTML, a.IsPublic, a.Version, a.UpdatedAt, a.ID)
+	err = s.DB.Tx(ctx, func(tx *sql.Tx) error {
+		if _, err := tx.ExecContext(ctx, `UPDATE artifacts SET title = ?, html = ?, is_public = ?, version = ?, updated_at = ? WHERE id = ?`,
+			a.Title, a.HTML, a.IsPublic, a.Version, a.UpdatedAt, a.ID); err != nil {
+			return err
+		}
+		if !changed {
+			return nil
+		}
+		return saveVersion(ctx, tx, a)
+	})
 	return a, err
 }
 

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import clsx from 'clsx';
 import toast from 'react-hot-toast';
@@ -17,6 +17,7 @@ import { formatRelativeTime } from '@/utils/date';
 import iconDark from '/assets/images/icon-dark.svg';
 import iconLight from '/assets/images/icon-white.svg';
 import styles from './ArtifactPage.module.scss';
+import { useArtifactBridge } from './useArtifactBridge';
 
 // No allow-same-origin: the page gets an opaque origin, so its scripts can't
 // reach this app's storage, cookies or API. The content response repeats this
@@ -31,6 +32,8 @@ export function ArtifactPage() {
     useAuthStore((state) => state.isAuthenticated) && !!authService.getToken();
   const { data: view, error, isLoading } = useArtifactViewQuery(artifactId);
   const updateArtifact = useUpdateArtifactMutation();
+  const frameRef = useRef<HTMLIFrameElement>(null);
+  useArtifactBridge(frameRef, view);
 
   // Re-point the iframe only when the content changes: every refetch mints a
   // fresh view token (and visibility toggles add or drop one), and a new src
@@ -152,6 +155,7 @@ export function ArtifactPage() {
       </header>
       <iframe
         key={frame.key}
+        ref={frameRef}
         className={styles.frame}
         src={frame.src}
         sandbox={FRAME_SANDBOX}

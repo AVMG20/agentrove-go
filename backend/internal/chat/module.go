@@ -494,7 +494,8 @@ func (m *Module) sessionConfig(sb *sandbox.Sandbox, req *turnRequest) claude.Con
 }
 
 var artifactTools = []string{"mcp__agentrove__create_artifact", "mcp__agentrove__update_artifact",
-	"mcp__agentrove__get_artifact", "mcp__agentrove__list_artifacts"}
+	"mcp__agentrove__edit_artifact", "mcp__agentrove__restore_artifact", "mcp__agentrove__get_artifact",
+	"mcp__agentrove__list_artifacts", "mcp__agentrove__get_artifact_state", "mcp__agentrove__set_artifact_state"}
 
 // boxPrompt covers what Claude can't discover itself about the user's box.
 const boxPrompt = "\n<environment>Personal Ubuntu box with passwordless sudo (run `sudo apt-get update` before apt installs). " +
