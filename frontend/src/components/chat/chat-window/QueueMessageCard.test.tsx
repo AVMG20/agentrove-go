@@ -20,15 +20,17 @@ function renderCard(over: Partial<LocalQueuedMessage> = {}) {
   const onCancel = vi.fn();
   const onEdit = vi.fn();
   const onSendNow = vi.fn();
+  const onRetry = vi.fn();
   render(
     <QueueMessageCard
       message={makeMessage(over)}
       onCancel={onCancel}
       onEdit={onEdit}
       onSendNow={onSendNow}
+      onRetry={onRetry}
     />,
   );
-  return { onCancel, onEdit, onSendNow };
+  return { onCancel, onEdit, onSendNow, onRetry };
 }
 
 describe('QueueMessageCard', () => {
@@ -54,6 +56,19 @@ describe('QueueMessageCard', () => {
   it('hides the send-now action for an unsynced (still uploading) message', () => {
     renderCard({ synced: false });
     expect(screen.queryByLabelText('Send now')).toBeNull();
+  });
+
+  it('marks a message that never reached the server as not sent, with a retry', () => {
+    const { onRetry } = renderCard({ synced: false, failed: true });
+    expect(screen.getByText(/Not sent/)).toBeTruthy();
+    expect(screen.queryByLabelText('Send now')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+    expect(onRetry).toHaveBeenCalledWith('msg-1');
+  });
+
+  it('shows no retry while the first attempt is still in flight', () => {
+    renderCard({ synced: false });
+    expect(screen.queryByText(/Not sent/)).toBeNull();
   });
 
   it('shows a sending state instead of actions while dispatching', () => {

@@ -25,6 +25,7 @@ import { useChatSessionContext } from '@/hooks/useChatSessionContext';
 import { useChatInputMessageContext } from '@/hooks/useChatInputMessageContext';
 import { useUIStore } from '@/store/uiStore';
 import { queryKeys } from '@/hooks/queries/queryKeys';
+import { retryQueuedMessage } from '@/utils/queuedMessageFailure';
 import styles from './Chat.module.scss';
 
 export const Chat = memo(function Chat() {
@@ -128,6 +129,13 @@ export const Chat = memo(function Chat() {
       }
     },
     [chatId, isStreaming, queryClient],
+  );
+
+  const handleRetryQueued = useCallback(
+    (messageId: string) => {
+      if (chatId) retryQueuedMessage(chatId, messageId);
+    },
+    [chatId],
   );
 
   const { lastBotMessage, latestUserMessageId } = useMemo(() => {
@@ -347,6 +355,7 @@ export const Chat = memo(function Chat() {
             onCancel={handleCancelMessage}
             onEdit={handleEditMessage}
             onSendNow={handleSendNow}
+            onRetry={handleRetryQueued}
           />
         </>
       }

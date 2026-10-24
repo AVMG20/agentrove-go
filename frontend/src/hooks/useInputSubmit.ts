@@ -15,6 +15,7 @@ import {
 import { resolvePersona } from '@/utils/settings';
 import { useTokenDeleteKeyDown } from '@/hooks/useComposerTokens';
 import { isComposerSendKey } from '@/utils/composerKeys';
+import { restoreRejectedQueuedMessage } from '@/utils/queuedMessageFailure';
 import type { Persona } from '@/types/user.types';
 import type { Model } from '@/types/chat.types';
 
@@ -101,14 +102,19 @@ export function useInputSubmit({
       const storedPersona = settings.personaByChat[chatId] ?? DEFAULT_PERSONA;
       const validPersona = resolvePersona(storedPersona, personas);
       const fullMessage = formatComposerSelections(attachedSelections, messageRef.current.trim());
-      void useMessageQueueStore.getState().queueMessage(chatId, fullMessage, selectedModelId, {
-        permissionMode,
-        thinkingMode,
-        worktree,
-        baseBranch,
-        selectedPersonaName: validPersona,
-        files: attachedFiles ?? undefined,
-      });
+      const files = attachedFiles ?? undefined;
+      // The draft clears now; a refusal puts it back (a network failure keeps the card).
+      void useMessageQueueStore
+        .getState()
+        .queueMessage(chatId, fullMessage, selectedModelId, {
+          permissionMode,
+          thinkingMode,
+          worktree,
+          baseBranch,
+          selectedPersonaName: validPersona,
+          files,
+        })
+        .catch((error) => restoreRejectedQueuedMessage(chatId, fullMessage, files, error));
       setMessage('');
       onAttach?.([]);
       if (attachedSelections.length > 0) useUIStore.getState().clearComposerSelections(chatId);

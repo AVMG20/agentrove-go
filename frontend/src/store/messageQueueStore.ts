@@ -31,232 +31,282 @@ interface MessageQueueState<AddArgs extends unknown[]> {
   clearQueue: (chatId: string) => void;
   fetchQueue: (chatId: string) => Promise<void>;
   removeLocalOnly: (chatId: string, messageId: string) => void;
+  // Resend an item that failed to reach the server. Resolves to the server id, or
+  // null if it failed on the network again; rejects (and drops the item) when the
+  // server refuses it.
+  retryMessage: (chatId: string, messageId: string) => Promise<string | null>;
   cleanupChat: (chatId: string) => void;
 }
 
-// Optimistic queue: temp IDs swap in-place on sync; network errors stay unsynced.
-// fetchQueue merges server state with unsynced locals across refreshes.
-const createQueueStore = <AddArgs extends unknown[]>(api: QueueApi<AddArgs>) =>
-  create<MessageQueueState<AddArgs>>((set, get) => ({
-    queues: new Map<string, LocalQueuedMessage[]>(),
+// Optimistic queue: temp IDs swap in-place on sync; network errors stay unsynced
+// (marked failed, with their arguments kept for retryMessage). fetchQueue merges
+// server state with unsynced locals across refreshes.
+const createQueueStore = <AddArgs extends unknown[]>(api: QueueApi<AddArgs>) => {
+  // Arguments of unsynced items by temp id; not state, nothing renders them.
+  const pendingArgs = new Map<string, AddArgs>();
 
-    queueMessage: async (chatId: string, content: string, ...args: AddArgs): Promise<string> => {
-      const currentQueue = get().queues.get(chatId) || [];
-      const tempId = crypto.randomUUID();
-      const tempMessage: LocalQueuedMessage = {
-        id: tempId,
-        content,
-        files: api.filesOf(...args),
-        queuedAt: Date.now(),
-        synced: false,
-        sendingNow: false,
-      };
-
+  return create<MessageQueueState<AddArgs>>((set, get) => {
+    const patchMessage = (
+      chatId: string,
+      messageId: string,
+      patch: (msg: LocalQueuedMessage) => LocalQueuedMessage,
+    ) =>
       set((state) => {
+        const queue = state.queues.get(chatId);
+        if (!queue?.some((msg) => msg.id === messageId)) return state;
         const nextQueues = new Map(state.queues);
-        nextQueues.set(chatId, [...currentQueue, tempMessage]);
+        nextQueues.set(
+          chatId,
+          queue.map((msg) => (msg.id === messageId ? patch(msg) : msg)),
+        );
         return { queues: nextQueues };
       });
 
+    // One server attempt for an unsynced item; the shared tail of queue and retry.
+    const syncMessage = async (
+      chatId: string,
+      tempId: string,
+      content: string,
+      args: AddArgs,
+    ): Promise<string | null> => {
       try {
         const result = await api.queueMessage(chatId, content, ...args);
+        pendingArgs.delete(tempId);
+        patchMessage(chatId, tempId, (msg) => ({
+          ...msg,
+          id: result.id,
+          synced: true,
+          failed: false,
+        }));
+        return result.id;
+      } catch (error) {
+        if (!(error instanceof NetworkError)) {
+          pendingArgs.delete(tempId);
+          get().removeLocalOnly(chatId, tempId);
+          throw error;
+        }
+        patchMessage(chatId, tempId, (msg) => ({ ...msg, failed: true }));
+        return null;
+      }
+    };
+
+    return {
+      queues: new Map<string, LocalQueuedMessage[]>(),
+
+      queueMessage: async (chatId: string, content: string, ...args: AddArgs): Promise<string> => {
+        const currentQueue = get().queues.get(chatId) || [];
+        const tempId = crypto.randomUUID();
+        const tempMessage: LocalQueuedMessage = {
+          id: tempId,
+          content,
+          files: api.filesOf(...args),
+          queuedAt: Date.now(),
+          synced: false,
+          sendingNow: false,
+        };
+
+        set((state) => {
+          const nextQueues = new Map(state.queues);
+          nextQueues.set(chatId, [...currentQueue, tempMessage]);
+          return { queues: nextQueues };
+        });
+
+        pendingArgs.set(tempId, args);
+        return (await syncMessage(chatId, tempId, content, args)) ?? tempId;
+      },
+
+      retryMessage: async (chatId: string, messageId: string) => {
+        const message = get()
+          .queues.get(chatId)
+          ?.find((m) => m.id === messageId);
+        const args = pendingArgs.get(messageId);
+        if (!message || message.synced || !message.failed || !args) return null;
+        patchMessage(chatId, messageId, (msg) => ({ ...msg, failed: false }));
+        // Content, not the original text: an unsynced item can be edited locally.
+        return syncMessage(chatId, messageId, message.content, args);
+      },
+
+      updateQueuedMessage: async (chatId: string, messageId: string, content: string) => {
+        const trimmedContent = content.trim();
+        const currentQueue = get().queues.get(chatId) || [];
+        const message = currentQueue.find((m) => m.id === messageId);
+
+        if (!message) {
+          return;
+        }
+
+        if (!trimmedContent) {
+          await get().removeMessage(chatId, messageId);
+          return;
+        }
 
         set((state) => {
           const nextQueues = new Map(state.queues);
           const queue = nextQueues.get(chatId) || [];
           const updatedQueue = queue.map((msg) =>
-            msg.id === tempId ? { ...msg, id: result.id, synced: true } : msg,
+            msg.id === messageId ? { ...msg, content: trimmedContent } : msg,
           );
           nextQueues.set(chatId, updatedQueue);
           return { queues: nextQueues };
         });
 
-        return result.id;
-      } catch (error) {
-        if (!(error instanceof NetworkError)) {
-          get().removeLocalOnly(chatId, tempId);
-          throw error;
+        if (message.synced) {
+          try {
+            await api.updateQueuedMessage(chatId, messageId, trimmedContent);
+          } catch (error) {
+            console.error('Failed to sync message update:', error);
+            // The optimistic edit never reached the server, which will still send the old text.
+            await get().fetchQueue(chatId);
+          }
         }
+      },
 
-        return tempId;
-      }
-    },
+      removeMessage: async (chatId: string, messageId: string) => {
+        const currentQueue = get().queues.get(chatId) || [];
+        const message = currentQueue.find((m) => m.id === messageId);
 
-    updateQueuedMessage: async (chatId: string, messageId: string, content: string) => {
-      const trimmedContent = content.trim();
-      const currentQueue = get().queues.get(chatId) || [];
-      const message = currentQueue.find((m) => m.id === messageId);
+        set((state) => {
+          const nextQueues = new Map(state.queues);
+          const queue = nextQueues.get(chatId) || [];
+          const filtered = queue.filter((msg) => msg.id !== messageId);
+          if (filtered.length === 0) {
+            nextQueues.delete(chatId);
+          } else {
+            nextQueues.set(chatId, filtered);
+          }
+          return { queues: nextQueues };
+        });
 
-      if (!message) {
-        return;
-      }
-
-      if (!trimmedContent) {
-        await get().removeMessage(chatId, messageId);
-        return;
-      }
-
-      set((state) => {
-        const nextQueues = new Map(state.queues);
-        const queue = nextQueues.get(chatId) || [];
-        const updatedQueue = queue.map((msg) =>
-          msg.id === messageId ? { ...msg, content: trimmedContent } : msg,
-        );
-        nextQueues.set(chatId, updatedQueue);
-        return { queues: nextQueues };
-      });
-
-      if (message.synced) {
-        try {
-          await api.updateQueuedMessage(chatId, messageId, trimmedContent);
-        } catch (error) {
-          console.error('Failed to sync message update:', error);
-          // The optimistic edit never reached the server, which will still send the old text.
-          await get().fetchQueue(chatId);
+        pendingArgs.delete(messageId);
+        if (message?.synced) {
+          try {
+            await api.deleteQueuedMessage(chatId, messageId);
+          } catch (error) {
+            console.error('Failed to sync message delete:', error);
+            // The server still holds the item and will send it — bring it back into view.
+            await get().fetchQueue(chatId);
+          }
         }
-      }
-    },
+      },
 
-    removeMessage: async (chatId: string, messageId: string) => {
-      const currentQueue = get().queues.get(chatId) || [];
-      const message = currentQueue.find((m) => m.id === messageId);
+      // Process now instead of waiting for the stream; 30s guard resets sendingNow.
+      sendNow: async (chatId: string, messageId: string): Promise<boolean> => {
+        const queue = get().queues.get(chatId) || [];
+        const message = queue.find((m) => m.id === messageId);
+        if (!message?.synced) return false;
 
-      set((state) => {
-        const nextQueues = new Map(state.queues);
-        const queue = nextQueues.get(chatId) || [];
-        const filtered = queue.filter((msg) => msg.id !== messageId);
-        if (filtered.length === 0) {
-          nextQueues.delete(chatId);
-        } else {
-          nextQueues.set(chatId, filtered);
-        }
-        return { queues: nextQueues };
-      });
+        const resetSendingNow = () => {
+          set((state) => {
+            const nextQueues = new Map(state.queues);
+            const currentQueue = nextQueues.get(chatId) || [];
+            nextQueues.set(
+              chatId,
+              currentQueue.map((msg) =>
+                msg.id === messageId ? { ...msg, sendingNow: false } : msg,
+              ),
+            );
+            return { queues: nextQueues };
+          });
+        };
 
-      if (message?.synced) {
-        try {
-          await api.deleteQueuedMessage(chatId, messageId);
-        } catch (error) {
-          console.error('Failed to sync message delete:', error);
-          // The server still holds the item and will send it — bring it back into view.
-          await get().fetchQueue(chatId);
-        }
-      }
-    },
-
-    // Process now instead of waiting for the stream; 30s guard resets sendingNow.
-    sendNow: async (chatId: string, messageId: string): Promise<boolean> => {
-      const queue = get().queues.get(chatId) || [];
-      const message = queue.find((m) => m.id === messageId);
-      if (!message?.synced) return false;
-
-      const resetSendingNow = () => {
         set((state) => {
           const nextQueues = new Map(state.queues);
           const currentQueue = nextQueues.get(chatId) || [];
           nextQueues.set(
             chatId,
-            currentQueue.map((msg) => (msg.id === messageId ? { ...msg, sendingNow: false } : msg)),
+            currentQueue.map((msg) => (msg.id === messageId ? { ...msg, sendingNow: true } : msg)),
           );
           return { queues: nextQueues };
         });
-      };
 
-      set((state) => {
-        const nextQueues = new Map(state.queues);
-        const currentQueue = nextQueues.get(chatId) || [];
-        nextQueues.set(
-          chatId,
-          currentQueue.map((msg) => (msg.id === messageId ? { ...msg, sendingNow: true } : msg)),
-        );
-        return { queues: nextQueues };
-      });
+        const timeout = window.setTimeout(resetSendingNow, 30_000);
 
-      const timeout = window.setTimeout(resetSendingNow, 30_000);
-
-      try {
-        await api.sendNow(chatId, messageId);
-        clearTimeout(timeout);
-        return true;
-      } catch (error) {
-        console.error('Failed to send now:', error);
-        clearTimeout(timeout);
-        resetSendingNow();
-        return false;
-      }
-    },
-
-    removeLocalOnly: (chatId: string, messageId: string) => {
-      set((state) => {
-        const nextQueues = new Map(state.queues);
-        const currentQueue = nextQueues.get(chatId) || [];
-        const filteredQueue = currentQueue.filter((msg) => msg.id !== messageId);
-
-        if (filteredQueue.length === 0) {
-          nextQueues.delete(chatId);
-        } else {
-          nextQueues.set(chatId, filteredQueue);
+        try {
+          await api.sendNow(chatId, messageId);
+          clearTimeout(timeout);
+          return true;
+        } catch (error) {
+          console.error('Failed to send now:', error);
+          clearTimeout(timeout);
+          resetSendingNow();
+          return false;
         }
+      },
 
-        return { queues: nextQueues };
-      });
-    },
-
-    getQueue: (chatId: string) => {
-      return get().queues.get(chatId) ?? EMPTY_QUEUE;
-    },
-
-    clearQueue: (chatId: string) => {
-      set((state) => {
-        const nextQueues = new Map(state.queues);
-        nextQueues.delete(chatId);
-        return { queues: nextQueues };
-      });
-    },
-
-    cleanupChat: (chatId: string) => {
-      set((state) => {
-        const nextQueues = new Map(state.queues);
-        nextQueues.delete(chatId);
-        return { queues: nextQueues };
-      });
-    },
-
-    // Server messages win; unsynced locals without a server counterpart are kept.
-    fetchQueue: async (chatId: string) => {
-      try {
-        const serverMessages = await api.getQueue(chatId);
-
+      removeLocalOnly: (chatId: string, messageId: string) => {
+        pendingArgs.delete(messageId);
         set((state) => {
           const nextQueues = new Map(state.queues);
-          const existingQueue = nextQueues.get(chatId) || [];
+          const currentQueue = nextQueues.get(chatId) || [];
+          const filteredQueue = currentQueue.filter((msg) => msg.id !== messageId);
 
-          const serverIds = new Set(serverMessages.map((m) => m.id));
-          const pendingMessages = existingQueue.filter((m) => !m.synced && !serverIds.has(m.id));
-
-          const syncedMessages: LocalQueuedMessage[] = serverMessages.map((msg) => ({
-            id: msg.id,
-            content: msg.content,
-            attachments: msg.attachments,
-            queuedAt: new Date(msg.queued_at).getTime(),
-            synced: true,
-            sendingNow: false,
-          }));
-
-          const merged = [...syncedMessages, ...pendingMessages];
-          if (merged.length > 0) {
-            nextQueues.set(chatId, merged);
-          } else {
+          if (filteredQueue.length === 0) {
             nextQueues.delete(chatId);
+          } else {
+            nextQueues.set(chatId, filteredQueue);
           }
 
           return { queues: nextQueues };
         });
-      } catch (error) {
-        console.error('Failed to fetch queue:', error);
-      }
-    },
-  }));
+      },
+
+      getQueue: (chatId: string) => {
+        return get().queues.get(chatId) ?? EMPTY_QUEUE;
+      },
+
+      clearQueue: (chatId: string) => {
+        set((state) => {
+          const nextQueues = new Map(state.queues);
+          nextQueues.delete(chatId);
+          return { queues: nextQueues };
+        });
+      },
+
+      cleanupChat: (chatId: string) => {
+        set((state) => {
+          const nextQueues = new Map(state.queues);
+          nextQueues.delete(chatId);
+          return { queues: nextQueues };
+        });
+      },
+
+      // Server messages win; unsynced locals without a server counterpart are kept.
+      fetchQueue: async (chatId: string) => {
+        try {
+          const serverMessages = await api.getQueue(chatId);
+
+          set((state) => {
+            const nextQueues = new Map(state.queues);
+            const existingQueue = nextQueues.get(chatId) || [];
+
+            const serverIds = new Set(serverMessages.map((m) => m.id));
+            const pendingMessages = existingQueue.filter((m) => !m.synced && !serverIds.has(m.id));
+
+            const syncedMessages: LocalQueuedMessage[] = serverMessages.map((msg) => ({
+              id: msg.id,
+              content: msg.content,
+              attachments: msg.attachments,
+              queuedAt: new Date(msg.queued_at).getTime(),
+              synced: true,
+              sendingNow: false,
+            }));
+
+            const merged = [...syncedMessages, ...pendingMessages];
+            if (merged.length > 0) {
+              nextQueues.set(chatId, merged);
+            } else {
+              nextQueues.delete(chatId);
+            }
+
+            return { queues: nextQueues };
+          });
+        } catch (error) {
+          console.error('Failed to fetch queue:', error);
+        }
+      },
+    };
+  });
+};
 
 export const useMessageQueueStore = createQueueStore<
   [modelId: string, options?: QueueMessageOptions]

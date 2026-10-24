@@ -41,6 +41,7 @@ vi.mock('@/store/chatSettingsStore', () => ({
 }));
 
 import { useInputSubmit } from './useInputSubmit';
+import { useComposerDraftStore } from '@/store/composerDraftStore';
 
 function makeOptions(overrides: Record<string, unknown> = {}) {
   return {
@@ -213,6 +214,17 @@ describe('useInputSubmit — submitOrQueue queue path', () => {
     expect(opts.setMessage).toHaveBeenCalledWith('');
     expect(opts.onAttach).toHaveBeenCalledWith([]);
     expect(opts.setPreviewDismissed).toHaveBeenCalledWith(true);
+  });
+
+  it('toasts and puts the text back in the composer when the server refuses it', async () => {
+    useComposerDraftStore.setState(useComposerDraftStore.getInitialState(), true);
+    h.queueMessage.mockRejectedValueOnce(new Error('Unknown model'));
+    const opts = makeOptions({ isStreaming: true, hasContent: true });
+    const { result } = renderHook(() => useInputSubmit(opts));
+    await act(async () => result.current.submitOrQueue());
+
+    expect(h.toastError).toHaveBeenCalledWith(expect.stringContaining('Unknown model'));
+    expect(useComposerDraftStore.getState().textByChat['chat-1']?.text).toBe('hello');
   });
 
   it('threads the per-chat worktree and base branch into the queued options', () => {
