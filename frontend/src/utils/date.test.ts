@@ -88,15 +88,15 @@ describe('getRelativeTime', () => {
     expect(getRelativeTime(ago(40 * DAY).toISOString())).toBe('1mo');
   });
 
+  it('never shows 0mo: 28-29 days are 4w, 30 days is 1mo', () => {
+    expect(getRelativeTime(ago(28 * DAY).toISOString())).toBe('4w');
+    expect(getRelativeTime(ago(29 * DAY).toISOString())).toBe('4w');
+    expect(getRelativeTime(ago(30 * DAY).toISOString())).toBe('1mo');
+  });
+
   it('boundary: 7 days is 1w, 6 days is 6d', () => {
     expect(getRelativeTime(ago(7 * DAY).toISOString())).toBe('1w');
     expect(getRelativeTime(ago(6 * DAY).toISOString())).toBe('6d');
-  });
-
-  // Suspicious-but-harmless: 28-29 days is 4 weeks (skips the <4 weeks branch) but
-  // floor(days/30) is still 0, so it renders "0mo". Documenting current behavior.
-  it('renders "0mo" for 28 days (known edge)', () => {
-    expect(getRelativeTime(ago(28 * DAY).toISOString())).toBe('0mo');
   });
 });
 
