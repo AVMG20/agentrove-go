@@ -665,10 +665,8 @@ func (m *Module) promptBlocks(sb *sandbox.Sandbox, req *turnRequest) ([]map[stri
 		case "pdf":
 			blocks = append(blocks, map[string]any{"type": "document", "source": map[string]any{"type": "base64", "media_type": "application/pdf", "data": base64.StdEncoding.EncodeToString(data)}})
 		default:
-			dest := filepath.Base(rel)
-			// The workspace is box-writable: write through the swap-safe root
-			// and never through a symlink planted at dest.
-			if err := sb.WriteWorkspaceFile(dest, data); err != nil {
+			dest, err := writeUpload(sb, db.Deref(req.chat.WorktreeCwd), filepath.Base(rel), data)
+			if err != nil {
 				return nil, fmt.Errorf("copy attachment into workspace: %w", err)
 			}
 			notes = append(notes, "- "+name+" is available at "+path.Join(sb.Root, dest))
@@ -678,6 +676,21 @@ func (m *Module) promptBlocks(sb *sandbox.Sandbox, req *turnRequest) ([]map[stri
 		blocks = append(blocks, map[string]any{"type": "text", "text": "<user_attachments>\nUser uploaded the following files. Read them from these sandbox paths when needed.\n" + strings.Join(notes, "\n") + "\n</user_attachments>"})
 	}
 	return blocks, nil
+}
+
+// uploadsDir holds attachments copied for the agent, inside the chat's
+// working dir; its own "*" .gitignore keeps them out of commits.
+const uploadsDir = ".agentrove/uploads"
+
+// writeUpload copies an attachment into the chat's working dir cwd
+// (workspace-relative) and returns its workspace-relative path.
+func writeUpload(sb *sandbox.Sandbox, cwd, name string, data []byte) (string, error) {
+	dir := path.Join(cwd, uploadsDir)
+	if err := sb.WriteWorkspaceFile(path.Join(dir, ".gitignore"), []byte("*\n")); err != nil {
+		return "", err
+	}
+	dest := path.Join(dir, name)
+	return dest, sb.WriteWorkspaceFile(dest, data)
 }
 
 // prepareUserPrompt wraps the prompt with the user's custom instructions;
