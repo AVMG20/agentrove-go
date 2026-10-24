@@ -3,13 +3,14 @@ import { useEffect } from 'react';
 // The on-screen keyboard is taller than any browser toolbar change.
 const KEYBOARD_MIN_HEIGHT = 120;
 
-// iOS Safari doesn't shrink the layout (100dvh included) for the on-screen
-// keyboard: it pans the page instead, pushing the title bar off screen and
-// leaving the composer wherever the pan lands. While the keyboard is up, pin
-// the app shell to the visual viewport: html[data-keyboard-open] plus
-// --app-height / --app-offset-top (Layout.module.scss), and --keyboard-inset
-// for sheets pinned to the bottom edge. Browsers that resize for the keyboard
-// (Android Chrome) never show the gap, so nothing changes there.
+// iOS Safari, and Android Chrome since 108, don't shrink the layout (100dvh
+// included) for the on-screen keyboard: they shrink the visual viewport and pan
+// it, pushing the title bar off screen and leaving the composer wherever the pan
+// lands. While the keyboard is up, pin the app shell to the visual viewport:
+// html[data-keyboard-open] plus --app-height / --app-offset-top
+// (Layout.module.scss), and --keyboard-inset for sheets pinned to the bottom
+// edge. Browsers that resize the layout for the keyboard (Firefox Android,
+// interactive-widget=resizes-content) never show the gap, so nothing changes.
 export function useKeyboardViewport(enabled: boolean) {
   useEffect(() => {
     const viewport = window.visualViewport;

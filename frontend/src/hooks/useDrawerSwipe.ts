@@ -17,6 +17,9 @@ const SETTLE_MS = 220;
 // editor and browser canvases, dialogs and sheets.
 const OWNS_TOUCH =
   'input, textarea, canvas, .xterm, .monaco-editor, [role="dialog"], [role="listbox"]';
+// While a dialog or a picker sheet is up, its scrim is under the finger: leave
+// the drawer alone.
+const OVERLAY_OPEN = '[aria-modal="true"], [role="listbox"]';
 
 function inHorizontalScroller(element: Element | null): boolean {
   for (let el = element; el && el !== document.body; el = el.parentElement) {
@@ -29,7 +32,7 @@ function inHorizontalScroller(element: Element | null): boolean {
 }
 
 const isStandalone = () =>
-  window.matchMedia?.('(display-mode: standalone)').matches ||
+  window.matchMedia?.('(display-mode: standalone)')?.matches === true ||
   (navigator as Navigator & { standalone?: boolean }).standalone === true;
 
 // The phone drawer follows the finger: drag right anywhere to pull it open,
@@ -56,6 +59,7 @@ export function useDrawerSwipe(enabled: boolean) {
       if (e.touches.length !== 1) return;
       const target = e.target as Element | null;
       if (target?.closest(OWNS_TOUCH) || inHorizontalScroller(target)) return;
+      if (document.querySelector(OVERLAY_OPEN)) return;
       const touch = e.touches[0];
       const opening = !useUIStore.getState().sidebarOpen;
       if (opening && touch.clientX < BROWSER_BACK_EDGE_PX && !isStandalone()) return;
