@@ -5,7 +5,8 @@ interface ElicitationState {
   // FIFO per chat — MCP-server elicitations are not serialized, so a single slot
   // would drop earlier forms and leave their agent requests blocked forever.
   pendingRequests: Map<string, ElicitationRequest[]>;
-  enqueueElicitationRequest: (chatId: string, request: ElicitationRequest) => void;
+  // True when the request is new (not a replay of one already queued).
+  enqueueElicitationRequest: (chatId: string, request: ElicitationRequest) => boolean;
   resolveElicitationRequest: (chatId: string, requestId: string) => void;
   // Server truth from GET /chats/{id}/status — event replay can miss pending forms.
   reconcileElicitationRequests: (chatId: string, requests: ElicitationRequest[]) => void;
@@ -31,8 +32,9 @@ export const useElicitationStore = create<ElicitationState>((set, get) => ({
   enqueueElicitationRequest: (chatId: string, request: ElicitationRequest) => {
     const queue = get().pendingRequests.get(chatId) ?? [];
     // Dedupe SSE replays — re-adding the displayed form would drop typed answers.
-    if (queue.some((r) => r.request_id === request.request_id)) return;
+    if (queue.some((r) => r.request_id === request.request_id)) return false;
     set({ pendingRequests: writeQueue(get().pendingRequests, chatId, [...queue, request]) });
+    return true;
   },
 
   resolveElicitationRequest: (chatId: string, requestId: string) => {

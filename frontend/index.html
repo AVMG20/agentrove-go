@@ -11,6 +11,15 @@
     />
     <!-- Raster fallback for Safari, which doesn't reliably render SVG favicons -->
     <link rel="icon" type="image/x-icon" href="/favicon.ico" sizes="16x16 32x32 48x48" />
+    <!-- Add to Home Screen: installed icon, name and full-screen launch (iOS reads the
+         apple-* tags, others the manifest). The title bar pads for the status bar;
+         light themes switch it to "default" in the theme script below. -->
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Agentrove" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <meta name="theme-color" content="#0a0a0b" />
     <meta name="color-scheme" content="light dark" />
@@ -48,6 +57,11 @@
               palette ? palette[1] : resolved === 'dark' ? '#0a0a0b' : '#ffffff',
             );
           }
+          // Installed on iOS: white status-bar text over a light title bar would vanish.
+          const statusBar = document.querySelector(
+            'meta[name="apple-mobile-web-app-status-bar-style"]',
+          );
+          if (statusBar && resolved === 'light') statusBar.setAttribute('content', 'default');
         } catch (error) {
           console.warn('Theme init failed', error);
         }
