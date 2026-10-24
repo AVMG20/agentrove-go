@@ -17,10 +17,8 @@
 
   // Phone on its side with the keyboard up: the model/effort/mode row waits
   // until the keyboard goes, so the field and send button stay on screen.
-  @include responsive.media('short') {
-    :global(html[data-keyboard-open]) & {
-      display: none;
-    }
+  :global(#{responsive.layout-mode('phone-landscape')}[data-keyboard-open]) & {
+    display: none;
   }
 }
 

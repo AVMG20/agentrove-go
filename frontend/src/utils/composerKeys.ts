@@ -1,11 +1,9 @@
 import type { KeyboardEvent } from 'react';
+import { isCoarsePointer } from '@/utils/device';
 
 // Touch keyboards have no Shift+Return, so on a coarse pointer (phones, tablets)
 // Return inserts a newline and the send button sends. A hardware keyboard on
 // such a device can still send with Cmd/Ctrl+Return.
-export function isCoarsePointer(): boolean {
-  return typeof window !== 'undefined' && window.matchMedia?.('(pointer: coarse)').matches === true;
-}
 
 export function isComposerSendKey(event: KeyboardEvent): boolean {
   if (event.key !== 'Enter' || event.shiftKey || event.nativeEvent?.isComposing) return false;

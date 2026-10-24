@@ -42,7 +42,7 @@
   }
 
   // Phone on its side: height is what's scarce, so icon and label share a row.
-  @include responsive.media('short') {
+  @include responsive.media('phone-landscape') {
     height: var(--space-10);
     flex-direction: row;
     gap: var(--space-1-5);

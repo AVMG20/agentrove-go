@@ -17,10 +17,8 @@
 
   // Phone on its side with the keyboard up leaves ~150px: give it all to the
   // conversation and composer until the keyboard goes.
-  @include responsive.media('short') {
-    :global(html[data-keyboard-open]) & {
-      display: none;
-    }
+  :global(#{responsive.layout-mode('phone-landscape')}[data-keyboard-open]) & {
+    display: none;
   }
 }
 

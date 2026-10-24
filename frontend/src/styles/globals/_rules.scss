@@ -107,7 +107,7 @@
   // iOS zooms the page into any focused field under 16px and leaves it zoomed;
   // on touch screens every field gets at least 16px. !important because module
   // classes outrank element selectors and the UI scale is 13–15px.
-  @include responsive.media('coarse-touch') {
+  @include responsive.media('touch') {
     input:not([type='checkbox'], [type='radio'], [type='range'], [type='file']),
     select,
     textarea {

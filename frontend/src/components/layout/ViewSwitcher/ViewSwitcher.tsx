@@ -10,7 +10,7 @@ import {
 } from '@/components/ui/command-menu/commandRegistry';
 import { useUIStore } from '@/store/uiStore';
 import { useIsMobile } from '@/hooks/useIsMobile';
-import { isCoarsePointer } from '@/utils/composerKeys';
+import { isCoarsePointer } from '@/utils/device';
 import { useSettingsQuery } from '@/hooks/queries/useSettingsQueries';
 import { activeSplitSlot, VIEW_ICONS, VIEW_LABELS, viewTypeToTileId } from '@/utils/tileHelpers';
 import type { ViewType } from '@/types/ui.types';

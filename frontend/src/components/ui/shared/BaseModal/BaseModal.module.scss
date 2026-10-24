@@ -67,20 +67,24 @@
   &--full {
     max-width: 100%;
   }
-}
 
-// Phones: every dialog is a bottom sheet — full width, pinned to the bottom edge
-// past the backdrop's padding, within thumb reach. Taller ones still scroll in
-// the backdrop. (Same geometry as SessionSheet.)
-@include responsive.media('mobile') {
-  .container {
+  // Phones: every dialog is a bottom sheet — full width, pinned to the bottom
+  // edge past the backdrop's padding, within thumb reach, its content clear of
+  // the home indicator and (in landscape) the notch. Taller ones still scroll in
+  // the backdrop. SessionSheet uses the same geometry.
+  @include responsive.media('mobile') {
     width: calc(100% + 2 * var(--space-4));
     max-width: none;
     margin: auto calc(-1 * var(--space-4)) calc(-1 * var(--space-4));
     border-bottom: 0;
     border-radius: var(--radius-2xl) var(--radius-2xl) 0 0;
-    padding-bottom: var(--device-safe-area-bottom);
+    padding: 0 var(--safe-area-right) var(--device-safe-area-bottom) var(--safe-area-left);
     animation-name: modal-sheet-enter;
+  }
+
+  // Sitting on the keyboard, the home indicator is covered anyway.
+  :global(#{responsive.layout-mode('mobile')}[data-keyboard-open]) & {
+    padding-bottom: 0;
   }
 }
 

@@ -10,17 +10,18 @@ $breakpoint-lg: 1024px;
 $breakpoint-xl: 1280px;
 $breakpoint-xxl: 1536px;
 
-// A phone on its side is wide but short: it gets the phone layout too. Keep in
-// sync with MOBILE_MEDIA_QUERY (useIsMobile.ts).
-$phone-landscape-max-height: 500px;
-$wide: '(min-width: #{$breakpoint-md})';
+// Layout modes are decided once, in JS (utils/device.ts), and set on <html>; the
+// CSS keys off those attributes so the two can't disagree. 'mobile' = phone
+// layout (narrow window, or a phone either way up), 'desktop' = everything else,
+// 'phone-landscape' = a phone on its side (part of 'mobile'). They need a
+// selector to attach to: use them inside a rule, not at the top level.
+$layout-modes: (
+  'mobile': 'html[data-mobile]',
+  'desktop': 'html:not([data-mobile])',
+  'phone-landscape': 'html[data-phone-landscape]',
+);
 
 $queries: (
-  // mobile/desktop split — matches useIsMobile(): narrow, or a short touch screen
-  'mobile':
-    '(max-width: #{$breakpoint-md - 1px}), (max-height: #{$phone-landscape-max-height - 1px}) and (pointer: coarse)',
-  'desktop':
-    '#{$wide} and (min-height: #{$phone-landscape-max-height}), #{$wide} and (pointer: fine), #{$wide} and (pointer: none)',
   'sm-up': '(min-width: #{$breakpoint-sm})',
   'md-up': '(min-width: #{$breakpoint-md})',
   'lg-up': '(min-width: #{$breakpoint-lg})',
@@ -30,21 +31,33 @@ $queries: (
   'md-down': '(max-width: #{$breakpoint-md - 1px})',
   'lg-down': '(max-width: #{$breakpoint-lg - 1px})',
   'xl-down': '(max-width: #{$breakpoint-xl - 1px})',
-  'touch': '(hover: none)',
-  // Finger-driven screens (phones, tablets): fields here must be >= 16px (iOS zoom)
-  'coarse-touch': '(hover: none) and (pointer: coarse)',
-  // A phone on its side (part of 'mobile'): vertical room is what's scarce
-  'short': '(max-height: #{$phone-landscape-max-height - 1px}) and (pointer: coarse)',
+  // Finger as the main pointer (phones, tablets) — same as isCoarsePointer()
+  // (utils/device.ts). Fields here must be >= 16px (iOS zoom).
+  'touch': '(pointer: coarse)',
   'not-touch': '(hover: hover)',
-  'reduced-motion': '(prefers-reduced-motion: reduce)'
+  'reduced-motion': '(prefers-reduced-motion: reduce)',
 );
 
+// The html attribute selector a layout mode keys off, for compound rules such
+// as "phone landscape with the keyboard up".
+@function layout-mode($mode) {
+  @return map.get($layout-modes, $mode);
+}
+
 @mixin media($query) {
-  @if not map.has-key($queries, $query) {
+  @if map.has-key($layout-modes, $query) {
+    @if not & {
+      @error 'Layout mode "#{$query}" needs an enclosing selector';
+    }
+    :global(#{map.get($layout-modes, $query)}) & {
+      @content;
+    }
+  } @else if map.has-key($queries, $query) {
+    @media #{map.get($queries, $query)} {
+      @content;
+    }
+  } @else {
     @error 'Unknown media query: #{$query}';
-  }
-  @media #{map.get($queries, $query)} {
-    @content;
   }
 }
 

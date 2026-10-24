@@ -1,16 +1,10 @@
-// Pinned to the bottom edge, past the modal backdrop's padding. The attribute
-// makes it outrank BaseModal's .container rules whatever the CSS load order.
+// BaseModal already makes every dialog a bottom sheet on a phone (full width,
+// pinned to the bottom edge, clear of the insets); this one is a capped column so
+// its body scrolls.
 [role='dialog'].sheet {
   display: flex;
   max-height: 85dvh;
   flex-direction: column;
-  margin: auto calc(-1 * var(--space-4)) calc(-1 * var(--space-4));
-  width: calc(100% + 2 * var(--space-4));
-  max-width: none;
-  border-bottom: 0;
-  border-radius: var(--radius-2xl) var(--radius-2xl) 0 0;
-  padding-bottom: var(--safe-area-bottom);
-  animation: sheet-enter var(--duration-base) var(--easing-out);
 }
 
 .handle {
@@ -31,16 +25,5 @@
     width: 100%;
     border-left: 0;
     background-color: transparent;
-  }
-}
-
-@keyframes sheet-enter {
-  from {
-    transform: translateY(24px);
-    opacity: 0;
-  }
-  to {
-    transform: none;
-    opacity: 1;
   }
 }

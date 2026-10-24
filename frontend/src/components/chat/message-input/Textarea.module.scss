@@ -22,7 +22,7 @@
   color: var(--theme-text-primary);
 
   // Mirrors the field, which touch screens bump to 16px (_rules.scss).
-  @include responsive.media('coarse-touch') {
+  @include responsive.media('touch') {
     font-size: max(16px, 1em);
   }
 

@@ -43,12 +43,12 @@
     &--open {
       transform: none;
     }
+  }
 
-    // Follows the finger while dragged open or closed (useDrawerSwipe).
-    :global(html[data-drawer-dragging]) & {
-      transform: translateX(calc((var(--drawer-progress) - 1) * 100%));
-      transition: none;
-    }
+  // Mobile drawer following the finger while dragged open or closed (useDrawerSwipe).
+  :global(#{responsive.layout-mode('mobile')}[data-drawer-dragging]) & {
+    transform: translateX(calc((var(--drawer-progress) - 1) * 100%));
+    transition: none;
   }
 }
 
