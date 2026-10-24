@@ -24,35 +24,14 @@ import { CreatePRExistingBanner } from './CreatePRExistingBanner';
 import { GitHubTokenHint } from './GitHubTokenHint';
 import { CreatePRReviewers } from './CreatePRReviewers';
 import { CreatePRChangedFiles } from './CreatePRChangedFiles';
+import { parseChangedFiles } from './parseChangedFiles';
 import styles from './CreatePRDialog.module.scss';
 
 interface CreatePRDialogProps {
   onClose: () => void;
 }
 
-const DIFF_HEADER_RE = /^a\/(.+?) b\//;
 const DEFAULT_BASES = ['main', 'master', 'develop', 'trunk'];
-
-function parseChangedFiles(
-  diff: string,
-): Array<{ path: string; additions: number; deletions: number }> {
-  const files: Array<{ path: string; additions: number; deletions: number }> = [];
-  const chunks = diff.split(/^diff --git /m);
-  for (const chunk of chunks) {
-    if (!chunk.trim()) continue;
-    const headerMatch = chunk.match(DIFF_HEADER_RE);
-    if (!headerMatch) continue;
-    const path = headerMatch[1];
-    let additions = 0;
-    let deletions = 0;
-    for (const line of chunk.split('\n')) {
-      if (line[0] === '+' && !line.startsWith('+++')) additions++;
-      else if (line[0] === '-' && !line.startsWith('---')) deletions++;
-    }
-    files.push({ path, additions, deletions });
-  }
-  return files;
-}
 
 export function CreatePRDialog({ onClose }: CreatePRDialogProps) {
   const titleId = useId();
