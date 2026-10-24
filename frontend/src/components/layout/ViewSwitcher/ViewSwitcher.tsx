@@ -10,13 +10,14 @@ import {
 } from '@/components/ui/command-menu/commandRegistry';
 import { useUIStore } from '@/store/uiStore';
 import { useIsMobile } from '@/hooks/useIsMobile';
+import { useSettingsQuery } from '@/hooks/queries/useSettingsQueries';
 import { activeSplitSlot, VIEW_ICONS, VIEW_LABELS, viewTypeToTileId } from '@/utils/tileHelpers';
 import type { ViewType } from '@/types/ui.types';
 import styles from './ViewSwitcher.module.scss';
 
 type SwitchableView = Exclude<ViewType, 'agent'>;
 
-const SWITCHABLE_VIEWS: SwitchableView[] = ['diff', 'editor', 'terminal'];
+const SWITCHABLE_VIEWS: SwitchableView[] = ['diff', 'editor', 'terminal', 'browser'];
 
 // Same shortcut bindings as the command palette so tooltips can't drift.
 const VIEW_SHORTCUTS = new Map<ViewType, string>(
@@ -40,6 +41,11 @@ export function ViewSwitcher() {
   const sessionPanelOpen = useUIStore((s) => s.sessionPanelOpen);
   const isLandingPage = useMatch('/');
   const isMobile = useIsMobile();
+  // Hidden when the server runs no box browsers; shown until settings load.
+  const browserAvailable = useSettingsQuery().data?.browser_available !== false;
+  const views = browserAvailable
+    ? SWITCHABLE_VIEWS
+    : SWITCHABLE_VIEWS.filter((view) => view !== 'browser');
 
   // Active state matches the tile toggleView() will act on (focused split pane).
   const slot = activeSplitSlot(activeAgentTile, splitChatIds);
@@ -48,7 +54,7 @@ export function ViewSwitcher() {
 
   return (
     <div className={styles['view-switcher']}>
-      {SWITCHABLE_VIEWS.map((view) => {
+      {views.map((view) => {
         const Icon = VIEW_ICONS[view];
         const isActive = visibleSet.has(viewTypeToTileId(view, slot));
         return (

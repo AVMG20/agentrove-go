@@ -39,6 +39,10 @@ const TerminalContainer = lazyNamed(
   () => import('@/components/sandbox/terminal/Container/Container'),
   'Container',
 );
+const BrowserTab = lazyNamed(
+  () => import('@/components/sandbox/browser/BrowserTab/BrowserTab'),
+  'BrowserTab',
+);
 
 const EXAMPLE_PROMPTS = [
   'Build a REST API with authentication',
@@ -332,6 +336,12 @@ export function LandingPage() {
                 isVisible={isVisible}
                 panelKey={`tile-${tileId}`}
               />
+            </Suspense>
+          );
+        case 'browser':
+          return (
+            <Suspense fallback={viewLoadingFallback}>
+              <BrowserTab sandboxId={selectedSandboxId} isVisible={isVisible} />
             </Suspense>
           );
         default:

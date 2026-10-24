@@ -19,6 +19,11 @@ const TerminalContainer = lazyNamed(
   () => import('@/components/sandbox/terminal/Container/Container'),
   'Container',
 );
+// Loaded on first open: most sessions never look at the browser.
+const BrowserTab = lazyNamed(
+  () => import('@/components/sandbox/browser/BrowserTab/BrowserTab'),
+  'BrowserTab',
+);
 const CreateBranchDialog = lazyNamed(
   () => import('@/components/chat/github/CreateBranchDialog'),
   'CreateBranchDialog',
@@ -35,6 +40,7 @@ const CreatePRDialog = lazyNamed(
 function renderPane(
   view: ViewType,
   chatId: string | undefined,
+  sandboxId: string | undefined,
   isVisible: boolean,
   agent: ReactNode,
 ): ReactNode {
@@ -51,6 +57,12 @@ function renderPane(
       return (
         <Suspense fallback={viewLoadingFallback}>
           <DiffView chatId={chatId} isVisible={isVisible} />
+        </Suspense>
+      );
+    case 'browser':
+      return (
+        <Suspense fallback={viewLoadingFallback}>
+          <BrowserTab sandboxId={sandboxId} isVisible={isVisible} />
         </Suspense>
       );
     default:
@@ -90,7 +102,7 @@ export function WorkspaceTile({ tileId, isVisible, chatId, chat, agent }: Worksp
         </Suspense>
       </div>
       <div className={isTerminal ? styles.hidden : styles.fill}>
-        {renderPane(view, chatId, isVisible, agent)}
+        {renderPane(view, chatId, chat?.sandbox_id, isVisible, agent)}
       </div>
     </div>
   );
