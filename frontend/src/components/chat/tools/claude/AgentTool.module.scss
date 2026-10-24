@@ -19,6 +19,11 @@
       opacity: 1;
     }
   }
+
+  // No hover on touch: keep it visible so it can be found and tapped.
+  @include responsive.media('touch') {
+    opacity: 1;
+  }
 }
 
 .expand-icon {

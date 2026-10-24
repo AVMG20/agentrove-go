@@ -20,6 +20,10 @@
   padding: var(--space-1-5) var(--space-2);
   color: var(--theme-text-secondary);
 
+  @include responsive.media('touch') {
+    padding-block: var(--space-2-5);
+  }
+
   @include responsive.hover {
     background-color: var(--theme-surface-hover);
     color: var(--theme-text-primary);

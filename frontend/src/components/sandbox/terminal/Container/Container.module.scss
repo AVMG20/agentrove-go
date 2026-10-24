@@ -48,6 +48,10 @@
   opacity: 0;
   transition: opacity var(--duration-fast);
 
+  @include responsive.media('touch') {
+    opacity: 1;
+  }
+
   @include responsive.media('not-touch') {
     .tab:hover & {
       opacity: 1;
