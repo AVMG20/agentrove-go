@@ -8,6 +8,7 @@ import { useInputAttachments } from '@/hooks/useInputAttachments';
 import { useInputEnhance } from '@/hooks/useInputEnhance';
 import { useInputSuggestions } from '@/hooks/useInputSuggestions';
 import { useInputSubmit } from '@/hooks/useInputSubmit';
+import { useIsMobile } from '@/hooks/useIsMobile';
 import {
   InputContext,
   InputStateContext,
@@ -33,7 +34,7 @@ export function InputProvider({
   isLoading,
   isStreaming = false,
   onStopStream,
-  placeholder = 'Message Agentrove... (@ to mention, / for commands)',
+  placeholder: placeholderProp,
   selectedModelId,
   onModelChange,
   dropdownPosition = 'top',
@@ -64,6 +65,11 @@ export function InputProvider({
   const [cursorPosition, setCursorPosition] = useState(0);
   const messageRef = useRef(message);
   messageRef.current = message;
+  // On a phone the @ and / hint wraps to a second line and makes the composer taller.
+  const isMobile = useIsMobile();
+  const placeholder =
+    placeholderProp ??
+    (isMobile ? 'Message Agentrove...' : 'Message Agentrove... (@ to mention, / for commands)');
 
   const hasMessage = message.trim().length > 0;
   // A selection chip is prompt content on its own — it can be sent without text.
