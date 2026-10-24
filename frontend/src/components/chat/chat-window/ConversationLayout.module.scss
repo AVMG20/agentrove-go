@@ -67,3 +67,11 @@
   @include z.z('raised');
   position: relative;
 }
+
+// Phone on its side with the keyboard up: ~190px is left, so the banners above
+// the composer (queue, background tasks) step aside until the keyboard goes.
+@include responsive.media('short') {
+  :global(html[data-keyboard-open]) .composer-inner > :not(.input-slot) {
+    display: none;
+  }
+}
