@@ -62,7 +62,7 @@ export interface ModelSelectionState {
   toggleFavoriteModel: (modelId: string) => void;
 }
 
-export type ViewType = 'agent' | 'diff' | 'editor' | 'terminal';
+export type ViewType = 'agent' | 'diff' | 'editor' | 'terminal' | 'browser';
 
 export const MAX_CHAT_PANES = 4;
 export type SplitSlot = 1 | 2 | 3;

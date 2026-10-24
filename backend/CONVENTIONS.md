@@ -102,7 +102,7 @@ bridge-table rules still keep them from each other.
 
 ## Box browser
 Each box has one shared headless Chromium for agents to test web apps with,
-and the user can watch and drive it in the terminal panel's Browser tab.
+and the user can watch and drive it in the Browser view (its own workspace view next to Terminal).
 Nothing browser-related runs until it is used.
 - **Image** (`sandbox/docker/Dockerfile`): the Chromium headless shell
   installed by the pinned `@playwright/mcp`'s own Playwright into
