@@ -7,6 +7,10 @@
   position: relative;
   display: flex;
   height: 100%;
+  // Fill the workspace pane, which lays its view out as a flex row.
+  width: 100%;
+  min-width: 0;
+  flex: 1;
   flex-direction: column;
   background-color: var(--theme-surface-secondary);
 }
