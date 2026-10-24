@@ -95,6 +95,8 @@ main {
   max-width: 1120px;
   margin: 0 auto;
   padding: 40px 20px 64px;
+  /* Long URLs, paths and ids wrap instead of widening the page on phones. */
+  overflow-wrap: break-word;
 }
 
 h1, h2, h3, h4 { line-height: 1.25; margin: 1.6em 0 0.5em; font-weight: 650; letter-spacing: -0.01em; }
