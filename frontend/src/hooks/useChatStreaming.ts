@@ -54,6 +54,7 @@ interface UseChatStreamingResult {
   copiedMessageId: string | null;
   handleCopy: (content: string, id: string) => Promise<void>;
   handleMessageSend: (event: FormEvent) => Promise<void>;
+  sendPrompt: (prompt: string) => void;
   handleStop: () => void;
   sendMessage: (
     prompt: string,
@@ -358,6 +359,13 @@ export function useChatStreaming({
     ],
   );
 
+  const sendPrompt = useCallback(
+    (prompt: string) => {
+      void handleMessageSendAction(prompt, []);
+    },
+    [handleMessageSendAction],
+  );
+
   return {
     messages,
     setMessages,
@@ -369,6 +377,7 @@ export function useChatStreaming({
     copiedMessageId,
     handleCopy,
     handleMessageSend,
+    sendPrompt,
     handleStop,
     sendMessage,
     isLoading,

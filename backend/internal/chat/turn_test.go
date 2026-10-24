@@ -235,4 +235,38 @@ func TestSkippedCheckpointsStillRecover(t *testing.T) {
 	if content != "Hello world" || status != StatusInterrupted {
 		t.Fatalf("recovered %q (%s)", content, status)
 	}
+	msg, err := m.st.getMessage(context.Background(), testMsg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if msg.StreamError != nil {
+		t.Fatalf("interrupted turn has stream_error %q", *msg.StreamError)
+	}
+}
+
+// A failed turn records its reason in stream_error for the UI instead of
+// rendering it as reply text; content_text still carries it for text readers.
+func TestFailedTurnRecordsStreamError(t *testing.T) {
+	m, _ := newTestModule(t)
+	tr := newTestTurn(m)
+	tr.emit("stream_started", map[string]any{})
+	tr.emit("assistant_text", map[string]any{"text": "Partial answer"})
+	tr.finish(StatusFailed, "rate limited")
+
+	msg, err := m.st.getMessage(context.Background(), testMsg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if msg.StreamStatus != StatusFailed || db.Deref(msg.StreamError) != "rate limited" {
+		t.Fatalf("status %q, stream_error %v", msg.StreamStatus, msg.StreamError)
+	}
+	if msg.ContentText != "Partial answer\n\nError: rate limited" {
+		t.Fatalf("content_text = %q", msg.ContentText)
+	}
+	events, _ := msg.ContentRender["events"].([]any)
+	for _, e := range events {
+		if ev, _ := e.(map[string]any); ev["type"] == "assistant_text" && ev["text"] != "Partial answer" {
+			t.Fatalf("error leaked into the render: %v", ev)
+		}
+	}
 }

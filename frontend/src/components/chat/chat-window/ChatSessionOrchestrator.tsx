@@ -259,6 +259,7 @@ export function ChatSessionOrchestrator({
     () => ({
       onSubmit: streamingState.handleMessageSend,
       onStopStream: streamingState.handleStop,
+      onSendPrompt: streamingState.sendPrompt,
       onAttach: streamingState.setInputFiles,
       onModelChange: selectModel,
       fetchNextPage: messagesQuery.fetchNextPage,
@@ -271,6 +272,7 @@ export function ChatSessionOrchestrator({
     [
       streamingState.handleMessageSend,
       streamingState.handleStop,
+      streamingState.sendPrompt,
       streamingState.setInputFiles,
       selectModel,
       messagesQuery.fetchNextPage,

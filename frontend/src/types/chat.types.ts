@@ -20,6 +20,8 @@ export interface Message {
   last_seq: number;
   active_stream_id: string | null;
   stream_status: 'in_progress' | 'completed' | 'failed' | 'interrupted' | null;
+  // Why a failed turn failed; absent on older messages (the reason is in their text).
+  stream_error?: string | null;
   is_bot?: boolean;
   role: 'user' | 'assistant';
   model_id: string | null;

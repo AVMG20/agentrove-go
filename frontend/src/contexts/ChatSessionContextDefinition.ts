@@ -29,6 +29,8 @@ export interface ChatSessionState {
 export interface ChatSessionActions {
   onSubmit: (e: React.FormEvent) => void;
   onStopStream: () => void;
+  // Sends a prompt as a new user turn without touching the composer (Retry/Continue).
+  onSendPrompt: (prompt: string) => void;
   onAttach: (files: File[]) => void;
   onModelChange: (modelId: string) => void;
   fetchNextPage: () => void;
