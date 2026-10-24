@@ -17,9 +17,7 @@ interface MessageRendererProps {
   className?: string;
   isStreaming?: boolean;
   chatId?: string;
-  isLastBotMessage?: boolean;
   durationMs?: number | null;
-  onSuggestionSelect?: (suggestion: string) => void;
   highlightMentions?: boolean;
 }
 
@@ -29,9 +27,7 @@ export const MessageRenderer = memo(function MessageRenderer({
   className = '',
   isStreaming = false,
   chatId,
-  isLastBotMessage = false,
   durationMs = null,
-  onSuggestionSelect,
   highlightMentions = false,
 }: MessageRendererProps) {
   const prevSegmentsRef = React.useRef<Map<string, MessageSegment>>(new Map());
@@ -124,8 +120,6 @@ export const MessageRenderer = memo(function MessageRenderer({
   }, [traceSegments, rollUpTrace]);
   const segmentViewProps = {
     chatId,
-    isLastBotMessage,
-    onSuggestionSelect,
     highlightMentions,
   };
   // Per-segment booleans instead of the active ids: when the active segment

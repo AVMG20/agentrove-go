@@ -14,7 +14,6 @@ export type StreamKind =
   | 'permission_resolved'
   | 'elicitation_request'
   | 'elicitation_dismissed'
-  | 'prompt_suggestions'
   | 'plan'
   | 'snapshot'
   | 'complete'

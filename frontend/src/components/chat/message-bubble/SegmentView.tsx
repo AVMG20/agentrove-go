@@ -2,7 +2,6 @@ import { memo, Suspense } from 'react';
 import { MarkDown } from '@/components/ui/markdown/MarkDown';
 import { useSmoothText } from '@/hooks/useSmoothText';
 import { ThinkingBlock } from './ThinkingBlock';
-import { PromptSuggestions } from './PromptSuggestions';
 import { PlanCard } from './PlanCard';
 import { MessageAttachments } from './MessageAttachments';
 import { UserBubble } from './Message';
@@ -16,8 +15,6 @@ interface SegmentViewProps {
   chatId?: string;
   isActiveThinking: boolean;
   isActiveText: boolean;
-  isLastBotMessage: boolean;
-  onSuggestionSelect?: (suggestion: string) => void;
   highlightMentions?: boolean;
 }
 
@@ -54,8 +51,6 @@ export const SegmentView = memo(function SegmentView({
   chatId,
   isActiveThinking,
   isActiveText,
-  isLastBotMessage,
-  onSuggestionSelect,
   highlightMentions,
 }: SegmentViewProps) {
   // Memoized so stream flushes only re-render segments whose object identity
@@ -94,9 +89,6 @@ export const SegmentView = memo(function SegmentView({
         </div>
       );
     }
-    case 'suggestions':
-      if (!isLastBotMessage || !onSuggestionSelect) return null;
-      return <PromptSuggestions suggestions={segment.suggestions} onSelect={onSuggestionSelect} />;
     case 'plan':
       return (
         <div className={styles['tool-segment']}>
