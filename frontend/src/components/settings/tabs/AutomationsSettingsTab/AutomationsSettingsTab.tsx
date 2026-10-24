@@ -1,4 +1,5 @@
 import { Suspense, useCallback, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Clock, Github, Play, TriangleAlert, Zap } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { ListManagementTab } from '@/components/ui/ListManagementTab/ListManagementTab';
@@ -33,6 +34,7 @@ import {
   parseGithubPollMinutes,
 } from '@/utils/automationGithub';
 import { lazyNamed } from '@/utils/lazyNamed';
+import { formatRelativeTime } from '@/utils/date';
 import type {
   Automation,
   AutomationCreateRequest,
@@ -98,6 +100,7 @@ function formFromAutomation(automation: Automation): AutomationForm {
 
 export function AutomationsSettingsTab() {
   const { localSettings } = useSettingsContext();
+  const navigate = useNavigate();
 
   const { data: automations } = useAutomationsQuery();
   const modelMap = useModelMap();
@@ -111,6 +114,8 @@ export function AutomationsSettingsTab() {
   const [editingAutomation, setEditingAutomation] = useState<Automation | null>(null);
   const [form, setForm] = useState<AutomationForm>(createDefaultForm);
   const [formError, setFormError] = useState<string | null>(null);
+  // Per row: one automation starting must not disable every Run button.
+  const [runningIds, setRunningIds] = useState<ReadonlySet<string>>(() => new Set());
 
   const handleFormChange = useCallback(
     <K extends keyof AutomationForm>(field: K, value: AutomationForm[K]) => {
@@ -198,11 +203,35 @@ export function AutomationsSettingsTab() {
   };
 
   const handleRunNow = async (automation: Automation) => {
+    setRunningIds((prev) => new Set(prev).add(automation.id));
     try {
-      await runMutation.mutateAsync(automation.id);
-      toast.success(`"${automation.name}" started — check the sidebar for its chat`);
+      const { chat_id: chatId } = await runMutation.mutateAsync(automation.id);
+      toast.success(
+        (t) => (
+          <span className={styles['run-toast']}>
+            &ldquo;{automation.name}&rdquo; started
+            <Button
+              variant="unstyled"
+              className={styles['run-toast-action']}
+              onClick={() => {
+                toast.dismiss(t.id);
+                navigate(`/chat/${chatId}`);
+              }}
+            >
+              Open
+            </Button>
+          </span>
+        ),
+        { duration: 8000 },
+      );
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Failed to run automation');
+    } finally {
+      setRunningIds((prev) => {
+        const next = new Set(prev);
+        next.delete(automation.id);
+        return next;
+      });
     }
   };
 
@@ -264,6 +293,21 @@ export function AutomationsSettingsTab() {
                   {new Date(automation.next_run_at).toLocaleString([], NEXT_RUN_FORMAT)}
                 </span>
               )}
+              {automation.last_run_at &&
+                (automation.last_run_chat_id ? (
+                  <Button
+                    variant="unstyled"
+                    className={styles['last-run-link']}
+                    onClick={() => navigate(`/chat/${automation.last_run_chat_id}`)}
+                    title="Open the last run's chat"
+                  >
+                    Last run {formatRelativeTime(automation.last_run_at)}
+                  </Button>
+                ) : (
+                  <span className={styles['next-run']}>
+                    Last run {formatRelativeTime(automation.last_run_at)}
+                  </span>
+                ))}
             </div>
           </>
         )}
@@ -272,7 +316,7 @@ export function AutomationsSettingsTab() {
             <Button
               variant="unstyled"
               onClick={() => void handleRunNow(automation)}
-              disabled={runMutation.isPending}
+              disabled={runningIds.has(automation.id)}
               className={styles['run-button']}
               aria-label="Run now"
               title={

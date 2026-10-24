@@ -1,4 +1,6 @@
 @use '@/styles/globals/typography' as type;
+@use '@/styles/globals/animations' as anim;
+@use '@/styles/globals/responsive' as responsive;
 
 .tab-spinner {
   @include type.type-body;
@@ -24,4 +26,34 @@
 
 .tab-automation-icon {
   color: var(--theme-warning);
+}
+
+.mobile-title {
+  @include anim.transition-colors;
+  display: flex;
+  min-width: 0;
+  max-width: 100%;
+  align-self: center;
+  align-items: center;
+  gap: var(--space-1-5);
+  border-radius: var(--radius-md);
+  padding: var(--space-1) var(--space-1-5);
+
+  @include responsive.active {
+    background-color: var(--theme-surface-hover);
+  }
+}
+
+.mobile-title-text {
+  @include type.type-body(500);
+  @include type.type-overflow;
+  min-width: 0;
+  color: var(--theme-text-primary);
+}
+
+.mobile-title-chevron {
+  height: var(--space-3-5);
+  width: var(--space-3-5);
+  flex-shrink: 0;
+  color: var(--theme-text-tertiary);
 }

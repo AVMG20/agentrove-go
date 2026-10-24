@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { Fragment, useMemo } from 'react';
 import { useMatch } from 'react-router-dom';
 import { PanelRight } from 'lucide-react';
 import { Button } from '@/components/ui/primitives/Button/Button';
@@ -10,6 +10,7 @@ import {
 } from '@/components/ui/command-menu/commandRegistry';
 import { useUIStore } from '@/store/uiStore';
 import { useIsMobile } from '@/hooks/useIsMobile';
+import { isCoarsePointer } from '@/utils/composerKeys';
 import { useSettingsQuery } from '@/hooks/queries/useSettingsQueries';
 import { activeSplitSlot, VIEW_ICONS, VIEW_LABELS, viewTypeToTileId } from '@/utils/tileHelpers';
 import type { ViewType } from '@/types/ui.types';
@@ -22,7 +23,7 @@ const SWITCHABLE_VIEWS: SwitchableView[] = ['diff', 'editor', 'terminal', 'brows
 // Same shortcut bindings as the command palette so tooltips can't drift.
 const VIEW_SHORTCUTS = new Map<ViewType, string>(
   ALL_COMMANDS.flatMap((cmd) =>
-    cmd.type === 'view' ? [[cmd.id, formatShortcut(cmd.shortcut)] as const] : [],
+    cmd.type === 'view' && cmd.shortcut ? [[cmd.id, formatShortcut(cmd.shortcut)] as const] : [],
   ),
 );
 
@@ -41,6 +42,9 @@ export function ViewSwitcher() {
   const sessionPanelOpen = useUIStore((s) => s.sessionPanelOpen);
   const isLandingPage = useMatch('/');
   const isMobile = useIsMobile();
+  // Shortcut and split hints mean nothing on a phone, and a tap leaves the CSS
+  // tooltip stuck open; the buttons keep their aria-labels.
+  const showTooltips = !isMobile && !isCoarsePointer();
   // Hidden when the server runs no box browsers; shown until settings load.
   const browserAvailable = useSettingsQuery().data?.browser_available !== false;
   const views = browserAvailable
@@ -57,32 +61,37 @@ export function ViewSwitcher() {
       {views.map((view) => {
         const Icon = VIEW_ICONS[view];
         const isActive = visibleSet.has(viewTypeToTileId(view, slot));
-        return (
-          <Tooltip key={view} content={viewTooltip(view)} position="bottom-end">
-            <Button
-              variant="unstyled"
-              // Left-click toggles full; shift/right-click splits beside the active pane.
-              onClick={(e) => {
-                if (e.shiftKey && !isMobile) {
-                  useUIStore.getState().addViewToSplit(view, 'row');
-                  return;
-                }
-                useUIStore.getState().toggleView(view, true);
-              }}
-              onContextMenu={(e) => {
-                // Splitting is a desktop layout; leave the native long-press menu
-                // alone on mobile, where the workspace is single-pane anyway.
-                if (isMobile) return;
-                e.preventDefault();
+        const button = (
+          <Button
+            variant="unstyled"
+            // Left-click toggles full; shift/right-click splits beside the active pane.
+            onClick={(e) => {
+              if (e.shiftKey && !isMobile) {
                 useUIStore.getState().addViewToSplit(view, 'row');
-              }}
-              className={styles['view-button']}
-              aria-label={`Toggle ${VIEW_LABELS[view]} view`}
-              aria-pressed={isActive}
-            >
-              <Icon className={styles.icon} />
-            </Button>
+                return;
+              }
+              useUIStore.getState().toggleView(view, true);
+            }}
+            onContextMenu={(e) => {
+              // Splitting is a desktop layout; leave the native long-press menu
+              // alone on mobile, where the workspace is single-pane anyway.
+              if (isMobile) return;
+              e.preventDefault();
+              useUIStore.getState().addViewToSplit(view, 'row');
+            }}
+            className={styles['view-button']}
+            aria-label={`Toggle ${VIEW_LABELS[view]} view`}
+            aria-pressed={isActive}
+          >
+            <Icon className={styles.icon} />
+          </Button>
+        );
+        return showTooltips ? (
+          <Tooltip key={view} content={viewTooltip(view)} position="bottom-end">
+            {button}
           </Tooltip>
+        ) : (
+          <Fragment key={view}>{button}</Fragment>
         );
       })}
       {!isLandingPage && !isMobile && (

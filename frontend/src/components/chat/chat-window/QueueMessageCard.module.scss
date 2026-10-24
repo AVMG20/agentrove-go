@@ -159,6 +159,24 @@
   color: var(--theme-text-quaternary);
 }
 
+.not-sent {
+  @include type.type-meta;
+  display: flex;
+  align-items: center;
+  padding: 0 var(--space-1);
+  white-space: nowrap;
+  color: var(--theme-error-text);
+}
+
+.retry-btn {
+  @include type.type-meta(500);
+  border-radius: var(--radius-sm);
+  padding: 0 var(--space-0-5);
+  color: var(--theme-error-text);
+  text-decoration: underline;
+  cursor: pointer;
+}
+
 .action-btn {
   @include anim.transition-colors;
   display: inline-flex;

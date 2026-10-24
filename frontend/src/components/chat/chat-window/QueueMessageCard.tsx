@@ -20,6 +20,7 @@ interface QueueMessageCardProps {
   onCancel: (messageId: string) => void;
   onEdit: (messageId: string, newContent: string) => void;
   onSendNow: (messageId: string) => void;
+  onRetry?: (messageId: string) => void;
 }
 
 function UploadingOverlay() {
@@ -185,6 +186,7 @@ export const QueueMessageCard = memo(function QueueMessageCard({
   onCancel,
   onEdit,
   onSendNow,
+  onRetry,
 }: QueueMessageCardProps) {
   const [isEditing, setIsEditing] = useState(false);
   const [editContent, setEditContent] = useState(message.content);
@@ -242,7 +244,7 @@ export const QueueMessageCard = memo(function QueueMessageCard({
                 <LocalFilePreview
                   key={`${file.name}-${file.lastModified}-${idx}`}
                   file={file}
-                  uploading={!message.synced}
+                  uploading={!message.synced && !message.failed}
                 />
               ))}
             </div>
@@ -296,6 +298,23 @@ export const QueueMessageCard = memo(function QueueMessageCard({
             </>
           ) : (
             <>
+              {message.failed && (
+                <span className={styles['not-sent']}>
+                  Not sent
+                  {onRetry && (
+                    <>
+                      {' · '}
+                      <Button
+                        onClick={() => onRetry(message.id)}
+                        variant="unstyled"
+                        className={styles['retry-btn']}
+                      >
+                        Retry
+                      </Button>
+                    </>
+                  )}
+                </span>
+              )}
               {message.synced && (
                 <Button
                   onClick={() => onSendNow(message.id)}

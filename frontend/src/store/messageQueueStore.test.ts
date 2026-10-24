@@ -4,6 +4,7 @@ import { useMessageQueueStore, EMPTY_QUEUE } from './messageQueueStore';
 import { queueService } from '@/services/queueService';
 import type { LocalQueuedMessage } from '@/types/queue.types';
 import { NetworkError } from '@/types/errors.types';
+import { retryFailedQueuedMessages } from '@/utils/queuedMessageFailure';
 
 vi.mock('@/services/queueService', () => ({
   queueService: {
@@ -61,6 +62,7 @@ describe('queueMessage', () => {
     expect(queue).toHaveLength(1);
     expect(queue[0].id).toBe(returned);
     expect(queue[0].synced).toBe(false);
+    expect(queue[0].failed).toBe(true);
   });
 
   it('rolls back the optimistic add and rethrows on a non-network error', async () => {
@@ -69,6 +71,63 @@ describe('queueMessage', () => {
       useMessageQueueStore.getState().queueMessage('c1', 'hello', 'gpt-5'),
     ).rejects.toThrow('boom');
     expect(queueOf('c1')).toBe(EMPTY_QUEUE);
+  });
+});
+
+describe('retryMessage', () => {
+  const queueFailed = async () => {
+    svc.queueMessage.mockRejectedValueOnce(new NetworkError());
+    return useMessageQueueStore
+      .getState()
+      .queueMessage('c1', 'hello', 'model-1', { permissionMode: 'plan' });
+  };
+
+  it('resends with the original arguments and the current (edited) content', async () => {
+    const tempId = await queueFailed();
+    await useMessageQueueStore.getState().updateQueuedMessage('c1', tempId, 'edited');
+    svc.queueMessage.mockResolvedValueOnce({ id: 'server-1' });
+
+    const id = await useMessageQueueStore.getState().retryMessage('c1', tempId);
+
+    expect(id).toBe('server-1');
+    expect(svc.queueMessage).toHaveBeenLastCalledWith('c1', 'edited', 'model-1', {
+      permissionMode: 'plan',
+    });
+    expect(queueOf('c1')[0]).toMatchObject({ id: 'server-1', synced: true, failed: false });
+  });
+
+  it('stays failed when the network is still down', async () => {
+    const tempId = await queueFailed();
+    svc.queueMessage.mockRejectedValueOnce(new NetworkError());
+
+    expect(await useMessageQueueStore.getState().retryMessage('c1', tempId)).toBeNull();
+    expect(queueOf('c1')[0]).toMatchObject({ id: tempId, synced: false, failed: true });
+  });
+
+  it('drops the card and rejects when the server refuses it', async () => {
+    const tempId = await queueFailed();
+    svc.queueMessage.mockRejectedValueOnce(new Error('Unknown model'));
+
+    await expect(useMessageQueueStore.getState().retryMessage('c1', tempId)).rejects.toThrow(
+      'Unknown model',
+    );
+    expect(queueOf('c1')).toBe(EMPTY_QUEUE);
+  });
+
+  it('retries every failed item when the connection comes back', async () => {
+    const tempId = await queueFailed();
+    svc.queueMessage.mockResolvedValueOnce({ id: 'server-1' });
+
+    retryFailedQueuedMessages();
+    await vi.waitFor(() => expect(queueOf('c1')[0]?.synced).toBe(true));
+    expect(queueOf('c1')[0].id).toBe('server-1');
+    expect(tempId).not.toBe('server-1');
+  });
+
+  it('ignores items that are synced or still in flight', async () => {
+    seed('c1', [localMsg({ id: 'm1', synced: true })]);
+    expect(await useMessageQueueStore.getState().retryMessage('c1', 'm1')).toBeNull();
+    expect(svc.queueMessage).not.toHaveBeenCalled();
   });
 });
 

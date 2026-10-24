@@ -3,6 +3,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useShallow } from 'zustand/react/shallow';
 import { isBrowserObjectUrl } from '@/utils/attachmentUrl';
 import { isAssistantMessage } from '@/utils/message';
+import type { AssistantStreamEvent } from '@/types/chat.types';
 import { UserMessage, AssistantMessage } from '@/components/chat/message-bubble/Message';
 import { ChatQueueBanner } from './ChatQueueBanner';
 import { BackgroundTasksTray } from './BackgroundTasksTray';
@@ -16,6 +17,8 @@ import { MessageTrail } from './MessageTrail';
 import { FindInChat } from './FindInChat';
 import { ChatSelectionActions } from './ChatSelectionActions';
 import { StatusTypewriter } from './StatusTypewriter';
+import { StreamWorkingStatus } from './StreamWorkingStatus';
+import { TurnStatusFooter } from './TurnStatusFooter';
 import { useChatScroll } from './useChatScroll';
 import { Spinner } from '@/components/ui/primitives/Spinner/Spinner';
 import { useStreamStore } from '@/store/streamStore';
@@ -25,7 +28,32 @@ import { useChatSessionContext } from '@/hooks/useChatSessionContext';
 import { useChatInputMessageContext } from '@/hooks/useChatInputMessageContext';
 import { useUIStore } from '@/store/uiStore';
 import { queryKeys } from '@/hooks/queries/queryKeys';
+import { retryQueuedMessage } from '@/utils/queuedMessageFailure';
 import styles from './Chat.module.scss';
+
+// Whether a tool is still running in a streaming reply, plus a key that changes
+// whenever the reply grows (new event, or more text in the tail one).
+function streamActivity(events: AssistantStreamEvent[] | undefined): {
+  toolRunning: boolean;
+  activityKey: string;
+} {
+  if (!events?.length) return { toolRunning: false, activityKey: '0' };
+  const running = new Set<string>();
+  for (const event of events) {
+    if (event.type === 'tool_started') running.add(event.tool.id);
+    else if (event.type === 'tool_completed' || event.type === 'tool_failed') {
+      running.delete(event.tool.id);
+    }
+  }
+  const tail = events[events.length - 1];
+  const tailSize =
+    tail.type === 'assistant_text'
+      ? tail.text.length
+      : tail.type === 'assistant_thinking'
+        ? tail.thinking.length
+        : 0;
+  return { toolRunning: running.size > 0, activityKey: `${events.length}:${tailSize}` };
+}
 
 export const Chat = memo(function Chat() {
   const { chatId } = useChatContext();
@@ -47,7 +75,7 @@ export const Chat = memo(function Chat() {
     pendingElicitationRequest,
   } = state;
 
-  const { onSubmit, onStopStream, onAttach, onModelChange, fetchNextPage } = actions;
+  const { onSubmit, onStopStream, onSendPrompt, onAttach, onModelChange, fetchNextPage } = actions;
 
   const { inputMessage, setInputMessage } = useChatInputMessageContext();
 
@@ -130,6 +158,13 @@ export const Chat = memo(function Chat() {
     [chatId, isStreaming, queryClient],
   );
 
+  const handleRetryQueued = useCallback(
+    (messageId: string) => {
+      if (chatId) retryQueuedMessage(chatId, messageId);
+    },
+    [chatId],
+  );
+
   const { lastBotMessage, latestUserMessageId } = useMemo(() => {
     let latestAssistantMessage: (typeof messages)[number] | undefined;
     let latestUserId: string | null = null;
@@ -208,6 +243,38 @@ export const Chat = memo(function Chat() {
     !lastBotIsStreaming &&
     !isStreaming &&
     !isLoading;
+  // A stopped/failed/cut-off turn that ends the conversation gets a status footer.
+  const unfinishedStatus =
+    lastBotMessage?.stream_status === 'failed' || lastBotMessage?.stream_status === 'interrupted'
+      ? lastBotMessage.stream_status
+      : null;
+  const showTurnStatus =
+    !!unfinishedStatus &&
+    messages[messages.length - 1]?.id === lastBotMessageId &&
+    !lastBotIsStreaming &&
+    !isStreaming &&
+    !isLoading;
+  const latestUserText = useMemo(
+    () => messages.find((msg) => msg.id === latestUserMessageId)?.content_text.trim() ?? '',
+    [messages, latestUserMessageId],
+  );
+  const handleRetryTurn = useCallback(
+    () => onSendPrompt(latestUserText),
+    [latestUserText, onSendPrompt],
+  );
+  const handleContinueTurn = useCallback(() => onSendPrompt('Continue'), [onSendPrompt]);
+
+  // Streaming reply that has gone quiet: show "still working" unless a tool card
+  // (or a prompt for the user) already says what's happening.
+  const lastBotEvents = lastBotMessage?.content_render?.events;
+  const { toolRunning, activityKey } = useMemo(
+    () => streamActivity(lastBotEvents),
+    [lastBotEvents],
+  );
+  // The reply's own creation time is the turn start; the stream store's start is
+  // when this tab attached, which restarts the clock after a reload.
+  const lastBotStartedAt = lastBotMessage ? Date.parse(lastBotMessage.created_at) : NaN;
+  const turnStartTime = Number.isFinite(lastBotStartedAt) ? lastBotStartedAt : streamStartTime;
 
   const renderMessage = useCallback(
     (msg: (typeof messages)[number]) => {
@@ -307,12 +374,21 @@ export const Chat = memo(function Chat() {
   // lands in the list — without it the indicator unmounts/remounts, restarting the
   // typewriter at "Pondering".
   const showThinking = isLoading || (isStreaming && (!lastBotIsStreaming || !lastBotHasContent));
+  const showWorking =
+    !showThinking &&
+    isStreaming &&
+    lastBotIsStreaming &&
+    !toolRunning &&
+    !showPermissionAtEnd &&
+    !showElicitationAtEnd;
 
   const listFooter = useMemo(() => {
     if (
       !showThinking &&
+      !showWorking &&
       !showPermissionAtEnd &&
       !showElicitationAtEnd &&
+      !showTurnStatus &&
       !(showStreamActions && chatId)
     ) {
       return null;
@@ -321,18 +397,38 @@ export const Chat = memo(function Chat() {
     return (
       <ConversationColumn>
         {showThinking && <StatusTypewriter streamStartTime={streamStartTime} />}
+        {showWorking && (
+          <StreamWorkingStatus streamStartTime={turnStartTime} activityKey={activityKey} />
+        )}
         {showPermissionAtEnd && <ChatInlinePermission />}
         {showElicitationAtEnd && <ChatInlineElicitation />}
+        {showTurnStatus && unfinishedStatus && (
+          <TurnStatusFooter
+            status={unfinishedStatus}
+            error={lastBotMessage?.stream_error}
+            onRetry={latestUserText ? handleRetryTurn : undefined}
+            onContinue={handleContinueTurn}
+          />
+        )}
         {showStreamActions && chatId && <StreamActionsBar chatId={chatId} />}
       </ConversationColumn>
     );
   }, [
+    activityKey,
     chatId,
+    handleContinueTurn,
+    handleRetryTurn,
+    lastBotMessage?.stream_error,
+    latestUserText,
     showElicitationAtEnd,
     showPermissionAtEnd,
     showStreamActions,
     showThinking,
+    showTurnStatus,
+    showWorking,
     streamStartTime,
+    turnStartTime,
+    unfinishedStatus,
   ]);
 
   return (
@@ -347,6 +443,7 @@ export const Chat = memo(function Chat() {
             onCancel={handleCancelMessage}
             onEdit={handleEditMessage}
             onSendNow={handleSendNow}
+            onRetry={handleRetryQueued}
           />
         </>
       }
@@ -403,8 +500,13 @@ export const Chat = memo(function Chat() {
             <ChatSelectionActions chatId={chatId} scrollerRef={scrollerRef} />
           </ConversationScroller>
           <MessageTrail messages={messages} scrollerRef={scrollerRef} />
-          {/* Keyed by chat so query/match state resets on chat switch */}
-          <FindInChat key={chatId ?? 'chat'} messages={messages} scrollerRef={scrollerRef} />
+          {/* Keyed by chat so query/match state resets on chat switch (prefixed: the
+              scroller beside it is keyed by chat too, and sibling keys must differ) */}
+          <FindInChat
+            key={`find-${chatId ?? 'chat'}`}
+            messages={messages}
+            scrollerRef={scrollerRef}
+          />
         </>
       )}
     </ConversationLayout>

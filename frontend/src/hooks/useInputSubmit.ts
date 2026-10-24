@@ -14,6 +14,8 @@ import {
 } from '@/store/chatSettingsStore';
 import { resolvePersona } from '@/utils/settings';
 import { useTokenDeleteKeyDown } from '@/hooks/useComposerTokens';
+import { isComposerSendKey } from '@/utils/composerKeys';
+import { restoreRejectedQueuedMessage } from '@/utils/queuedMessageFailure';
 import type { Persona } from '@/types/user.types';
 import type { Model } from '@/types/chat.types';
 
@@ -40,8 +42,10 @@ interface UseInputSubmitOptions {
   handleSlashCommandKeyDown: (e: React.KeyboardEvent<Element>) => boolean;
 }
 
-// Submit/stop/queue logic plus the keyboard wiring around it — Enter-to-send,
-// suggestion-aware key handling, token-pill deletion, and selection removal.
+// Submit/queue/stop logic plus the keyboard wiring around it — Enter-to-send,
+// Esc-to-stop, suggestion-aware key handling, token-pill deletion, and selection
+// removal. Sending never stops a turn: an empty Enter is a no-op, so a stray
+// Return can't kill a running agent; Esc and the Stop button do that.
 export function useInputSubmit({
   disabled,
   hasContent,
@@ -76,16 +80,11 @@ export function useInputSubmit({
     [disabled, hasContent, onSubmit, setPreviewDismissed],
   );
 
-  const submitOrStop = useCallback(() => {
-    if (isStreaming && !hasContent) {
-      onStopStream?.();
-      return;
-    }
+  const submitOrQueue = useCallback(() => {
+    if (disabled || !hasContent) return;
 
-    if (disabled) return;
-
-    if (isStreaming && hasContent && chatId) {
-      // Fire-and-forget queue + clear draft — guard model or the message is lost.
+    if (isStreaming && chatId) {
+      // Queue + clear draft — guard model or the message is lost.
       if (!selectedModelId) {
         toast.error('Please select an AI model');
         return;
@@ -103,14 +102,19 @@ export function useInputSubmit({
       const storedPersona = settings.personaByChat[chatId] ?? DEFAULT_PERSONA;
       const validPersona = resolvePersona(storedPersona, personas);
       const fullMessage = formatComposerSelections(attachedSelections, messageRef.current.trim());
-      void useMessageQueueStore.getState().queueMessage(chatId, fullMessage, selectedModelId, {
-        permissionMode,
-        thinkingMode,
-        worktree,
-        baseBranch,
-        selectedPersonaName: validPersona,
-        files: attachedFiles ?? undefined,
-      });
+      const files = attachedFiles ?? undefined;
+      // The draft clears now; a refusal puts it back (a network failure keeps the card).
+      void useMessageQueueStore
+        .getState()
+        .queueMessage(chatId, fullMessage, selectedModelId, {
+          permissionMode,
+          thinkingMode,
+          worktree,
+          baseBranch,
+          selectedPersonaName: validPersona,
+          files,
+        })
+        .catch((error) => restoreRejectedQueuedMessage(chatId, fullMessage, files, error));
       setMessage('');
       onAttach?.([]);
       if (attachedSelections.length > 0) useUIStore.getState().clearComposerSelections(chatId);
@@ -118,12 +122,8 @@ export function useInputSubmit({
       return;
     }
 
-    if (isLoading) {
-      onStopStream?.();
-      return;
-    }
-
-    if (!hasContent) return;
+    // The previous send is still starting; Stop cancels it.
+    if (isLoading) return;
 
     setPreviewDismissed(true);
 
@@ -143,7 +143,6 @@ export function useInputSubmit({
     hasContent,
     isLoading,
     isStreaming,
-    onStopStream,
     onSubmit,
     chatId,
     attachedFiles,
@@ -157,6 +156,10 @@ export function useInputSubmit({
     messageRef,
     setPreviewDismissed,
   ]);
+
+  const stop = useCallback(() => {
+    if (isStreaming || isLoading) onStopStream?.();
+  }, [isLoading, isStreaming, onStopStream]);
 
   const handleRemoveSelection = useCallback(
     (index: number) => {
@@ -177,27 +180,54 @@ export function useInputSubmit({
 
       if (handleTokenDeleteKeyDown(event)) return;
 
-      if (event.key === 'Enter' && !event.shiftKey) {
+      if (event.key === 'Escape') {
+        // Popups and dialogs that own Esc handle it first (and mark it handled).
+        if (event.defaultPrevented || event.nativeEvent?.isComposing) return;
+        if (!isStreaming && !isLoading) return;
+        if (document.querySelector('[aria-modal="true"]')) return;
         event.preventDefault();
-        submitOrStop();
+        stop();
+        return;
+      }
+
+      if (isComposerSendKey(event)) {
+        event.preventDefault();
+        submitOrQueue();
       }
     },
-    [handleMentionKeyDown, handleSlashCommandKeyDown, handleTokenDeleteKeyDown, submitOrStop],
+    [
+      handleMentionKeyDown,
+      handleSlashCommandKeyDown,
+      handleTokenDeleteKeyDown,
+      isLoading,
+      isStreaming,
+      stop,
+      submitOrQueue,
+    ],
   );
 
   const handleSendClick = useCallback(
     (event: React.MouseEvent) => {
       event.preventDefault();
-      submitOrStop();
+      submitOrQueue();
     },
-    [submitOrStop],
+    [submitOrQueue],
+  );
+
+  const handleStopClick = useCallback(
+    (event: React.MouseEvent) => {
+      event.preventDefault();
+      stop();
+    },
+    [stop],
   );
 
   return {
     handleSubmit,
-    submitOrStop,
+    submitOrQueue,
     handleRemoveSelection,
     handleKeyDown,
     handleSendClick,
+    handleStopClick,
   };
 }

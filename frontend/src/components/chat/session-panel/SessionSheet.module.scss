@@ -1,0 +1,46 @@
+// Pinned to the bottom edge, past the modal backdrop's padding. The attribute
+// makes it outrank BaseModal's .container rules whatever the CSS load order.
+[role='dialog'].sheet {
+  display: flex;
+  max-height: 85dvh;
+  flex-direction: column;
+  margin: auto calc(-1 * var(--space-4)) calc(-1 * var(--space-4));
+  width: calc(100% + 2 * var(--space-4));
+  max-width: none;
+  border-bottom: 0;
+  border-radius: var(--radius-2xl) var(--radius-2xl) 0 0;
+  padding-bottom: var(--safe-area-bottom);
+  animation: sheet-enter var(--duration-base) var(--easing-out);
+}
+
+.handle {
+  margin: var(--space-2) auto 0;
+  height: var(--space-1);
+  width: var(--space-10);
+  flex-shrink: 0;
+  border-radius: var(--radius-full);
+  background-color: var(--theme-border);
+}
+
+.body {
+  min-height: 0;
+  overflow-y: auto;
+
+  // The panel is a fixed-width bordered column on desktop; fill the sheet instead.
+  > * {
+    width: 100%;
+    border-left: 0;
+    background-color: transparent;
+  }
+}
+
+@keyframes sheet-enter {
+  from {
+    transform: translateY(24px);
+    opacity: 0;
+  }
+  to {
+    transform: none;
+    opacity: 1;
+  }
+}

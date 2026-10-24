@@ -9,6 +9,8 @@ export interface InputState {
   isLoading: boolean;
   isDisabled: boolean;
   isStreaming: boolean;
+  // There's a turn to stop and a handler for it.
+  canStop: boolean;
   isEnhancing: boolean;
   hasMessage: boolean;
   hasContent: boolean;
@@ -44,9 +46,10 @@ export interface InputActions {
   setShowFileUpload: (v: boolean) => void;
   onModelChange: (modelId: string) => void;
   handleSubmit: (e: React.FormEvent) => void;
-  submitOrStop: () => void;
+  submitOrQueue: () => void;
   handleKeyDown: (e: React.KeyboardEvent<Element>) => void;
   handleSendClick: (e: React.MouseEvent) => void;
+  handleStopClick: (e: React.MouseEvent) => void;
   handleEnhancePrompt: () => void;
   handleFileSelect: (files: File[]) => void;
   handleRemoveFile: (index: number) => void;

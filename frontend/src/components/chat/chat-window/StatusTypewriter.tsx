@@ -1,6 +1,7 @@
 import { memo, useEffect, useRef, useState, type ReactNode } from 'react';
 import clsx from 'clsx';
 import { useMountEffect } from '@/hooks/useMountEffect';
+import { formatDuration } from '@/utils/date';
 import styles from './StatusTypewriter.module.scss';
 
 const VERBS = ['Pondering', 'Connecting dots', 'Drafting', 'Refining'];
@@ -109,7 +110,9 @@ export const StatusTypewriter = memo(function StatusTypewriter({
     <StatusIndicator
       text={text}
       caretBlinking={holding}
-      trailing={<span className={styles['status-elapsed']}>· {elapsed}s</span>}
+      trailing={
+        <span className={styles['status-elapsed']}>· {formatDuration(elapsed * 1000)}</span>
+      }
     />
   );
 });

@@ -5,7 +5,8 @@ import { Button } from '@/components/ui/primitives/Button/Button';
 import { ToggleButton } from '@/components/ui/ToggleButton/ToggleButton';
 import { FloatingTooltip } from '@/components/ui/FloatingTooltip/FloatingTooltip';
 import { ViewSwitcher } from '@/components/layout/ViewSwitcher/ViewSwitcher';
-import { ChatTabs } from '@/components/layout/ChatTabs/ChatTabs';
+import { ChatTabs, MobileChatTitle } from '@/components/layout/ChatTabs/ChatTabs';
+import { useIsMobile } from '@/hooks/useIsMobile';
 import { ChannelHeader } from '@/components/channels/ChannelHeader';
 import { findSettingsSection } from '@/components/settings/settingsSections';
 import styles from './TitleBar.module.scss';
@@ -36,6 +37,7 @@ export function TitleBar() {
   const isLandingPage = useMatch('/');
   const settingsMatch = useMatch('/settings/:section');
   const sidebarOpen = useUIStore((state) => state.sidebarOpen);
+  const isMobile = useIsMobile();
 
   return (
     <div className={styles['title-bar']}>
@@ -73,7 +75,8 @@ export function TitleBar() {
       </div>
 
       <div className={styles.content}>
-        {(isChatPage || isLandingPage) && <ChatTabs />}
+        {(isChatPage || isLandingPage) &&
+          (isMobile ? isChatPage && <MobileChatTitle /> : <ChatTabs />)}
         {isChannelPage && <ChannelHeader />}
         {settingsMatch && <SettingsTitle sectionId={settingsMatch.params.section} />}
       </div>

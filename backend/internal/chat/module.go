@@ -184,14 +184,8 @@ func (m *Module) finalizeDead(ctx context.Context, messageID, status, errText, p
 			break
 		}
 	}
-	if errText != "" {
-		t.applySnapshot("assistant_text", map[string]any{"text": "\n\nError: " + errText})
-	}
-	content := t.contentText()
-	if content == "" && errText != "" {
-		content = errText
-	}
-	dur, _ := m.st.updateSnapshot(ctx, messageID, snapshot{ContentText: content, Render: t.renderCopy(), LastSeq: t.lastSeq, Status: status, RecordActivity: publishUser != ""})
+	content := withErrorText(t.contentText(), errText)
+	dur, _ := m.st.updateSnapshot(ctx, messageID, snapshot{ContentText: content, Render: t.renderCopy(), LastSeq: t.lastSeq, Status: status, StreamError: errText, RecordActivity: publishUser != ""})
 	kind, payload := "cancelled", map[string]any{"status": status, "duration_ms": dur}
 	if status != StatusInterrupted {
 		kind, payload = "error", map[string]any{"error": firstNonEmpty(errText, "Stream ended unexpectedly")}

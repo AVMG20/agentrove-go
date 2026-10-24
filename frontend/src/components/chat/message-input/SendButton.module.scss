@@ -36,6 +36,15 @@
   &--idle {
     background-color: var(--theme-surface-active);
   }
+
+  &--stop {
+    transform: scale(1);
+    background-color: var(--theme-surface-active);
+
+    @include responsive.hover {
+      background-color: var(--theme-surface-hover);
+    }
+  }
 }
 
 .icon-spinner {
@@ -50,6 +59,14 @@
   height: var(--space-3);
   width: var(--space-3);
   color: var(--theme-accent-contrast);
+  fill: currentColor;
+}
+
+.icon-stop-outline {
+  height: var(--space-3);
+  width: var(--space-3);
+  color: var(--theme-text-primary);
+  fill: currentColor;
 }
 
 .icon-send {

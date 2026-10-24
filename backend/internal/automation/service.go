@@ -53,6 +53,7 @@ type Automation struct {
 	Enabled             bool              `json:"enabled"`
 	NextRunAt           db.Time           `json:"next_run_at"`
 	LastRunAt           db.NullTime       `json:"last_run_at"`
+	LastRunChatID       *string           `json:"last_run_chat_id"` // newest chat a run started, if not deleted
 	TriggerType         string            `json:"trigger_type"`
 	GithubRepo          *string           `json:"github_repo"`
 	GithubEvents        db.JSON[[]string] `json:"github_events"`
@@ -69,14 +70,16 @@ type Automation struct {
 
 const columns = `id, user_id, workspace_id, name, prompt, model_id, cron_expression, timezone, permission_mode, thinking_mode,
 	worktree, selected_persona_name, enabled, next_run_at, last_run_at, trigger_type, github_repo, github_events, github_cursor,
-	github_webhook_id, github_webhook_secret, github_webhook_error, created_by_agent, created_at, updated_at`
+	github_webhook_id, github_webhook_secret, github_webhook_error, created_by_agent, created_at, updated_at,
+	(SELECT c.id FROM chats c WHERE c.automation_id = automations.id AND c.deleted_at IS NULL
+		ORDER BY c.created_at DESC LIMIT 1)`
 
 func scan(row interface{ Scan(...any) error }) (*Automation, error) {
 	x := &Automation{}
 	err := row.Scan(&x.ID, &x.UserID, &x.WorkspaceID, &x.Name, &x.Prompt, &x.ModelID, &x.CronExpression, &x.Timezone,
 		&x.PermissionMode, &x.ThinkingMode, &x.Worktree, &x.SelectedPersonaName, &x.Enabled, &x.NextRunAt, &x.LastRunAt,
 		&x.TriggerType, &x.GithubRepo, &x.GithubEvents, &x.GithubCursor, &x.GithubWebhookID, &x.GithubWebhookSecret,
-		&x.GithubWebhookError, &x.CreatedByAgent, &x.CreatedAt, &x.UpdatedAt)
+		&x.GithubWebhookError, &x.CreatedByAgent, &x.CreatedAt, &x.UpdatedAt, &x.LastRunChatID)
 	x.GithubWebhookActive = x.GithubWebhookID != nil
 	return x, err
 }

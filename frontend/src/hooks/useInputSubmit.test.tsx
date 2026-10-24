@@ -41,6 +41,7 @@ vi.mock('@/store/chatSettingsStore', () => ({
 }));
 
 import { useInputSubmit } from './useInputSubmit';
+import { useComposerDraftStore } from '@/store/composerDraftStore';
 
 function makeOptions(overrides: Record<string, unknown> = {}) {
   return {
@@ -68,12 +69,32 @@ function makeOptions(overrides: Record<string, unknown> = {}) {
   } as Parameters<typeof useInputSubmit>[0];
 }
 
+function keyEvent(key: string, extra: Record<string, unknown> = {}) {
+  return {
+    key,
+    shiftKey: false,
+    metaKey: false,
+    ctrlKey: false,
+    defaultPrevented: false,
+    nativeEvent: { isComposing: false },
+    preventDefault: vi.fn(),
+    ...extra,
+  } as unknown as React.KeyboardEvent<Element>;
+}
+
+function mockCoarsePointer(coarse: boolean) {
+  window.matchMedia = vi.fn((query: string) => ({
+    matches: coarse && query === '(pointer: coarse)',
+  })) as unknown as typeof window.matchMedia;
+}
+
 function formEvent() {
   return { preventDefault: vi.fn() } as unknown as React.FormEvent;
 }
 
 beforeEach(() => {
   vi.clearAllMocks();
+  mockCoarsePointer(false);
   h.settings.permissionModeByChat = {};
   h.settings.thinkingModeByChat = {};
   h.settings.worktreeByChat = {};
@@ -107,28 +128,83 @@ describe('useInputSubmit — handleSubmit', () => {
   });
 });
 
-describe('useInputSubmit — submitOrStop stop paths', () => {
-  it('stops the stream when streaming with an empty composer', () => {
+describe('useInputSubmit — stopping', () => {
+  it('Enter on an empty composer does nothing while streaming', () => {
     const opts = makeOptions({ isStreaming: true, hasContent: false });
     const { result } = renderHook(() => useInputSubmit(opts));
-    act(() => result.current.submitOrStop());
+    act(() => result.current.handleKeyDown(keyEvent('Enter')));
+    expect(opts.onStopStream).not.toHaveBeenCalled();
+    expect(h.queueMessage).not.toHaveBeenCalled();
+    expect(opts.onSubmit).not.toHaveBeenCalled();
+  });
+
+  it('Esc stops the running turn and keeps the draft', () => {
+    const opts = makeOptions({ isStreaming: true, hasContent: true });
+    const { result } = renderHook(() => useInputSubmit(opts));
+    const e = keyEvent('Escape');
+    act(() => result.current.handleKeyDown(e));
+    expect(e.preventDefault).toHaveBeenCalled();
+    expect(opts.onStopStream).toHaveBeenCalledTimes(1);
+    expect(opts.setMessage).not.toHaveBeenCalled();
+  });
+
+  it('Esc stops a pending start', () => {
+    const opts = makeOptions({ isLoading: true, hasContent: false });
+    const { result } = renderHook(() => useInputSubmit(opts));
+    act(() => result.current.handleKeyDown(keyEvent('Escape')));
+    expect(opts.onStopStream).toHaveBeenCalledTimes(1);
+  });
+
+  it('Esc is left alone when idle, or when a menu already handled it', () => {
+    const idle = makeOptions();
+    const { result: idleResult } = renderHook(() => useInputSubmit(idle));
+    const idleEvent = keyEvent('Escape');
+    act(() => idleResult.current.handleKeyDown(idleEvent));
+    expect(idle.onStopStream).not.toHaveBeenCalled();
+    expect(idleEvent.preventDefault).not.toHaveBeenCalled();
+
+    const menu = makeOptions({ isStreaming: true, handleMentionKeyDown: vi.fn(() => true) });
+    const { result: menuResult } = renderHook(() => useInputSubmit(menu));
+    act(() => menuResult.current.handleKeyDown(keyEvent('Escape')));
+    expect(menu.onStopStream).not.toHaveBeenCalled();
+  });
+
+  it('Esc does not stop the turn behind an open dialog', () => {
+    const dialog = document.createElement('div');
+    dialog.setAttribute('aria-modal', 'true');
+    document.body.appendChild(dialog);
+    try {
+      const opts = makeOptions({ isStreaming: true });
+      const { result } = renderHook(() => useInputSubmit(opts));
+      act(() => result.current.handleKeyDown(keyEvent('Escape')));
+      expect(opts.onStopStream).not.toHaveBeenCalled();
+    } finally {
+      dialog.remove();
+    }
+  });
+
+  it('the Stop button stops even with a draft in the composer', () => {
+    const opts = makeOptions({ isStreaming: true, hasContent: true });
+    const { result } = renderHook(() => useInputSubmit(opts));
+    act(() => result.current.handleStopClick({ preventDefault: vi.fn() } as never));
     expect(opts.onStopStream).toHaveBeenCalledTimes(1);
     expect(h.queueMessage).not.toHaveBeenCalled();
   });
 
-  it('stops the pending start when loading', () => {
-    const opts = makeOptions({ isLoading: true, hasContent: false });
+  it('sending while a start is pending does nothing', () => {
+    const opts = makeOptions({ isLoading: true });
     const { result } = renderHook(() => useInputSubmit(opts));
-    act(() => result.current.submitOrStop());
-    expect(opts.onStopStream).toHaveBeenCalledTimes(1);
+    act(() => result.current.submitOrQueue());
+    expect(opts.onStopStream).not.toHaveBeenCalled();
+    expect(opts.onSubmit).not.toHaveBeenCalled();
   });
 });
 
-describe('useInputSubmit — submitOrStop queue path', () => {
+describe('useInputSubmit — submitOrQueue queue path', () => {
   it('queues the message, clears the draft, and dismisses the preview', () => {
     const opts = makeOptions({ isStreaming: true, hasContent: true });
     const { result } = renderHook(() => useInputSubmit(opts));
-    act(() => result.current.submitOrStop());
+    act(() => result.current.submitOrQueue());
 
     expect(h.queueMessage).toHaveBeenCalledTimes(1);
     const [chatId, message, modelId] = h.queueMessage.mock.calls[0];
@@ -140,12 +216,23 @@ describe('useInputSubmit — submitOrStop queue path', () => {
     expect(opts.setPreviewDismissed).toHaveBeenCalledWith(true);
   });
 
+  it('toasts and puts the text back in the composer when the server refuses it', async () => {
+    useComposerDraftStore.setState(useComposerDraftStore.getInitialState(), true);
+    h.queueMessage.mockRejectedValueOnce(new Error('Unknown model'));
+    const opts = makeOptions({ isStreaming: true, hasContent: true });
+    const { result } = renderHook(() => useInputSubmit(opts));
+    await act(async () => result.current.submitOrQueue());
+
+    expect(h.toastError).toHaveBeenCalledWith(expect.stringContaining('Unknown model'));
+    expect(useComposerDraftStore.getState().textByChat['chat-1']?.text).toBe('hello');
+  });
+
   it('threads the per-chat worktree and base branch into the queued options', () => {
     h.settings.worktreeByChat = { 'chat-1': true };
     h.settings.worktreeBaseBranchByChat = { 'chat-1': 'develop' };
     const opts = makeOptions({ isStreaming: true, hasContent: true });
     const { result } = renderHook(() => useInputSubmit(opts));
-    act(() => result.current.submitOrStop());
+    act(() => result.current.submitOrQueue());
 
     const options = h.queueMessage.mock.calls[0][3] as { worktree: boolean; baseBranch?: string };
     expect(options.worktree).toBe(true);
@@ -155,7 +242,7 @@ describe('useInputSubmit — submitOrStop queue path', () => {
   it('refuses to queue and warns when no model is selected — the draft survives', () => {
     const opts = makeOptions({ isStreaming: true, hasContent: true, selectedModelId: '' });
     const { result } = renderHook(() => useInputSubmit(opts));
-    act(() => result.current.submitOrStop());
+    act(() => result.current.submitOrQueue());
 
     expect(h.toastError).toHaveBeenCalledWith('Please select an AI model');
     expect(h.queueMessage).not.toHaveBeenCalled();
@@ -170,18 +257,18 @@ describe('useInputSubmit — submitOrStop queue path', () => {
       attachedSelections: selections,
     });
     const { result } = renderHook(() => useInputSubmit(opts));
-    act(() => result.current.submitOrStop());
+    act(() => result.current.submitOrQueue());
     expect(h.clearComposerSelections).toHaveBeenCalledWith('chat-1');
   });
 });
 
-describe('useInputSubmit — submitOrStop send path', () => {
+describe('useInputSubmit — submitOrQueue send path', () => {
   it('requestSubmits the form when idle with content', () => {
     const requestSubmit = vi.fn();
     const form = { requestSubmit } as unknown as HTMLFormElement;
     const opts = makeOptions({ formRef: { current: form } });
     const { result } = renderHook(() => useInputSubmit(opts));
-    act(() => result.current.submitOrStop());
+    act(() => result.current.submitOrQueue());
     expect(requestSubmit).toHaveBeenCalledTimes(1);
     expect(opts.setPreviewDismissed).toHaveBeenCalledWith(true);
   });
@@ -189,14 +276,14 @@ describe('useInputSubmit — submitOrStop send path', () => {
   it('falls back to a synthetic submit event when the form lacks requestSubmit', () => {
     const opts = makeOptions({ formRef: { current: null } });
     const { result } = renderHook(() => useInputSubmit(opts));
-    act(() => result.current.submitOrStop());
+    act(() => result.current.submitOrQueue());
     expect(opts.onSubmit).toHaveBeenCalledTimes(1);
   });
 
   it('does nothing when disabled and not streaming', () => {
     const opts = makeOptions({ disabled: true });
     const { result } = renderHook(() => useInputSubmit(opts));
-    act(() => result.current.submitOrStop());
+    act(() => result.current.submitOrQueue());
     expect(opts.onSubmit).not.toHaveBeenCalled();
     expect(opts.onStopStream).not.toHaveBeenCalled();
   });
@@ -208,11 +295,7 @@ describe('useInputSubmit — keyboard handling', () => {
       formRef: { current: { requestSubmit: vi.fn() } as unknown as HTMLFormElement },
     });
     const { result } = renderHook(() => useInputSubmit(opts));
-    const e = {
-      key: 'Enter',
-      shiftKey: false,
-      preventDefault: vi.fn(),
-    } as unknown as React.KeyboardEvent<Element>;
+    const e = keyEvent('Enter');
     act(() => result.current.handleKeyDown(e));
     expect(e.preventDefault).toHaveBeenCalled();
     expect(opts.handleMentionKeyDown).toHaveBeenCalled();
@@ -222,11 +305,7 @@ describe('useInputSubmit — keyboard handling', () => {
   it('lets a mention-menu handler swallow Enter without submitting', () => {
     const opts = makeOptions({ handleMentionKeyDown: vi.fn(() => true) });
     const { result } = renderHook(() => useInputSubmit(opts));
-    const e = {
-      key: 'Enter',
-      shiftKey: false,
-      preventDefault: vi.fn(),
-    } as unknown as React.KeyboardEvent<Element>;
+    const e = keyEvent('Enter');
     act(() => result.current.handleKeyDown(e));
     expect(opts.handleSlashCommandKeyDown).not.toHaveBeenCalled();
     expect(opts.onSubmit).not.toHaveBeenCalled();
@@ -235,14 +314,49 @@ describe('useInputSubmit — keyboard handling', () => {
   it('Shift+Enter inserts a newline (no submit)', () => {
     const opts = makeOptions();
     const { result } = renderHook(() => useInputSubmit(opts));
-    const e = {
-      key: 'Enter',
-      shiftKey: true,
-      preventDefault: vi.fn(),
-    } as unknown as React.KeyboardEvent<Element>;
+    const e = keyEvent('Enter', { shiftKey: true });
     act(() => result.current.handleKeyDown(e));
     expect(e.preventDefault).not.toHaveBeenCalled();
     expect(opts.onSubmit).not.toHaveBeenCalled();
+  });
+
+  it('Enter while an IME is composing confirms the composition, not the message', () => {
+    const opts = makeOptions();
+    const { result } = renderHook(() => useInputSubmit(opts));
+    const e = keyEvent('Enter', { nativeEvent: { isComposing: true } });
+    act(() => result.current.handleKeyDown(e));
+    expect(e.preventDefault).not.toHaveBeenCalled();
+    expect(opts.onSubmit).not.toHaveBeenCalled();
+  });
+});
+
+describe('useInputSubmit — touch keyboards', () => {
+  it('Return inserts a newline on a coarse pointer', () => {
+    mockCoarsePointer(true);
+    const opts = makeOptions();
+    const { result } = renderHook(() => useInputSubmit(opts));
+    const e = keyEvent('Enter');
+    act(() => result.current.handleKeyDown(e));
+    expect(e.preventDefault).not.toHaveBeenCalled();
+    expect(opts.onSubmit).not.toHaveBeenCalled();
+  });
+
+  it('Cmd/Ctrl+Return still sends from a hardware keyboard', () => {
+    mockCoarsePointer(true);
+    const opts = makeOptions();
+    const { result } = renderHook(() => useInputSubmit(opts));
+    const e = keyEvent('Enter', { metaKey: true });
+    act(() => result.current.handleKeyDown(e));
+    expect(e.preventDefault).toHaveBeenCalled();
+    expect(opts.onSubmit).toHaveBeenCalledTimes(1);
+  });
+
+  it('the send button sends on a coarse pointer', () => {
+    mockCoarsePointer(true);
+    const opts = makeOptions();
+    const { result } = renderHook(() => useInputSubmit(opts));
+    act(() => result.current.handleSendClick({ preventDefault: vi.fn() } as never));
+    expect(opts.onSubmit).toHaveBeenCalledTimes(1);
   });
 });
 

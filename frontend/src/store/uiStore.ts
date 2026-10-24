@@ -79,6 +79,9 @@ type UIStoreState = ThemeState &
     setSubThreadDialogOpen: (open: boolean) => void;
     sessionPanelOpen: boolean;
     setSessionPanelOpen: (open: boolean) => void;
+    // Phone-only bottom sheet with the same panel; session-only, not persisted.
+    sessionSheetOpen: boolean;
+    setSessionSheetOpen: (open: boolean) => void;
     createPRDialogOpen: boolean;
     setCreatePRDialogOpen: (open: boolean) => void;
     createBranchDialogOpen: boolean;
@@ -289,6 +292,8 @@ export const useUIStore = create<UIStoreState>()(
       setSubThreadDialogOpen: (open) => set({ subThreadDialogOpen: open }),
       sessionPanelOpen: getInitialSidebarState(),
       setSessionPanelOpen: (open) => set({ sessionPanelOpen: open }),
+      sessionSheetOpen: false,
+      setSessionSheetOpen: (open) => set({ sessionSheetOpen: open }),
       createPRDialogOpen: false,
       setCreatePRDialogOpen: (open) => set({ createPRDialogOpen: open }),
       createBranchDialogOpen: false,

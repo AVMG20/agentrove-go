@@ -3,7 +3,7 @@ import type { Dispatch, SetStateAction } from 'react';
 import { QueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import { extractAssistantText, type StreamContentBuffer } from '@/utils/stream';
-import { notifyStreamComplete } from '@/utils/notifications';
+import { notifyStreamComplete, notifyStreamFailed } from '@/utils/notifications';
 import { queryKeys } from '@/hooks/queries/queryKeys';
 import { markChatViewed } from '@/hooks/queries/useChatQueries';
 import { invalidateGitState } from '@/hooks/queries/useSandboxQueries';
@@ -541,6 +541,14 @@ export function useStreamCallbacks({
         queryClient.invalidateQueries({ queryKey: queryKeys.messages(targetChatId) });
       }
 
+      // A server-reported failure, not a dropped connection (that one retries).
+      if (assistantMessageId && streamId) {
+        const reason = getStreamErrorMessage(streamError);
+        notifyBackground(targetChatId, (options) =>
+          notifyStreamFailed({ ...options, message: reason }),
+        );
+      }
+
       if (!isCurrentChat) return;
 
       // Same read re-stamp as onComplete (watched failure is still seen activity).
@@ -558,6 +566,7 @@ export function useStreamCallbacks({
     [
       flushBufferedContent,
       chatId,
+      notifyBackground,
       pendingStopRef,
       queryClient,
       setCurrentMessageId,

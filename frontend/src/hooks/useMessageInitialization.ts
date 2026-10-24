@@ -59,6 +59,7 @@ export function useMessageInitialization({
         last_seq: msg.last_seq,
         active_stream_id: msg.active_stream_id,
         stream_status: msg.stream_status,
+        stream_error: msg.stream_error,
         role: msg.role,
         is_bot: msg.role === 'assistant',
         attachments: processedAttachments,

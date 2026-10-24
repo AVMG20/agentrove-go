@@ -8,6 +8,7 @@ interface ChatQueueBannerProps {
   onCancel: (messageId: string) => void;
   onEdit: (messageId: string, newContent: string) => void;
   onSendNow: (messageId: string) => void;
+  onRetry?: (messageId: string) => void;
 }
 
 export const ChatQueueBanner = memo(function ChatQueueBanner({
@@ -15,6 +16,7 @@ export const ChatQueueBanner = memo(function ChatQueueBanner({
   onCancel,
   onEdit,
   onSendNow,
+  onRetry,
 }: ChatQueueBannerProps) {
   if (messages.length === 0) {
     return null;
@@ -30,6 +32,7 @@ export const ChatQueueBanner = memo(function ChatQueueBanner({
             onCancel={onCancel}
             onEdit={onEdit}
             onSendNow={onSendNow}
+            onRetry={onRetry}
           />
         ))}
       </div>

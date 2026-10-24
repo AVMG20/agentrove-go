@@ -37,6 +37,7 @@ type Message struct {
 	Role               string                  `json:"role"`
 	ModelID            *string                 `json:"model_id"`
 	StreamStatus       string                  `json:"stream_status"`
+	StreamError        *string                 `json:"stream_error"` // why a failed turn failed; null on older ones (only in their text)
 	DurationMs         *int64                  `json:"duration_ms"`
 	CreatedAt          db.Time                 `json:"created_at"`
 	Attachments        []Attachment            `json:"attachments"`
@@ -92,12 +93,12 @@ func (s *store) softDeleteMessage(ctx context.Context, id string) {
 }
 
 const messageColumns = `m.id, m.chat_id, m.content_text, m.content_render, m.last_seq, m.active_stream_id, m.role, m.model_id,
-	m.stream_status, m.duration_ms, m.created_at, m.total_cost_usd`
+	m.stream_status, m.stream_error, m.duration_ms, m.created_at, m.total_cost_usd`
 
 func scanMessage(row interface{ Scan(...any) error }, extra ...any) (*Message, error) {
 	m := &Message{}
 	dest := append([]any{&m.ID, &m.ChatID, &m.ContentText, &m.raw, &m.LastSeq, &m.ActiveStreamID, &m.Role, &m.ModelID,
-		&m.StreamStatus, &m.DurationMs, &m.CreatedAt, &m.TotalCostUSD}, extra...)
+		&m.StreamStatus, &m.StreamError, &m.DurationMs, &m.CreatedAt, &m.TotalCostUSD}, extra...)
 	if err := row.Scan(dest...); err != nil {
 		return nil, err
 	}
@@ -178,6 +179,7 @@ type snapshot struct {
 	LastSeq        int64
 	ActiveStreamID *string
 	Status         string // "" leaves status unchanged
+	StreamError    string // recorded with a terminal Status; "" clears it
 	TotalCostUSD   *float64
 	RecordActivity bool
 }
@@ -199,6 +201,14 @@ func (s *store) updateSnapshot(ctx context.Context, messageID string, sn snapsho
 		if sn.Status != "" {
 			sets = append(sets, "stream_status = ?")
 			args = append(args, sn.Status)
+		}
+		if terminal {
+			var streamErr any // NULL unless the turn failed
+			if sn.StreamError != "" {
+				streamErr = sn.StreamError
+			}
+			sets = append(sets, "stream_error = ?")
+			args = append(args, streamErr)
 		}
 		if terminal && sn.RecordActivity {
 			d := now.Sub(createdAt.Time).Milliseconds()

@@ -190,7 +190,7 @@ export function GeneralSettingsTab({
             <div className={styles['pref-text']}>
               <h3 className={styles['setting-title']}>Notifications</h3>
               <p className={styles['field-desc']}>
-                Send notifications for permission requests, questions, and task completion.
+                Send notifications for permission requests, questions, and finished or failed tasks.
               </p>
             </div>
             <Switch

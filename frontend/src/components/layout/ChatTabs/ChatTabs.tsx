@@ -3,9 +3,10 @@ import { useMatch, useNavigate } from 'react-router-dom';
 import { AsciiSpinner } from '@/components/ui/AsciiSpinner/AsciiSpinner';
 import { ChatStatusDot } from '@/components/ui/ChatStatusDot/ChatStatusDot';
 import type { ChatStatusTone } from '@/utils/message';
-import { Zap } from 'lucide-react';
+import { ChevronDown, Zap } from 'lucide-react';
 import clsx from 'clsx';
 import { ClaudeIcon } from '@/components/ui/icons/ClaudeIcon';
+import { Button } from '@/components/ui/primitives/Button/Button';
 import { useUIStore } from '@/store/uiStore';
 import { useStreamStore } from '@/store/streamStore';
 import { useBlockedChatIds } from '@/hooks/useBlockedChatIds';
@@ -25,6 +26,53 @@ const STATUS_LABELS: Record<ChatTabStatus, string> = {
   streaming: 'Running',
   completed: 'Done',
 };
+
+function chatTabStatus(
+  chatId: string,
+  blocked: Set<string>,
+  streaming: Set<string>,
+  completed: Set<string>,
+): ChatTabStatus | null {
+  if (blocked.has(chatId)) return 'blocked';
+  if (streaming.has(chatId)) return 'streaming';
+  if (completed.has(chatId)) return 'completed';
+  return null;
+}
+
+const MOBILE_STATUS_TONE: Record<ChatTabStatus, ChatStatusTone> = {
+  blocked: 'blocked',
+  streaming: 'running',
+  completed: 'completed',
+};
+
+// Phones have no tab strip: the routed thread's title and status, opening the
+// session panel as a bottom sheet.
+export function MobileChatTitle() {
+  const chatId = useMatch('/chat/:chatId')?.params.chatId;
+  const { data: chat } = useChatQuery(chatId);
+  const completedChatIds = useStreamStore((s) => s.completedChatIds);
+  const blockedChatIdSet = useBlockedChatIds();
+  const streamingChatIdSet = useWorkingChatIds();
+  if (!chatId) return null;
+
+  const status = chatTabStatus(chatId, blockedChatIdSet, streamingChatIdSet, completedChatIds);
+  const title = chat?.title ? stripMarkdownTitle(chat.title) : '…';
+  return (
+    <Button
+      type="button"
+      variant="unstyled"
+      className={styles['mobile-title']}
+      onClick={() => useUIStore.getState().setSessionSheetOpen(true)}
+      aria-label={`${title}${status ? ` · ${STATUS_LABELS[status]}` : ''}. Show session details`}
+    >
+      {status && (
+        <ChatStatusDot tone={MOBILE_STATUS_TONE[status]} className={styles['tab-status-dot']} />
+      )}
+      <span className={styles['mobile-title-text']}>{title}</span>
+      <ChevronDown aria-hidden className={styles['mobile-title-chevron']} />
+    </Button>
+  );
+}
 
 interface ChatTabProps {
   chatId: string;
@@ -141,13 +189,12 @@ export function ChatTabs() {
   return (
     <TitleBarTabs>
       {chatTabs.map((chatId) => {
-        const status: ChatTabStatus | null = blockedChatIdSet.has(chatId)
-          ? 'blocked'
-          : streamingChatIdSet.has(chatId)
-            ? 'streaming'
-            : completedChatIds.has(chatId)
-              ? 'completed'
-              : null;
+        const status = chatTabStatus(
+          chatId,
+          blockedChatIdSet,
+          streamingChatIdSet,
+          completedChatIds,
+        );
         return (
           <ChatTab
             key={chatId}
