@@ -520,11 +520,18 @@ export function useStreamCallbacks({
 
       const targetChatId = sessionChatId ?? chatId;
 
+      // A dropped connection (no streamId) says nothing about the turn, which
+      // keeps running server-side: reload the server's state instead of
+      // marking it failed (that showed Retry/Continue on a healthy turn).
+      const lostConnection = !streamId;
+
       // Don't remove — already persisted; mirror backend snapshot so live UI matches refresh.
       if (assistantMessageId) {
         // Same drain as onComplete — a stop ending in error must not keep stashing.
         pendingStopRef.current.delete(assistantMessageId);
         takePendingStopEnvelopes(assistantMessageId);
+      }
+      if (assistantMessageId && !lostConnection) {
         const markFailed = buildFailedMessageUpdate(streamError);
         if (targetChatId) {
           updateMessageInCacheForChat(queryClient, targetChatId, assistantMessageId, markFailed);
@@ -536,8 +543,7 @@ export function useStreamCallbacks({
         }
       }
 
-      // Same gate as onComplete — a connection-failure error has no streamId.
-      if (targetChatId && streamId) {
+      if (targetChatId) {
         queryClient.invalidateQueries({ queryKey: queryKeys.messages(targetChatId) });
       }
 

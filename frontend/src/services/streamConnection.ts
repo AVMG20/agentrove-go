@@ -239,8 +239,9 @@ class StreamConnectionManager {
 
   private scheduleReconnect(client: StreamApiClient, connection: ManagedConnection): void {
     if (connection.retryTimer) return;
-    // Offline retries would only burn budget and fail streams; the `online` resume reopens.
-    if (isOffline()) return;
+    // Offline or backgrounded retries would only burn budget and fail streams
+    // (phones freeze hidden tabs); the page-resume handler reopens.
+    if (isOffline() || document.visibilityState === 'hidden') return;
     connection.retryAttempts += 1;
     if (connection.retryAttempts > MAX_RECONNECT_ATTEMPTS) {
       this.failClient(client, connection);

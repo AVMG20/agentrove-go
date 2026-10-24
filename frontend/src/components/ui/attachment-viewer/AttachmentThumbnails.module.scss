@@ -26,7 +26,8 @@
   opacity: 0;
   transition: opacity var(--duration-fast);
 
-  // No hover on touch: keep it visible so it can be found and tapped.
+  // No hover on touch: keep it visible (PDF/spreadsheet thumbnails; image
+  // thumbnails have no button — a tap opens the viewer, which downloads).
   @include responsive.media('touch') {
     opacity: 1;
   }

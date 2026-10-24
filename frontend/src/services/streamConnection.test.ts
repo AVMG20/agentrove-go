@@ -136,6 +136,24 @@ describe('streamConnection page resume', () => {
     expect(FakeEventSource.instances).toHaveLength(2);
   });
 
+  it('does not burn retry budget or fail streams while the page is hidden', async () => {
+    const { onConnectionFailure } = await setup();
+
+    // A phone backgrounds the tab: the socket drops and timers barely run.
+    visibility = 'hidden';
+    document.dispatchEvent(new Event('visibilitychange'));
+    latestSource().fail();
+    await vi.advanceTimersByTimeAsync(10 * 60_000);
+
+    expect(FakeEventSource.instances).toHaveLength(1);
+    expect(onConnectionFailure).not.toHaveBeenCalled();
+
+    visibility = 'visible';
+    document.dispatchEvent(new Event('visibilitychange'));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(FakeEventSource.instances).toHaveLength(2);
+  });
+
   it('resets the retry budget on resume after failed retries', async () => {
     const { onConnectionFailure } = await setup();
 

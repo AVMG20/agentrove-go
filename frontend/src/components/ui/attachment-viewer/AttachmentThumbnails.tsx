@@ -49,7 +49,8 @@ const LoadingProgressOverlay = memo(function LoadingProgressOverlay() {
 
 interface ThumbnailWrapperProps {
   attachment: MessageAttachment;
-  onDownload: (url: string, filename: string) => void;
+  // Omitted for previewable images: the tap opens the viewer, which downloads.
+  onDownload?: (url: string, filename: string) => void;
   onPreview?: () => void;
   children: ReactNode;
 }
@@ -85,21 +86,23 @@ export function ThumbnailWrapper({
       aria-label={isInteractive ? `Preview ${filename}` : undefined}
     >
       {children}
-      <div className={styles['download-wrap']}>
-        <Button
-          type="button"
-          variant="unstyled"
-          onClick={(e) => {
-            // Stop propagation so the wrapper's preview click handler (images) doesn't fire.
-            e.stopPropagation();
-            onDownload(attachment.file_url, filename);
-          }}
-          className={styles['download-button']}
-          aria-label={`Download ${attachment.file_type}`}
-        >
-          <Download className={styles['download-icon']} />
-        </Button>
-      </div>
+      {onDownload && (
+        <div className={styles['download-wrap']}>
+          <Button
+            type="button"
+            variant="unstyled"
+            onClick={(e) => {
+              // Stop propagation so the wrapper's preview click handler (images) doesn't fire.
+              e.stopPropagation();
+              onDownload(attachment.file_url, filename);
+            }}
+            className={styles['download-button']}
+            aria-label={`Download ${attachment.file_type}`}
+          >
+            <Download className={styles['download-icon']} />
+          </Button>
+        </div>
+      )}
     </div>
   );
 }

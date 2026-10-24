@@ -5,6 +5,7 @@ import type { MessageAttachment } from '@/types/chat.types';
 import { BaseModal } from '@/components/ui/shared/BaseModal/BaseModal';
 import { Button } from '@/components/ui/primitives/Button/Button';
 import { Spinner } from '@/components/ui/primitives/Spinner/Spinner';
+import { useCloseOnBack } from '@/hooks/useCloseOnBack';
 import styles from './ImagePreviewModal.module.scss';
 
 interface ImageState {
@@ -37,6 +38,8 @@ export const ImagePreviewModal = memo(function ImagePreviewModal({
   const current = attachments[currentIndex];
   const goPrev = () => onIndexChange((currentIndex - 1 + total) % total);
   const goNext = () => onIndexChange((currentIndex + 1) % total);
+  // The phone's back gesture closes the viewer instead of leaving the chat.
+  const requestClose = useCloseOnBack(isOpen, onClose);
 
   useEffect(() => {
     if (!isOpen || !hasMultiple) return;
@@ -58,8 +61,9 @@ export const ImagePreviewModal = memo(function ImagePreviewModal({
   return (
     <BaseModal
       isOpen={isOpen}
-      onClose={onClose}
+      onClose={requestClose}
       size="4xl"
+      className={styles.viewer}
       ariaLabel={`Image preview: ${filename}`}
     >
       <div className={styles.header}>
@@ -85,7 +89,7 @@ export const ImagePreviewModal = memo(function ImagePreviewModal({
             type="button"
             size="icon"
             variant="ghost"
-            onClick={onClose}
+            onClick={requestClose}
             aria-label="Close preview"
           >
             <X className={styles.icon} />

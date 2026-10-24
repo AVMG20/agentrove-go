@@ -3,6 +3,43 @@
 @use '@/styles/globals/animations' as anim;
 @use '@/styles/globals/responsive' as responsive;
 
+// Phones: a full-screen viewer rather than the bottom sheet other dialogs use.
+// Doubled class to outrank BaseModal's sheet rule regardless of CSS order.
+.viewer.viewer {
+  @include responsive.media('mobile') {
+    display: flex;
+    height: 100dvh;
+    width: 100vw;
+    flex-direction: column;
+    margin: calc(-1 * var(--space-4));
+    border: 0;
+    border-radius: 0;
+    padding: var(--safe-area-top) var(--safe-area-right) var(--device-safe-area-bottom)
+      var(--safe-area-left);
+    animation-name: none;
+
+    // Fit the width and scroll: agent screenshots are often full-page and
+    // far taller than the screen.
+    .stage {
+      min-height: 0;
+      flex: 1;
+      align-items: flex-start;
+      overflow-y: auto;
+      overscroll-behavior: contain;
+    }
+
+    .image {
+      width: 100%;
+      max-height: none;
+      margin-block: auto;
+    }
+
+    .nav-button {
+      position: fixed;
+    }
+  }
+}
+
 .header {
   display: flex;
   align-items: center;
