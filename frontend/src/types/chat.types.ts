@@ -77,8 +77,7 @@ export type AssistantStreamEvent =
         requested_schema: ElicitationSchema;
       };
     }
-  | { type: 'elicitation_dismissed'; request_id: string }
-  | { type: 'prompt_suggestions'; suggestions: string[] };
+  | { type: 'elicitation_dismissed'; request_id: string };
 
 export interface Chat {
   id: string;

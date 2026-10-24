@@ -29,12 +29,6 @@ export interface ToolSegment {
   tool: ToolAggregate;
 }
 
-export interface SuggestionsSegment {
-  kind: 'suggestions';
-  id: string;
-  suggestions: string[];
-}
-
 export interface PlanSegment {
   kind: 'plan';
   id: string;
@@ -46,7 +40,6 @@ export type MessageSegment =
   | SteeringSegment
   | ThinkingSegment
   | ToolSegment
-  | SuggestionsSegment
   | PlanSegment;
 
 const toolsEqual = (a: ToolAggregate, b: ToolAggregate): boolean => {
@@ -79,7 +72,6 @@ export const segmentsEqual = (a: MessageSegment, b: MessageSegment): boolean => 
   if (a.kind === 'text' && b.kind === 'text') return a.text === b.text;
   if (a.kind === 'thinking' && b.kind === 'thinking') return a.text === b.text;
   if (a.kind === 'tool' && b.kind === 'tool') return toolsEqual(a.tool, b.tool);
-  if (a.kind === 'suggestions' && b.kind === 'suggestions') return a.suggestions === b.suggestions;
   if (a.kind === 'plan' && b.kind === 'plan') return a.entries === b.entries;
   return false;
 };
@@ -342,7 +334,7 @@ const processToolEvent = (
   }
 };
 
-// Flat stream events → text/thinking/tool/plan/suggestions segments (incl. out-of-order tool parents).
+// Flat stream events → text/thinking/tool/plan segments (incl. out-of-order tool parents).
 export const buildSegments = (events: AssistantStreamEvent[]): MessageSegment[] => {
   const segments: MessageSegment[] = [];
   const toolMap = new Map<string, ToolAggregate>();
@@ -352,7 +344,6 @@ export const buildSegments = (events: AssistantStreamEvent[]): MessageSegment[] 
   let pendingThinking = '';
   let textSegmentCount = 0;
   let thinkingSegmentCount = 0;
-  let suggestionsSegmentCount = 0;
   let planSegmentCount = 0;
 
   const flushText = () => {
@@ -413,16 +404,6 @@ export const buildSegments = (events: AssistantStreamEvent[]): MessageSegment[] 
       case 'assistant_thinking':
         flushText();
         pendingThinking += event.thinking;
-        break;
-      case 'prompt_suggestions':
-        flushText();
-        flushThinking();
-        segments.push({
-          kind: 'suggestions',
-          id: `suggestions-${suggestionsSegmentCount}`,
-          suggestions: event.suggestions,
-        });
-        suggestionsSegmentCount++;
         break;
       case 'tool_started':
       case 'tool_completed':

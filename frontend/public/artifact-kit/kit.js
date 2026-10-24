@@ -341,7 +341,22 @@
   Object.defineProperty(store, 'persistent', { get: function () { return persistent; } });
   store.ready = ready.then(function () { early = {}; return store; });
 
+  // Hand-written tables get the same scroll wrapper as Kit.table(), so a wide
+  // table scrolls on its own instead of pushing the whole page sideways.
+  function wrapTables() {
+    var tables = document.querySelectorAll('table');
+    for (var i = 0; i < tables.length; i++) {
+      var t = tables[i];
+      if (t.parentElement && t.parentElement.classList.contains('table-wrap')) continue;
+      var wrap = document.createElement('div');
+      wrap.className = 'table-wrap';
+      t.parentNode.insertBefore(wrap, t);
+      wrap.appendChild(t);
+    }
+  }
+
   function init() {
+    wrapTables();
     diffs();
     diagrams();
   }

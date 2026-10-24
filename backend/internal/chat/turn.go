@@ -23,7 +23,7 @@ import (
 // Event kinds folded into the message's render snapshot (and batched).
 var snapshotKinds = map[string]bool{
 	"assistant_text": true, "user_steering": true, "assistant_thinking": true, "tool_started": true,
-	"tool_completed": true, "tool_failed": true, "prompt_suggestions": true, "system": true, "plan": true,
+	"tool_completed": true, "tool_failed": true, "system": true, "plan": true,
 }
 
 const (
@@ -46,6 +46,8 @@ const (
 	memberPermTimeout     = 5 * time.Minute
 )
 
+// Prompt suggestions were retired, but resumed sessions may still end replies
+// with the old block; keep it out of the stored text.
 var promptSuggestionsRE = regexp.MustCompile(`(?s)<prompt_suggestions>\s*(.*?)\s*</prompt_suggestions>`)
 
 type turnRequest struct {
@@ -769,7 +771,6 @@ func (t *turn) finish(status, errText string) {
 		errText += "\n\nClaude has no credentials. Add ANTHROPIC_BASE_URL + ANTHROPIC_AUTH_TOKEN (proxy), ANTHROPIC_API_KEY or CLAUDE_CODE_OAUTH_TOKEN under Settings → Environment Variables, or run `claude` in a project terminal to log in."
 	}
 	t.denyPending("The turn ended.")
-	t.emitPromptSuggestions()
 	t.mu.Lock()
 	t.closeLocked() // from here on every emit flushes inline
 	t.flushLocked()
@@ -807,29 +808,6 @@ func (t *turn) finish(status, errText string) {
 		t.emit("cancelled", map[string]any{"status": StatusInterrupted, "duration_ms": dur})
 	default:
 		t.emit("error", map[string]any{"error": errText})
-	}
-}
-
-func (t *turn) emitPromptSuggestions() {
-	t.mu.Lock()
-	raw := strings.Join(t.textParts, "")
-	t.mu.Unlock()
-	m := promptSuggestionsRE.FindStringSubmatch(raw)
-	if m == nil {
-		return
-	}
-	var list []string
-	if json.Unmarshal([]byte(m[1]), &list) != nil {
-		return
-	}
-	out := make([]string, 0, len(list))
-	for _, s := range list {
-		if s = strings.TrimSpace(s); s != "" {
-			out = append(out, s)
-		}
-	}
-	if len(out) > 0 {
-		t.emit("prompt_suggestions", map[string]any{"suggestions": out})
 	}
 }
 

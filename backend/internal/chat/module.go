@@ -716,7 +716,7 @@ func systemPromptFor(st *models.UserSettings, persona string, member bool) (stri
 	if member {
 		return content, false
 	}
-	return content + "\n" + prompts.ChatMentionsInstructions + "\n" + prompts.PromptSuggestionsInstructions, content != ""
+	return content + "\n" + prompts.ChatMentionsInstructions, content != ""
 }
 
 // startInput is the normalized request for a new user turn.

@@ -13,6 +13,4 @@ const GeneratePrDescriptionSystemPrompt = "You are a pull request description wr
 
 const GeneratePrDescriptionTitlePrefix = "Title: "
 
-const PromptSuggestionsInstructions = "\nEnd every response with 2-3 short follow-up prompts the user might send next: <prompt_suggestions>[\"...\", \"...\"]</prompt_suggestions>\n"
-
 const ChatMentionsInstructions = "\n@chat:<chat_id> in a user message refers to another chat; read it with the agentrove MCP get_messages tool.\n"

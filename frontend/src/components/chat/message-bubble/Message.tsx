@@ -9,7 +9,6 @@ import { Button } from '@/components/ui/primitives/Button/Button';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog/ConfirmDialog';
 import { formatRelativeTime, formatFullTimestamp } from '@/utils/date';
 import { useChatContext } from '@/hooks/useChatContext';
-import { useSetChatInputMessage } from '@/hooks/useChatInputMessageContext';
 import { useCheckpointRestore } from '@/hooks/useCheckpointRestore';
 import styles from './Message.module.scss';
 
@@ -87,7 +86,6 @@ export interface AssistantMessageProps extends SharedContentProps {
   createdAt?: string;
   modelId?: string;
   durationMs?: number | null;
-  isLastBotMessage?: boolean;
   toolResultsOmitted: boolean;
 }
 
@@ -101,12 +99,9 @@ export const AssistantMessage = memo(function AssistantMessage({
   createdAt,
   modelId,
   durationMs,
-  isLastBotMessage,
   toolResultsOmitted,
 }: AssistantMessageProps) {
   const { chatId, sandboxId } = useChatContext();
-  const setInputMessage = useSetChatInputMessage();
-  const onSuggestionSelect = isLastBotMessage ? setInputMessage : undefined;
   const modelMap = useModelMap();
   const [restoreOpen, setRestoreOpen] = useState(false);
   const { restore, isRestoring } = useCheckpointRestore(id, sandboxId);
@@ -133,9 +128,7 @@ export const AssistantMessage = memo(function AssistantMessage({
           attachments={attachments}
           isStreaming={isStreaming}
           chatId={chatId}
-          isLastBotMessage={isLastBotMessage}
           durationMs={durationMs}
-          onSuggestionSelect={onSuggestionSelect}
           omittedToolResults={omittedToolResults}
         />
       </MessageText>

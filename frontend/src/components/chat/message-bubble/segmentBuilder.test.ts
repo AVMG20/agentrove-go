@@ -73,16 +73,14 @@ describe('buildSegments — text/thinking translation', () => {
   });
 });
 
-describe('buildSegments — prompt suggestions', () => {
-  it('emits a suggestions segment from a prompt_suggestions event', () => {
+describe('buildSegments — retired prompt suggestions', () => {
+  // Older messages still carry prompt_suggestions events in their stored render.
+  it('ignores legacy prompt_suggestions events', () => {
     const segments = buildSegments([
       { type: 'assistant_text', text: 'done' },
       { type: 'prompt_suggestions', suggestions: ['a', 'b'] },
-    ]);
-    expect(segments).toEqual([
-      { kind: 'text', id: 'text-0', text: 'done' },
-      { kind: 'suggestions', id: 'suggestions-0', suggestions: ['a', 'b'] },
-    ]);
+    ] as unknown as AssistantStreamEvent[]);
+    expect(segments).toEqual([{ kind: 'text', id: 'text-0', text: 'done' }]);
   });
 
   it('strips a complete inline <prompt_suggestions> tag from text', () => {
@@ -325,13 +323,6 @@ describe('segmentsEqual', () => {
     const b: MessageSegment = { kind: 'text', id: 'text-0', text: 'y' };
     expect(segmentsEqual(a, { ...a })).toBe(true);
     expect(segmentsEqual(a, b)).toBe(false);
-  });
-
-  it('compares suggestions by reference identity', () => {
-    const list = ['a'];
-    const a: MessageSegment = { kind: 'suggestions', id: 's-0', suggestions: list };
-    expect(segmentsEqual(a, { kind: 'suggestions', id: 's-0', suggestions: list })).toBe(true);
-    expect(segmentsEqual(a, { kind: 'suggestions', id: 's-0', suggestions: ['a'] })).toBe(false);
   });
 
   it('returns false when kinds differ despite matching ids', () => {

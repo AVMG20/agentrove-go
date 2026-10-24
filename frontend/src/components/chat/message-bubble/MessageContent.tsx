@@ -42,9 +42,7 @@ export const UserMessageContent = memo(function UserMessageContent({
 
 interface AssistantMessageContentProps extends SharedContentProps {
   omittedToolResults?: { messageId: string };
-  isLastBotMessage?: boolean;
   durationMs?: number | null;
-  onSuggestionSelect?: (suggestion: string) => void;
 }
 
 export const AssistantMessageContent = memo(function AssistantMessageContent({
@@ -52,9 +50,7 @@ export const AssistantMessageContent = memo(function AssistantMessageContent({
   attachments,
   isStreaming,
   chatId,
-  isLastBotMessage,
   durationMs,
-  onSuggestionSelect,
   omittedToolResults,
 }: AssistantMessageContentProps) {
   return (
@@ -64,9 +60,7 @@ export const AssistantMessageContent = memo(function AssistantMessageContent({
         omittedToolResults={omittedToolResults}
         isStreaming={isStreaming}
         chatId={chatId}
-        isLastBotMessage={isLastBotMessage}
         durationMs={durationMs}
-        onSuggestionSelect={onSuggestionSelect}
       />
 
       <MessageAttachments attachments={attachments} className={styles.attachments} />

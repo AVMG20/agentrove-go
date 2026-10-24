@@ -43,13 +43,6 @@ export function envelopeToRenderEvent(envelope: StreamEnvelope): AssistantStream
         tool: payload.tool as ToolEventPayload,
       } as AssistantStreamEvent;
     }
-    case 'prompt_suggestions': {
-      const raw = payload.suggestions;
-      if (!Array.isArray(raw)) return null;
-      const suggestions = raw.filter((item): item is string => typeof item === 'string');
-      if (suggestions.length === 0) return null;
-      return { type: 'prompt_suggestions', suggestions };
-    }
     case 'plan': {
       const entries = extractPayloadData(payload)?.entries;
       if (!Array.isArray(entries) || entries.length === 0) return null;

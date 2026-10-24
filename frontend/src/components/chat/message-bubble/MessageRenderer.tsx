@@ -5,6 +5,7 @@ import { useMessageRenderQuery } from '@/hooks/queries/useChatQueries';
 import { buildSegments, segmentsEqual, type MessageSegment } from './segmentBuilder';
 import { AgentToolsContext } from '@/contexts/AgentToolsContext';
 import { ARTIFACT_TOOL_NAMES } from '@/components/chat/tools/registry';
+import { latestArtifactSegments } from '@/components/chat/tools/agentrove/artifactResult';
 import type { AssistantStreamEvent } from '@/types/chat.types';
 import type { ToolAggregate } from '@/types/tools.types';
 
@@ -16,9 +17,7 @@ interface MessageRendererProps {
   className?: string;
   isStreaming?: boolean;
   chatId?: string;
-  isLastBotMessage?: boolean;
   durationMs?: number | null;
-  onSuggestionSelect?: (suggestion: string) => void;
   highlightMentions?: boolean;
 }
 
@@ -28,9 +27,7 @@ export const MessageRenderer = memo(function MessageRenderer({
   className = '',
   isStreaming = false,
   chatId,
-  isLastBotMessage = false,
   durationMs = null,
-  onSuggestionSelect,
   highlightMentions = false,
 }: MessageRendererProps) {
   const prevSegmentsRef = React.useRef<Map<string, MessageSegment>>(new Map());
@@ -118,13 +115,11 @@ export const MessageRenderer = memo(function MessageRenderer({
       ARTIFACT_TOOL_NAMES.has(segment.tool.name);
     return {
       rolledSegments: traceSegments.filter((segment) => !isArtifact(segment)),
-      artifactSegments: traceSegments.filter(isArtifact),
+      artifactSegments: latestArtifactSegments(traceSegments.filter(isArtifact)),
     };
   }, [traceSegments, rollUpTrace]);
   const segmentViewProps = {
     chatId,
-    isLastBotMessage,
-    onSuggestionSelect,
     highlightMentions,
   };
   // Per-segment booleans instead of the active ids: when the active segment
