@@ -153,10 +153,16 @@ const Dropdown = memo(function Dropdown<T>({
 }: DropdownProps<T>) {
   const { isOpen, dropdownRef, setIsOpen } = useDropdown();
   const panelRef = useRef<HTMLDivElement>(null);
-  const fit = usePanelFit(dropdownRef, panelRef, isOpen && !disabled, dropdownPosition === 'auto');
+  const isMobile = useIsMobile();
+  // Phones get the list as a bottom sheet, so it needs no anchoring or fitting.
+  const fit = usePanelFit(
+    dropdownRef,
+    panelRef,
+    isOpen && !disabled && !isMobile,
+    dropdownPosition === 'auto',
+  );
   const panelSide = dropdownPosition === 'auto' ? (fit?.side ?? 'bottom') : dropdownPosition;
   const [searchQuery, setSearchQuery] = useState('');
-  const isMobile = useIsMobile();
   const prevIsOpenRef = useRef(isOpen);
 
   if (prevIsOpenRef.current !== isOpen) {
@@ -238,16 +244,21 @@ const Dropdown = memo(function Dropdown<T>({
         )}
       </Button>
 
+      {isOpen && !disabled && isMobile && (
+        // Inside dropdownRef, so a tap here isn't an outside click; it closes directly.
+        <div className={styles.scrim} onClick={() => setIsOpen(false)} aria-hidden />
+      )}
       {isOpen && !disabled && (
         <div
           ref={panelRef}
           role="listbox"
-          style={{ width, maxHeight: fit?.maxHeight }}
+          style={isMobile ? undefined : { width, maxHeight: fit?.maxHeight }}
           className={clsx(
             styles.panel,
             styles[`panel--${panelSide}`],
             styles[`panel--${dropdownAlign}`],
             fit?.maxHeight !== undefined && styles['panel--capped'],
+            isMobile && styles['panel--sheet'],
           )}
         >
           {renderHeader?.()}
