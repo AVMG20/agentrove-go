@@ -117,6 +117,9 @@ func TestRunAndDispatch(t *testing.T) {
 	if err != nil || !strings.HasPrefix(chat.Title, "Nightly · ") {
 		t.Fatalf("chat: %+v %v", chat, err)
 	}
+	if got, err := s.Get(ctx, x.ID, uid); err != nil || db.Deref(got.LastRunChatID) != chatID {
+		t.Fatalf("last_run_chat_id = %v (%v), want the run's chat %s", got.LastRunChatID, err, chatID)
+	}
 
 	// Make it due; the tick advances next_run_at before firing.
 	past := db.T(time.Now().Add(-time.Minute))
@@ -130,6 +133,9 @@ func TestRunAndDispatch(t *testing.T) {
 	after, _ := s.getByID(ctx, x.ID)
 	if !after.NextRunAt.After(time.Now()) || !after.LastRunAt.Valid {
 		t.Fatalf("schedule not advanced: %+v", after)
+	}
+	if db.Deref(after.LastRunChatID) != (*turns)[1].ChatID {
+		t.Fatalf("last_run_chat_id = %v, want the newest run's chat", after.LastRunChatID)
 	}
 	s.RunDue(ctx)
 	if len(*turns) != 2 {
