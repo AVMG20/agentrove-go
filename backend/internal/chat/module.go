@@ -1094,7 +1094,13 @@ func (m *Module) generateText(ctx context.Context, userID, modelID, systemPrompt
 	return m.oneShot(userID).Run(ctx, modelID, systemPrompt, prompt)
 }
 
+// generateTitle replaces a new chat's placeholder title (one derived from the
+// prompt) with a generated one. Deliberate titles (automation runs, MCP
+// create_chat, persona sub-threads) and renames made meanwhile are kept.
 func (m *Module) generateTitle(userID string, chat *models.Chat, prompt string) {
+	if !isPlaceholderTitle(chat.Title, prompt) {
+		return
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 	defer cancel()
 	st, err := m.a.Store.GetUserSettings(ctx, userID)
@@ -1107,18 +1113,39 @@ func (m *Module) generateTitle(userID string, chat *models.Chat, prompt string) 
 		slog.Warn("title generation failed", "chat", chat.ID, "err", err)
 		return
 	}
-	title = strings.Trim(strings.TrimSpace(title), `"'`)
-	if title == "" {
-		return
+	title = clipTitle(strings.Trim(strings.TrimSpace(title), `"'`))
+	if title != "" && m.replaceTitle(ctx, chat.ID, chat.Title, title) {
+		m.publishChatEvent(userID, map[string]any{"kind": "title_updated", "chat_id": chat.ID, "title": title})
 	}
-	if len(title) > 255 {
-		title = title[:255]
+}
+
+// replaceTitle sets the title only while it is still old (a rename made
+// meanwhile wins). updated_at stays: a backfilled title isn't unseen activity.
+func (m *Module) replaceTitle(ctx context.Context, chatID, old, title string) bool {
+	res, err := m.a.DB.ExecContext(ctx, `UPDATE chats SET title = ? WHERE id = ? AND title = ?`, title, chatID, old)
+	if err != nil {
+		return false
 	}
-	// updated_at untouched: a backfilled title isn't unseen activity.
-	if _, err := m.a.DB.ExecContext(ctx, `UPDATE chats SET title = ? WHERE id = ?`, title, chat.ID); err != nil {
-		return
+	n, err := res.RowsAffected()
+	return err == nil && n > 0
+}
+
+// isPlaceholderTitle reports a title the client or MCP derived from the
+// prompt (its start, whitespace collapsed) or a generic default.
+func isPlaceholderTitle(title, prompt string) bool {
+	t := strings.Join(strings.Fields(strings.TrimRight(title, "\uFFFD")), " ")
+	if t == "" || strings.EqualFold(t, "New chat") {
+		return true
 	}
-	m.publishChatEvent(userID, map[string]any{"kind": "title_updated", "chat_id": chat.ID, "title": title})
+	return strings.HasPrefix(strings.Join(strings.Fields(prompt), " "), t)
+}
+
+// clipTitle caps a title at 255 characters without splitting one.
+func clipTitle(title string) string {
+	if r := []rune(title); len(r) > 255 {
+		return string(r[:255])
+	}
+	return title
 }
 
 func guessMIME(name string) string {

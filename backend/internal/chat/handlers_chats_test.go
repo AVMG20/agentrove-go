@@ -3,8 +3,10 @@ package chat
 import (
 	"context"
 	"fmt"
+	"strings"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	"agentrove/internal/app"
 	"agentrove/internal/db"
@@ -91,5 +93,41 @@ func TestCheckpointsArePruned(t *testing.T) {
 	}
 	if ids := checkpointIDs(t, d); len(ids) != 0 {
 		t.Fatalf("checkpoints left after delete: %v", ids)
+	}
+}
+
+func TestPlaceholderTitle(t *testing.T) {
+	prompt := "  Fix the   login\nbug on the settings page please"
+	for title, want := range map[string]bool{
+		"Fix the login bug on the":     true, // client: prompt start, whitespace collapsed
+		"New Chat":                     true,
+		"":                             true,
+		"Nightly sync · Jan 02, 15:04": false, // automation run
+		"Reviewer":                     false, // persona sub-thread
+		"Login fix":                    false, // explicit MCP title or a rename
+	} {
+		if got := isPlaceholderTitle(title, prompt); got != want {
+			t.Errorf("isPlaceholderTitle(%q) = %v, want %v", title, got, want)
+		}
+	}
+	long := strings.Repeat("é", 300)
+	if got := clipTitle(long); !utf8.ValidString(got) || utf8.RuneCountInString(got) != 255 {
+		t.Errorf("clipTitle split or miscounted: %d runes", utf8.RuneCountInString(got))
+	}
+}
+
+// A rename during the first turn must survive the generated title.
+func TestGeneratedTitleKeepsRename(t *testing.T) {
+	m, d := newTestModule(t)
+	withApp(m, d)
+	ctx := context.Background()
+	if _, err := d.Exec(`UPDATE chats SET title = 'Renamed' WHERE id = ?`, testChat); err != nil {
+		t.Fatal(err)
+	}
+	if m.replaceTitle(ctx, testChat, "c", "Generated") {
+		t.Fatal("replaced a renamed title")
+	}
+	if !m.replaceTitle(ctx, testChat, "Renamed", "Generated") {
+		t.Fatal("did not replace the title it started with")
 	}
 }
