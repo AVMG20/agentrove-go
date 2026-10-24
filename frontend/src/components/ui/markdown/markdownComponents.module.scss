@@ -10,7 +10,11 @@
   border-radius: var(--radius-lg);
 }
 
+// Columns size to their content (capped per cell) and the wrapper scrolls
+// sideways, instead of squeezing every column into a word-per-line strip on
+// a phone.
 .table {
+  width: max-content;
   min-width: 100%;
 
   > * + * {
@@ -40,6 +44,7 @@
 
 .th {
   @include type.type-default(500);
+  max-width: 20rem;
   padding: var(--space-2) var(--space-3);
   text-align: left;
   color: var(--theme-text-tertiary);
@@ -47,6 +52,7 @@
 
 .td {
   @include type.type-body;
+  max-width: 20rem;
   padding: var(--space-2) var(--space-3);
   color: var(--theme-text-secondary);
 }

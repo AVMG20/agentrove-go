@@ -32,6 +32,8 @@
     position: fixed;
     inset: 0 auto 0 0;
     width: min(var(--sidebar-width), 85vw);
+    // Landscape: clear of the notch side.
+    padding-left: var(--safe-area-left);
     transform: translateX(-100%);
     transition-property: transform;
     box-shadow: var(--shadow-strong);
@@ -40,6 +42,12 @@
     // for the row menus' position: fixed.
     &--open {
       transform: none;
+    }
+
+    // Follows the finger while dragged open or closed (useDrawerSwipe).
+    :global(html[data-drawer-dragging]) & {
+      transform: translateX(calc((var(--drawer-progress) - 1) * 100%));
+      transition: none;
     }
   }
 }

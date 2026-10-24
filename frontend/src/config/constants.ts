@@ -19,6 +19,8 @@ export const MONACO_FONT_FAMILY =
   'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace';
 
 export const MOBILE_BREAKPOINT = 768;
+// Shorter than this on a touch screen = a phone in landscape (phone layout).
+export const PHONE_LANDSCAPE_MAX_HEIGHT = 500;
 
 export const EMPTY_BUILTIN_COMMANDS: Record<AgentKind, SlashCommand[]> = {
   claude: [],

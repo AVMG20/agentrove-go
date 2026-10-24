@@ -43,6 +43,11 @@
   position: relative;
   padding: var(--space-3) var(--space-4) 0;
 
+  // Phones: every pixel of height goes to the conversation.
+  @include responsive.media('mobile') {
+    padding: var(--space-2-5) var(--space-3) 0;
+  }
+
   // Keep text clear of the corner control.
   &--corner {
     padding-right: var(--space-10);
@@ -62,4 +67,8 @@
   justify-content: flex-end;
   gap: var(--space-0-5);
   padding: var(--space-1) var(--space-2-5) var(--space-2-5);
+
+  @include responsive.media('mobile') {
+    padding: 0 var(--space-2) var(--space-2);
+  }
 }

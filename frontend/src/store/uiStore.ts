@@ -13,7 +13,7 @@ import type {
 } from '@/types/ui.types';
 import { MAX_CHAT_PANES } from '@/types/ui.types';
 import type { DiffMode } from '@/types/sandbox.types';
-import { MOBILE_BREAKPOINT } from '@/config/constants';
+import { isMobileViewport } from '@/hooks/useIsMobile';
 import {
   activeSplitSlot,
   isSplitTile,
@@ -118,11 +118,10 @@ type UIStoreState = ThemeState &
 
 const getInitialSidebarState = (): boolean => {
   if (typeof window === 'undefined') return false;
-  return window.innerWidth >= MOBILE_BREAKPOINT;
+  return !isMobileViewport();
 };
 
-const isDesktop = (): boolean =>
-  typeof window !== 'undefined' && window.innerWidth >= MOBILE_BREAKPOINT;
+const isDesktop = (): boolean => typeof window !== 'undefined' && !isMobileViewport();
 
 function splitAgentTile(slot: SplitSlot): AgentTileId {
   return `agent:split-${slot}`;

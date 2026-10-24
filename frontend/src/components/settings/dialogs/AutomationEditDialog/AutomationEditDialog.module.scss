@@ -1,4 +1,5 @@
 @use '@/styles/globals/typography' as type;
+@use '@/styles/globals/responsive' as responsive;
 
 .dialog {
   overflow: visible;
@@ -158,6 +159,11 @@
   @include type.type-default;
   height: var(--space-8);
   width: var(--space-28);
+
+  // Touch screens render fields at 16px (iOS zoom rule); keep "09:00 AM" whole.
+  @include responsive.media('coarse-touch') {
+    width: var(--space-36);
+  }
 }
 
 .cron-input {

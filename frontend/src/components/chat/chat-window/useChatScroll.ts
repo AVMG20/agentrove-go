@@ -200,6 +200,8 @@ export function useChatScroll({
         // messages-keyed effect misses the latter two. ResizeObserver fires
         // after layout and before paint, so the scroll never lags the growth.
         // Skipped mid-anchor: an instant snap would cancel the send's smooth scroll.
+        // The scroller itself is watched too: it shrinks when the phone keyboard
+        // opens or the composer grows, which would otherwise hide the latest lines.
         const content = node.firstElementChild;
         if (content) {
           const observer = new ResizeObserver(() => {
@@ -213,6 +215,7 @@ export function useChatScroll({
             }
           });
           observer.observe(content);
+          observer.observe(node);
           contentResizeObserverRef.current = observer;
         }
       }
