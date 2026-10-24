@@ -94,5 +94,9 @@ func (m *Module) restoreCheckpoint(w http.ResponseWriter, r *http.Request) error
 	if err != nil {
 		return httpx.BadRequest(err.Error())
 	}
-	return httpx.OK(w, map[string]any{"success": res.ExitCode == 0, "output": strings.TrimSpace(res.Output())})
+	out := map[string]any{"success": res.ExitCode == 0, "output": strings.TrimSpace(res.Output())}
+	if res.ExitCode != 0 {
+		out["error"] = firstNonEmpty(strings.TrimSpace(res.Output()), "Restore failed")
+	}
+	return httpx.OK(w, out)
 }
