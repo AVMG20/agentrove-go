@@ -14,6 +14,7 @@ import type {
 } from '@tanstack/react-query';
 import { chatService } from '@/services/chatService';
 import { useMessageQueueStore } from '@/store/messageQueueStore';
+import { useComposerDraftStore } from '@/store/composerDraftStore';
 import { useUIStore, type ComposerSelection } from '@/store/uiStore';
 import type { Chat, ChatSearchResponse, ContextUsage, CreateChatRequest } from '@/types/chat.types';
 import type { PaginatedChats } from '@/types/api.types';
@@ -338,6 +339,7 @@ export const useDeleteChatMutation = createMutation<void, Error, string>(
         queryClient.removeQueries({ queryKey: queryKeys.contextUsage(data.id) });
         useMessageQueueStore.getState().cleanupChat(data.id);
         useUIStore.getState().cleanupChat(data.id);
+        useComposerDraftStore.getState().clearDraft(data.id);
       }
     }
 
@@ -355,6 +357,7 @@ export const useDeleteChatMutation = createMutation<void, Error, string>(
     queryClient.invalidateQueries({ queryKey: queryKeys.chatsSearchAll });
     useMessageQueueStore.getState().cleanupChat(chatId);
     useUIStore.getState().cleanupChat(chatId);
+    useComposerDraftStore.getState().clearDraft(chatId);
   },
 );
 

@@ -1,12 +1,13 @@
 import { useBackgroundTasksStore } from '@/store/backgroundTasksStore';
 import { useChannelStore } from '@/store/channelStore';
 import { useChatStore } from '@/store/chatStore';
+import { useComposerDraftStore } from '@/store/composerDraftStore';
 import { useElicitationStore } from '@/store/elicitationStore';
 import { useChannelQueueStore, useMessageQueueStore } from '@/store/messageQueueStore';
 import { usePermissionStore } from '@/store/permissionStore';
 import { useStreamStore } from '@/store/streamStore';
 
-// In-memory stores holding one account's live data. An SPA sign-out doesn't reload, so
+// Stores holding one account's live data (all in memory but composer drafts). An SPA sign-out doesn't reload, so
 // without this the next sign-in inherits the previous account's streams (which keep the
 // shared SSE connection open on the old token), queues and pending prompts.
 export function resetUserScopedStores(): void {
@@ -23,4 +24,6 @@ export function resetUserScopedStores(): void {
   useBackgroundTasksStore.setState(useBackgroundTasksStore.getInitialState(), true);
   useChannelStore.setState(useChannelStore.getInitialState(), true);
   useChatStore.setState(useChatStore.getInitialState(), true);
+  // Persisted, so the next account on this browser doesn't see unsent text.
+  useComposerDraftStore.setState(useComposerDraftStore.getInitialState(), true);
 }
