@@ -320,7 +320,7 @@ func (t *turn) run() {
 	if wt := db.Deref(t.req.chat.WorktreeCwd); wt != "" {
 		t.emit("system", map[string]any{"data": map[string]any{"worktree_cwd": wt}})
 	}
-	if t.req.isNewChat && t.req.member == nil && t.req.rawPrompt != "" {
+	if t.req.isNewChat && t.req.member == nil && t.req.rawPrompt != "" && !t.cancelled.Load() {
 		go t.m.generateTitle(t.req.userID, t.req.chat, t.req.rawPrompt)
 	}
 
@@ -341,6 +341,9 @@ func (t *turn) run() {
 }
 
 func (t *turn) execute() (*claude.Result, error) {
+	if t.cancelled.Load() {
+		return nil, nil // stopped before it launched
+	}
 	sb, err := t.m.a.Sandboxes.For(t.req.ws)
 	if err != nil {
 		return nil, err

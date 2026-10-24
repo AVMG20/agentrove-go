@@ -48,6 +48,10 @@ type Module struct {
 	// live is the session whose output and background tasks the chat follows;
 	// a session replaced by a respawn still runs until its Close finishes.
 	live map[string]*claude.Session
+	// stopStarting marks a reserved chat whose turn was stopped before it
+	// launched (e.g. while the box woke up); it then launches only to finish
+	// as interrupted.
+	stopStarting map[string]bool
 
 	// routeMu orders session output against turns attaching and detaching:
 	// output that arrives while no turn is attached is held in pending and
@@ -68,7 +72,7 @@ type Module struct {
 func New(a *app.App) *Module {
 	m := &Module{
 		a: a, st: &store{db: a.DB}, sessions: newSessions(),
-		turns: map[string]*turn{}, attached: map[string]*turn{}, starting: map[string]bool{},
+		turns: map[string]*turn{}, attached: map[string]*turn{}, starting: map[string]bool{}, stopStarting: map[string]bool{},
 		bgTasks: map[string][]backgroundTask{}, bgOwner: map[string]string{}, pending: map[string][]claude.Message{},
 		live: map[string]*claude.Session{},
 	}
@@ -244,6 +248,7 @@ func (m *Module) reserve(chatID string) bool {
 func (m *Module) unreserve(chatID string) {
 	m.mu.Lock()
 	delete(m.starting, chatID)
+	delete(m.stopStarting, chatID)
 	m.mu.Unlock()
 }
 
@@ -252,6 +257,11 @@ func (m *Module) launch(t *turn) {
 	m.mu.Lock()
 	m.turns[t.chatID] = t
 	delete(m.starting, t.chatID)
+	if m.stopStarting[t.chatID] {
+		delete(m.stopStarting, t.chatID)
+		t.cancelled.Store(true)
+		t.cancel()
+	}
 	m.mu.Unlock()
 	go func() {
 		defer func() {
@@ -488,9 +498,15 @@ func (m *Module) persistSessionID(chatID, sessionID string) {
 	_, _ = m.a.DB.ExecContext(context.Background(), `UPDATE chats SET session_id = ? WHERE id = ? AND (session_id IS NULL OR session_id != ?)`, sessionID, chatID, sessionID)
 }
 
-// cancelTurn interrupts the chat's turn and waits for it to unwind.
+// cancelTurn interrupts the chat's turn and waits for it to unwind. A turn
+// still starting is marked so it never runs the agent.
 func (m *Module) cancelTurn(chatID string, timeout time.Duration) {
-	t := m.activeTurn(chatID)
+	m.mu.Lock()
+	t := m.turns[chatID]
+	if t == nil && m.starting[chatID] {
+		m.stopStarting[chatID] = true
+	}
+	m.mu.Unlock()
 	if t == nil {
 		return
 	}
@@ -839,7 +855,13 @@ func (m *Module) startTurn(ctx context.Context, in startInput) (app.ChatTurnResu
 	m.mu.Lock()
 	m.bgOwner[chat.ID] = in.userID
 	m.mu.Unlock()
-	m.launch(newTurn(m, req))
+	t := newTurn(m, req)
+	if ctx.Err() != nil {
+		// The client gave up on the start (Stop while the box woke up).
+		t.cancelled.Store(true)
+		t.cancel()
+	}
+	m.launch(t)
 	launched = true
 	if in.member == nil {
 		m.publishChatEvent(in.userID, map[string]any{"kind": "stream_started", "chat_id": chat.ID, "message_id": asstMsg.ID})
