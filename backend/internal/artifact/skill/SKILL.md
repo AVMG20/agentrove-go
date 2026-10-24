@@ -17,7 +17,7 @@ An artifact is a single self-contained HTML page published with the `create_arti
 
 ## Kit
 
-Start every page with the kit unless the user asks for a custom look. It styles plain HTML in light and dark mode and adds layout, data and chart helpers:
+Start reports, dashboards, explainers and tools with the kit. It styles plain HTML in light and dark mode and adds layout, data and chart helpers. Skip it when the page should have its own look — a website or landing page design, a mockup, a brand, or whenever the user asks for a custom style — and write your own CSS instead: the page is its own document, so nothing from Agentrove styles it. (Kit.store also works with only kit.js loaded; the chart helpers take their colors from kit.css.)
 
 ```html
 <!doctype html>
