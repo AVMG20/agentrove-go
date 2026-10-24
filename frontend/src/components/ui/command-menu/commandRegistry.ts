@@ -327,6 +327,10 @@ export function executeCommand(
           queryClient.invalidateQueries({
             queryKey: queryKeys.sandbox.filesMetadataAll(sandboxId),
           }),
+          // The pull rewrote files: open tabs must not keep (and save over) old content.
+          queryClient.invalidateQueries({
+            queryKey: queryKeys.sandbox.fileContentAll(sandboxId),
+          }),
           invalidateGitState(queryClient, sandboxId),
         ]);
       }
