@@ -64,10 +64,13 @@ export interface UserSettings {
   notifications_enabled: boolean;
   title_model_id: string;
   auto_compact_window: number;
+  browser_tools_enabled: boolean;
+  // Read-only: whether the server runs box browsers at all.
+  browser_available: boolean;
   created_at: string;
   updated_at: string;
 }
 
 export type UserSettingsUpdate = Partial<
-  Omit<UserSettings, 'id' | 'user_id' | 'created_at' | 'updated_at'>
+  Omit<UserSettings, 'id' | 'user_id' | 'created_at' | 'updated_at' | 'browser_available'>
 >;

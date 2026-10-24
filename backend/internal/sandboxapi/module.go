@@ -1,6 +1,7 @@
 // Package sandboxapi serves /api/v1/sandbox/{sandbox_id}/... (files, git,
-// search, zip download) and the terminal WebSocket. Read-only operations run
-// on the host against the workspace dir; mutations run inside the sandbox.
+// search, zip download, the browser viewer's WebSocket) and the terminal
+// WebSocket. Read-only operations run on the host against the workspace
+// dir; mutations run inside the sandbox.
 package sandboxapi
 
 import (
@@ -15,6 +16,7 @@ import (
 
 	"agentrove/internal/app"
 	"agentrove/internal/auth"
+	"agentrove/internal/browserview"
 	"agentrove/internal/gitops"
 	"agentrove/internal/httpx"
 	"agentrove/internal/models"
@@ -22,12 +24,18 @@ import (
 )
 
 type Module struct {
-	a     *app.App
-	terms *terminals
+	a       *app.App
+	terms   *terminals
+	viewers viewerCount
+	// browserBox reaches a workspace's box browser and names the box (for
+	// the viewer limit); tests replace it.
+	browserBox func(ws *models.Workspace) (browserview.Box, string, error)
 }
 
 func New(a *app.App) *Module {
-	return &Module{a: a, terms: newTerminals(a.Sandboxes)}
+	m := &Module{a: a, terms: newTerminals(a.Sandboxes)}
+	m.browserBox = m.dockerBrowser
+	return m
 }
 
 // TerminateSandbox kills the sandbox's terminals and tmux sessions. Workspace
@@ -60,6 +68,8 @@ func (m *Module) Routes(mux *http.ServeMux) {
 	mux.HandleFunc("POST "+p+"/git/create-branch", req(m.gitCreateBranch))
 	mux.HandleFunc("GET "+p+"/git/remote-url", req(m.gitRemoteURL))
 	mux.HandleFunc("GET "+p+"/search", req(m.search))
+	mux.HandleFunc("GET "+p+"/browser/ws", m.browserWS)
+	mux.HandleFunc("POST "+p+"/browser/reset", req(m.browserReset))
 
 	mux.HandleFunc("GET "+m.a.Cfg.APIPrefix+"/ws/{sandbox_id}/terminal", m.terminalWS)
 }

@@ -512,22 +512,11 @@ func (s *termSession) refresh(ctx context.Context) {
 	_, _ = s.sb.Shell(ctx, "", script, 15*time.Second)
 }
 
-type wsInbound struct {
-	typ  websocket.MessageType
-	data []byte
-}
-
-func (m *Module) terminalWS(w http.ResponseWriter, r *http.Request) {
-	// Auth is the first frame (browsers can't set WS headers), so the
-	// handshake itself is open; origin checks add nothing to a token flow.
-	c, err := websocket.Accept(w, r, &websocket.AcceptOptions{InsecureSkipVerify: true})
-	if err != nil {
-		return
-	}
+// wsAuthenticate reads the {"type":"auth","token":...} first frame and
+// returns its user (session tokens only), or closes c and returns nil.
+func (m *Module) wsAuthenticate(ctx context.Context, c *websocket.Conn) *models.User {
 	// Unauthenticated peers only get room for the auth frame.
 	c.SetReadLimit(64 << 10)
-	ctx := r.Context()
-
 	actx, cancel := context.WithTimeout(ctx, wsAuthTimeout)
 	_, first, err := c.Read(actx)
 	cancel()
@@ -545,6 +534,25 @@ func (m *Module) terminalWS(w http.ResponseWriter, r *http.Request) {
 	}
 	if user == nil {
 		_ = c.Close(wsCloseAuthFailed, "Authentication failed")
+	}
+	return user
+}
+
+type wsInbound struct {
+	typ  websocket.MessageType
+	data []byte
+}
+
+func (m *Module) terminalWS(w http.ResponseWriter, r *http.Request) {
+	// Auth is the first frame (browsers can't set WS headers), so the
+	// handshake itself is open; origin checks add nothing to a token flow.
+	c, err := websocket.Accept(w, r, &websocket.AcceptOptions{InsecureSkipVerify: true})
+	if err != nil {
+		return
+	}
+	ctx := r.Context()
+	user := m.wsAuthenticate(ctx, c)
+	if user == nil {
 		return
 	}
 	c.SetReadLimit(8 << 20)

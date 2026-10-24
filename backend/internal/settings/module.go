@@ -38,6 +38,7 @@ func (m *Module) get(w http.ResponseWriter, r *http.Request) error {
 	if err != nil {
 		return err
 	}
+	st.BrowserAvailable = m.a.Cfg.BrowserEnabled
 	return httpx.OK(w, st)
 }
 
@@ -199,6 +200,13 @@ func (m *Module) patch(w http.ResponseWriter, r *http.Request) error {
 			return httpx.Unprocessable("auto_compact_window must be one of 100000, 250000, 500000, 750000, 1000000")
 		}
 		set("auto_compact_window", v)
+	}
+	if raw, ok := body["browser_tools_enabled"]; ok {
+		var v bool
+		if err := json.Unmarshal(raw, &v); err != nil {
+			return httpx.Unprocessable("browser_tools_enabled must be a boolean")
+		}
+		set("browser_tools_enabled", v)
 	}
 
 	// Creates the row on first use.

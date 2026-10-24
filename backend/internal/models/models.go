@@ -66,8 +66,11 @@ type UserSettings struct {
 	NotificationsEnabled      bool                    `json:"notifications_enabled"`
 	TitleModelID              string                  `json:"title_model_id"`
 	AutoCompactWindow         int                     `json:"auto_compact_window"`
-	CreatedAt                 db.Time                 `json:"created_at"`
-	UpdatedAt                 db.Time                 `json:"updated_at"`
+	BrowserToolsEnabled       bool                    `json:"browser_tools_enabled"`
+	// Server-wide SANDBOX_BROWSER_ENABLED, so the UI can hide the browser.
+	BrowserAvailable bool    `json:"browser_available"`
+	CreatedAt        db.Time `json:"created_at"`
+	UpdatedAt        db.Time `json:"updated_at"`
 }
 
 type Workspace struct {

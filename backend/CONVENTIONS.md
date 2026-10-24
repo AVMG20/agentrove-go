@@ -100,6 +100,75 @@ host. Turn per-user networks off with `SANDBOX_PER_USER_NETWORKS=false`;
 boxes move back to the shared network on their next start, where the
 bridge-table rules still keep them from each other.
 
+## Box browser
+Each box has one shared headless Chromium for agents to test web apps with,
+and the user can watch and drive it in the terminal panel's Browser tab.
+Nothing browser-related runs until it is used.
+- **Image** (`sandbox/docker/Dockerfile`): the Chromium headless shell
+  installed by the pinned `@playwright/mcp`'s own Playwright into
+  `/opt/ms-playwright` (outside HOME; not the image's
+  `PLAYWRIGHT_BROWSERS_PATH`, so projects' own Playwright still installs into
+  HOME) with its libraries and fonts, `socat`, and two helpers.
+- **`agentrove-browser`** (shell, `sandbox/docker/`): `ensure` starts
+  Chromium under `flock` (idempotent, race-safe), waits for CDP on
+  `127.0.0.1:9222` and prints the browser websocket path; `stop`; `reset`
+  (stop and wipe the profile); `status`. The profile persists in
+  `~/.agentrove/browser-profile`; it is shared by the user and the agent, so
+  anything the user logs into in the viewer is usable by the agent (`reset`
+  wipes it). Runtime state is in `/tmp/agentrove-browser`.
+  A watchdog stops Chromium after `AGENTROVE_BROWSER_IDLE_SECONDS` (the API
+  passes `SANDBOX_BROWSER_IDLE_SECONDS`, default 600, 0 = never) with no
+  established CDP connection. Connections Chromium opens itself (a page
+  fetching `127.0.0.1:9222`) don't count: `ss -p` client sockets in
+  Chromium's session are skipped. `--no-sandbox`: Chromium's sandbox needs user namespaces that
+  Docker's seccomp profile blocks; the box is the sandbox.
+- **Agent tools**: `chat.sessionConfig` adds the stdio MCP server `browser`
+  (`agentrove-browser-mcp`) to Docker sessions unless `SANDBOX_BROWSER_ENABLED`
+  is off or the user turned off `browser_tools_enabled` in settings, pre-allows
+  its tools like the artifact tools (except `browser_run_code_unsafe`, which
+  runs arbitrary code in the box like Bash) and adds a `<browser>` prompt note.
+  `agentrove-browser-mcp` (`backend/cmd/agentrove-browser-mcp`, stdlib only,
+  built into the image) is a lazy proxy: it answers `initialize` and
+  `tools/list` from a cache recorded at image build, starts the browser and
+  `playwright-mcp --cdp-endpoint http://127.0.0.1:9222 --caps vision` on the
+  first tool call, and stops playwright-mcp (~130MB) after
+  `AGENTROVE_BROWSER_MCP_IDLE_SECONDS` (300) without calls, so its CDP
+  connection closes and the watchdog can stop Chromium. It answers
+  playwright-mcp's `roots/list` itself with `/tmp/playwright-mcp` (also its
+  cwd and output dir) and drops the client's roots, so the pre-allowed tools
+  that take a `filename` (screenshot, snapshot, evaluate, network bodies,
+  uploads) can't read or write the project; it prunes that dir to the newest
+  300 files / 200MB. Bumping
+  `PLAYWRIGHT_MCP_VERSION` means checking `browserTools` against its tool list.
+- **Viewer** (`internal/browserview`, route
+  `GET /api/v1/sandbox/{sandbox_id}/browser/ws` in `sandboxapi/browser.go`):
+  auth is the first frame as for the terminal, then ownership via
+  `GetWorkspaceBySandbox`. The API never connects to a box over the network:
+  it runs `agentrove-browser ensure` and `socat STDIO TCP:127.0.0.1:9222` over
+  docker exec (`boxBrowser`, behind the `browserview.Box` interface) and does
+  the CDP websocket handshake on that stream. Each viewer has its own CDP
+  connection and screencast (`Page.startScreencast` only while connected,
+  JPEG, at most 15 fps and 2 unacked frames, sized to the client's canvas)
+  and speaks a small protocol (`protocol.go`), never raw CDP: tabs, navigation
+  (http(s) and about:blank only), window size, mouse/wheel/key/text input,
+  JS dialogs, reset. It follows tabs the agent opens. The CDP peer runs in
+  the box, so it is untrusted: messages are capped at 8MB, the event backlog
+  and the client's queued messages by bytes, and page-controlled strings (tab
+  titles and URLs, dialog text) are clipped. No reply it asks for grows with
+  page content beyond Chromium's own caps (URLs 2MB, titles 4KB): tabs come
+  from target events and per-target `getTargetInfo` (never
+  `Target.getTargets`), back/forward state and moves from an isolated world
+  (never `Page.getNavigationHistory`). A tab shown when a connection broke
+  isn't picked first by the next session, so one hostile tab can't keep the
+  viewer down, and `POST .../browser/reset` resets without a session. A
+  client too slow to read is closed with 1013 (the frontend retries).
+  Internal refreshes are single-flight; user commands a hung page backs up
+  are refused with a message, never dropped silently. The socat process holds a
+  sandbox lease, so a watched box isn't idle-stopped. At most 4 viewers per
+  box, and 30 tabs opened through a viewer. Settings report
+  `browser_available` (`SANDBOX_BROWSER_ENABLED`) so the UI can hide it.
+  `TestRealBox` (env `AGENTROVE_BROWSER_E2E_CONTAINER`) drives a real box.
+
 ## Layout
 - `cmd/agentrove` — entrypoint.
 - `internal/config` — env config. `internal/db` — SQLite + embedded
@@ -127,6 +196,7 @@ bridge-table rules still keep them from each other.
   `GetChat`, `GetMemberChat`, `GetUserSettings`, `UserEnv`.
 - `internal/sandbox` — `Manager.For(workspace) -> *Sandbox`. `Sandbox.Exec`,
   `Shell`, `Start`, `StartPTY`, `HostPath`, `Resolve`, `Acquire`, `Touch`.
+- `internal/browserview` — the box browser's live viewer (see "Box browser").
 - `internal/app.App` — shared deps passed to every module, plus `Hooks` for
   cross-module calls (e.g. `Hooks.StartChatTurn`).
 - `internal/server` — module wiring. Each group has its own file

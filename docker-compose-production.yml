@@ -43,6 +43,9 @@ services:
       SANDBOX_EGRESS_DNS: ${SANDBOX_EGRESS_DNS:-}
       SANDBOX_EGRESS_HAIRPIN_PORTS: ${SANDBOX_EGRESS_HAIRPIN_PORTS:-}
       SANDBOX_IDLE_TTL_SECONDS: ${SANDBOX_IDLE_TTL_SECONDS:-900}
+      # Box browser for agents and the Browser tab (backend/CONVENTIONS.md).
+      SANDBOX_BROWSER_ENABLED: ${SANDBOX_BROWSER_ENABLED:-true}
+      SANDBOX_BROWSER_IDLE_SECONDS: ${SANDBOX_BROWSER_IDLE_SECONDS:-600}
       ALLOWED_ORIGINS: ${APP_URL:-http://localhost}
       BASE_URL: ${APP_URL:-http://localhost}
       FRONTEND_URL: ${APP_URL:-http://localhost}

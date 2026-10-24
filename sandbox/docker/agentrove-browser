@@ -1,0 +1,183 @@
+#!/bin/bash
+# The box's shared headless Chromium, started on demand. Agents (Playwright
+# MCP via agentrove-browser-mcp) and the API's live viewer (CDP through
+# `docker exec socat`) all attach to the same browser on
+# 127.0.0.1:$AGENTROVE_BROWSER_PORT, so the user watches what the agent does.
+# A watchdog stops it once no CDP client has been connected for
+# AGENTROVE_BROWSER_IDLE_SECONDS (0: never), so an unused browser costs no
+# RAM. The profile (logins, storage) persists in HOME; the cache doesn't.
+#
+#   agentrove-browser ensure   start it if needed; prints the CDP browser websocket path
+#   agentrove-browser stop     stop it
+#   agentrove-browser reset    stop it and wipe the profile (cookies, storage, history)
+#   agentrove-browser status   "running <pid>" or "stopped"
+#
+# --no-sandbox: Chromium's own sandbox needs user namespaces, which Docker's
+# default seccomp profile blocks. The box is the sandbox (see the box network
+# rules); the debugging port only listens on loopback inside it.
+set -euo pipefail
+
+PORT=${AGENTROVE_BROWSER_PORT:-9222}
+IDLE=${AGENTROVE_BROWSER_IDLE_SECONDS:-600}
+PROFILE=${AGENTROVE_BROWSER_PROFILE:-$HOME/.agentrove/browser-profile}
+CHROME=${AGENTROVE_BROWSER_BINARY:-/usr/local/lib/agentrove-browser/chrome}
+# Runtime state lives on the container filesystem, not in the persistent HOME.
+RUN=/tmp/agentrove-browser
+PIDFILE=$RUN/chrome.pid
+LAST_ENSURE=$RUN/last-ensure
+
+mkdir -p "$RUN"
+exec 9>"$RUN/lock"
+
+# chrome_pid prints the pid of our Chromium if it is running. The pid file
+# survives a container restart, so the pid must also still be Chromium.
+chrome_pid() {
+    local p
+    [ -s "$PIDFILE" ] || return 1
+    p=$(cat "$PIDFILE")
+    kill -0 "$p" 2>/dev/null || return 1
+    [ "$(readlink "/proc/$p/exe" 2>/dev/null)" = "$(readlink -f "$CHROME")" ] || return 1
+    echo "$p"
+}
+
+# cdp_path prints the browser websocket path once CDP answers.
+cdp_path() {
+    local url
+    url=$(curl -fsS -m 2 "http://127.0.0.1:$PORT/json/version" 2>/dev/null | jq -r '.webSocketDebuggerUrl // empty') || return 1
+    [ -n "$url" ] || return 1
+    echo "/${url#ws://*/}"
+}
+
+# clients counts established CDP connections (agents and viewers) to
+# Chromium $1. Connections Chromium makes itself are left out: a page that
+# fetches http://127.0.0.1:$PORT/json/version leaves a keep-alive socket in
+# Chromium's network service, which would keep the browser alive forever.
+# Sockets whose owner ss can't see (another user's) count as clients.
+clients() {
+    local n=0 line pid
+    while IFS= read -r line; do
+        pid=$(sed -n 's/.*pid=\([0-9]*\).*/\1/p' <<<"$line")
+        if [ -n "$pid" ] && [ "$(ps -o sid= -p "$pid" 2>/dev/null | tr -d ' ')" = "$1" ]; then
+            continue
+        fi
+        n=$((n + 1))
+    done < <(ss -Htnp state established "( dport = :$PORT )" 2>/dev/null)
+    echo "$n"
+}
+
+stop_locked() {
+    local p
+    if p=$(chrome_pid); then
+        kill -TERM "$p" 2>/dev/null || true
+        for _ in $(seq 50); do
+            kill -0 "$p" 2>/dev/null || break
+            sleep 0.1
+        done
+        # Chromium leads its own session: take renderers and helpers with it.
+        pkill -KILL -s "$p" 2>/dev/null || true
+    fi
+    rm -f "$PIDFILE"
+}
+
+ensure() {
+    flock -w 60 9 || { echo "agentrove-browser: timed out waiting for the lock" >&2; exit 1; }
+    date +%s >"$LAST_ENSURE"
+    local p path
+    if p=$(chrome_pid); then
+        # Starting happens under the lock, so a browser that doesn't answer
+        # within a few seconds is hung: restart it.
+        for _ in $(seq 50); do
+            if path=$(cdp_path); then
+                echo "$path"
+                return
+            fi
+            kill -0 "$p" 2>/dev/null || break
+            sleep 0.1
+        done
+    fi
+    stop_locked
+    mkdir -p "$PROFILE"
+    # A profile lock left by a container stop would block the next launch.
+    rm -f "$PROFILE/SingletonLock" "$PROFILE/SingletonSocket" "$PROFILE/SingletonCookie"
+    # setsid: no exec session or terminal hangup takes the browser down. The
+    # launched shell records its own pid, which exec hands to Chromium.
+    setsid bash -c 'echo $$ >"$0"; exec "$@"' "$PIDFILE" "$CHROME" \
+        --remote-debugging-address=127.0.0.1 \
+        --remote-debugging-port="$PORT" \
+        --user-data-dir="$PROFILE" \
+        --disk-cache-dir="$RUN/cache" \
+        --no-sandbox \
+        --disable-dev-shm-usage \
+        --no-first-run \
+        --no-default-browser-check \
+        --disable-background-networking \
+        --disable-component-update \
+        --disable-sync \
+        --disable-breakpad \
+        --password-store=basic \
+        --mute-audio \
+        --window-size=1280,800 \
+        about:blank >"$RUN/chrome.log" 2>&1 </dev/null 9>&- &
+    for _ in $(seq 200); do
+        if path=$(cdp_path); then
+            p=$(chrome_pid) || break
+            if [ "$IDLE" -gt 0 ]; then
+                setsid "$0" watchdog "$p" >/dev/null 2>&1 </dev/null 9>&- &
+            fi
+            echo "$path"
+            return
+        fi
+        sleep 0.1
+    done
+    echo "agentrove-browser: Chromium did not start:" >&2
+    tail -n 20 "$RUN/chrome.log" >&2 || true
+    stop_locked
+    exit 1
+}
+
+# watchdog stops Chromium (pid $1) after IDLE seconds without a CDP client.
+# A recent `ensure` counts as use: its caller is about to connect.
+watchdog() {
+    local p=$1 idle=0 step=15 last
+    [ "$IDLE" -lt "$step" ] && step=$IDLE
+    while kill -0 "$p" 2>/dev/null; do
+        sleep "$step"
+        if [ "$(clients "$p")" -gt 0 ]; then
+            idle=0
+            continue
+        fi
+        idle=$((idle + step))
+        [ "$idle" -ge "$IDLE" ] || continue
+        flock 9
+        last=$(cat "$LAST_ENSURE" 2>/dev/null || echo 0)
+        if [ "$(chrome_pid || true)" != "$p" ]; then
+            exit 0
+        fi
+        if [ "$(clients "$p")" -eq 0 ] && [ $(($(date +%s) - last)) -ge 60 ]; then
+            stop_locked
+            exit 0
+        fi
+        flock -u 9
+    done
+}
+
+case "${1:-}" in
+ensure) ensure ;;
+stop)
+    flock 9
+    stop_locked
+    ;;
+reset)
+    flock 9
+    stop_locked
+    rm -rf -- "${PROFILE:?}"
+    ;;
+status)
+    if p=$(chrome_pid); then echo "running $p"; else echo "stopped"; fi
+    ;;
+watchdog) watchdog "$2" ;;
+*)
+    echo "usage: agentrove-browser ensure|stop|reset|status" >&2
+    exit 2
+    ;;
+esac
