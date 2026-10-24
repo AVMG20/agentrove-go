@@ -271,6 +271,10 @@ export const Chat = memo(function Chat() {
     () => streamActivity(lastBotEvents),
     [lastBotEvents],
   );
+  // The reply's own creation time is the turn start; the stream store's start is
+  // when this tab attached, which restarts the clock after a reload.
+  const lastBotStartedAt = lastBotMessage ? Date.parse(lastBotMessage.created_at) : NaN;
+  const turnStartTime = Number.isFinite(lastBotStartedAt) ? lastBotStartedAt : streamStartTime;
 
   const renderMessage = useCallback(
     (msg: (typeof messages)[number]) => {
@@ -394,7 +398,7 @@ export const Chat = memo(function Chat() {
       <ConversationColumn>
         {showThinking && <StatusTypewriter streamStartTime={streamStartTime} />}
         {showWorking && (
-          <StreamWorkingStatus streamStartTime={streamStartTime} activityKey={activityKey} />
+          <StreamWorkingStatus streamStartTime={turnStartTime} activityKey={activityKey} />
         )}
         {showPermissionAtEnd && <ChatInlinePermission />}
         {showElicitationAtEnd && <ChatInlineElicitation />}
@@ -423,6 +427,7 @@ export const Chat = memo(function Chat() {
     showTurnStatus,
     showWorking,
     streamStartTime,
+    turnStartTime,
     unfinishedStatus,
   ]);
 

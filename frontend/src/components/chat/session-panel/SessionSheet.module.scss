@@ -6,6 +6,7 @@
   flex-direction: column;
   margin: auto calc(-1 * var(--space-4)) calc(-1 * var(--space-4));
   width: calc(100% + 2 * var(--space-4));
+  max-width: none;
   border-bottom: 0;
   border-radius: var(--radius-2xl) var(--radius-2xl) 0 0;
   padding-bottom: var(--safe-area-bottom);

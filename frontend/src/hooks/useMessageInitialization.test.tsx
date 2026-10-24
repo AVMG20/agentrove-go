@@ -65,6 +65,16 @@ describe('useMessageInitialization', () => {
     expect(seeded[0].is_bot).toBe(true);
   });
 
+  it('keeps the failure reason the turn footer shows', () => {
+    const params = makeParams({
+      fetchedMessages: [makeMessage({ stream_status: 'failed', stream_error: 'Overloaded' })],
+    });
+    renderHook(() => useMessageInitialization(params));
+
+    const seeded = (params.setMessages as ReturnType<typeof vi.fn>).mock.calls[0][0] as Message[];
+    expect(seeded[0].stream_error).toBe('Overloaded');
+  });
+
   it('persists the highest last_seq for stream-reconnect resumption', () => {
     const params = makeParams({
       fetchedMessages: [
