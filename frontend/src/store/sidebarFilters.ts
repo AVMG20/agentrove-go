@@ -40,6 +40,16 @@ export function clearSidebarFilters(filters: SidebarFilters): SidebarFilters {
   return { ...EMPTY_SIDEBAR_FILTERS, groupBy: filters.groupBy };
 }
 
+// A persisted project filter can outlive its project; drop it once the
+// loaded project list doesn't have it (same object when nothing changes).
+export function dropMissingWorkspaceFilter(
+  filters: SidebarFilters,
+  workspaceIds: string[],
+): SidebarFilters {
+  if (!filters.workspaceId || workspaceIds.includes(filters.workspaceId)) return filters;
+  return { ...filters, workspaceId: null };
+}
+
 export function countActiveSidebarFilters(filters: SidebarFilters): number {
   return filters.statuses.length + (filters.workspaceId ? 1 : 0);
 }
