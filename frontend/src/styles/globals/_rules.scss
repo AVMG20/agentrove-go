@@ -3,6 +3,7 @@
 // during the migration (both zero out the same things).
 
 @use 'typography' as type;
+@use 'responsive' as responsive;
 
 @mixin global-rules {
   *,
@@ -53,6 +54,14 @@
     color: var(--theme-text-primary);
   }
 
+  // The shell is a fixed-height app, not a page: no vertical rubber-band of the
+  // whole window (or pull-to-refresh) when a drag starts outside a scroller or
+  // runs past a scroller's end. Vertical only, so swipe-back navigation stays.
+  html,
+  body {
+    overscroll-behavior-y: none;
+  }
+
   #root {
     min-height: 100vh;
     min-height: 100dvh;
@@ -93,6 +102,17 @@
     font: inherit;
     letter-spacing: inherit;
     color: inherit;
+  }
+
+  // iOS zooms the page into any focused field under 16px and leaves it zoomed;
+  // on touch screens every field gets at least 16px. !important because module
+  // classes outrank element selectors and the UI scale is 13–15px.
+  @include responsive.media('touch') {
+    input:not([type='checkbox'], [type='radio'], [type='range'], [type='file']),
+    select,
+    textarea {
+      font-size: max(16px, 1em) !important;
+    }
   }
 
   button,

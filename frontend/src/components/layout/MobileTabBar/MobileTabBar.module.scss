@@ -1,0 +1,61 @@
+@use '@/styles/globals/typography' as type;
+@use '@/styles/globals/animations' as anim;
+@use '@/styles/globals/controls' as controls;
+@use '@/styles/globals/responsive' as responsive;
+
+// iOS-style tab bar under the page. It sits on the home-indicator inset itself,
+// so the shell zeroes --safe-area-bottom for the page above it.
+.bar {
+  @include type.type-noselect;
+  display: flex;
+  flex-shrink: 0;
+  border-top: 1px solid var(--theme-border);
+  background-color: var(--theme-surface);
+  padding-bottom: var(--device-safe-area-bottom);
+
+  // The keyboard covers this edge; give the room back to the chat.
+  :global(html[data-keyboard-open]) & {
+    display: none;
+  }
+}
+
+.tab {
+  @include controls.focus-ring;
+  @include anim.transition-colors;
+  display: flex;
+  min-width: 0;
+  height: var(--space-12);
+  flex: 1;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-0-5);
+  color: var(--theme-text-quaternary);
+  -webkit-tap-highlight-color: transparent;
+
+  &:active {
+    color: var(--theme-text-secondary);
+  }
+
+  &[aria-current='page'] {
+    color: var(--theme-text-primary);
+  }
+
+  // Phone on its side: height is what's scarce, so icon and label share a row.
+  @include responsive.media('phone-landscape') {
+    height: var(--space-10);
+    flex-direction: row;
+    gap: var(--space-1-5);
+  }
+}
+
+.icon {
+  height: var(--space-5);
+  width: var(--space-5);
+}
+
+.label {
+  @include type.type-meta(500);
+  @include type.type-overflow;
+  max-width: 100%;
+}

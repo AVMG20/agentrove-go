@@ -126,6 +126,9 @@ type turn struct {
 	lastTokens  int
 	lastWindow  int
 	costUSD     *float64
+	// errText is why the turn failed; kept out of the render (the UI shows it
+	// from stream_error) but appended to content_text for text readers.
+	errText string
 }
 
 func newTurn(m *Module, req *turnRequest) *turn {
@@ -281,6 +284,19 @@ func (t *turn) contentText() string {
 	return strings.TrimSpace(promptSuggestionsRE.ReplaceAllString(raw, ""))
 }
 
+// withErrorText is the content_text of a failed turn: channels, MCP readers
+// and search see why it failed, as they did when the error was in the render.
+func withErrorText(content, errText string) string {
+	switch {
+	case errText == "":
+		return content
+	case content == "":
+		return "Error: " + errText
+	default:
+		return content + "\n\nError: " + errText
+	}
+}
+
 func (t *turn) renderCopy() map[string]any {
 	events := make([]any, len(t.render))
 	for i, e := range t.render {
@@ -296,8 +312,8 @@ func (t *turn) checkpointLocked(status string) *int64 {
 	}
 	render, _ := json.Marshal(t.renderCopy())
 	dur, err := t.m.st.updateSnapshot(context.Background(), t.req.messageID, snapshot{
-		ContentText: t.contentText(), Render: json.RawMessage(render), LastSeq: t.lastSeq,
-		ActiveStreamID: active, Status: status, TotalCostUSD: t.costUSD, RecordActivity: true,
+		ContentText: withErrorText(t.contentText(), t.errText), Render: json.RawMessage(render), LastSeq: t.lastSeq,
+		ActiveStreamID: active, Status: status, StreamError: t.errText, TotalCostUSD: t.costUSD, RecordActivity: true,
 	})
 	t.lastCheckpoint = time.Now()
 	if err != nil {
@@ -320,7 +336,7 @@ func (t *turn) run() {
 	if wt := db.Deref(t.req.chat.WorktreeCwd); wt != "" {
 		t.emit("system", map[string]any{"data": map[string]any{"worktree_cwd": wt}})
 	}
-	if t.req.isNewChat && t.req.member == nil && t.req.rawPrompt != "" {
+	if t.req.isNewChat && t.req.member == nil && t.req.rawPrompt != "" && !t.cancelled.Load() {
 		go t.m.generateTitle(t.req.userID, t.req.chat, t.req.rawPrompt)
 	}
 
@@ -341,6 +357,9 @@ func (t *turn) run() {
 }
 
 func (t *turn) execute() (*claude.Result, error) {
+	if t.cancelled.Load() {
+		return nil, nil // stopped before it launched
+	}
 	sb, err := t.m.a.Sandboxes.For(t.req.ws)
 	if err != nil {
 		return nil, err
@@ -758,10 +777,10 @@ func (t *turn) finish(status, errText string) {
 		if errText == "" {
 			errText = "Stream ended unexpectedly"
 		}
-		t.applySnapshot("assistant_text", map[string]any{"text": "\n\nError: " + errText})
+		t.errText = errText
 	}
 	dur := t.checkpointLocked(status)
-	content := t.contentText()
+	content := withErrorText(t.contentText(), t.errText)
 	t.mu.Unlock()
 
 	if t.req.onDone != nil {

@@ -29,7 +29,7 @@ describe('enqueueElicitationRequest', () => {
     const enqueue = useElicitationStore.getState().enqueueElicitationRequest;
     enqueue('c1', request('elicit-1'));
     const head = queueOf('c1')?.[0];
-    enqueue('c1', request('elicit-1', 'replayed'));
+    expect(enqueue('c1', request('elicit-1', 'replayed'))).toBe(false);
     expect(queueOf('c1')?.length).toBe(1);
     expect(queueOf('c1')?.[0]).toBe(head);
   });

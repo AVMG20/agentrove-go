@@ -1,4 +1,5 @@
 @use '@/styles/globals/typography' as type;
+@use '@/styles/globals/responsive' as responsive;
 
 .textarea {
   position: relative;
@@ -19,6 +20,11 @@
   white-space: pre-wrap;
   overflow-wrap: break-word;
   color: var(--theme-text-primary);
+
+  // Mirrors the field, which touch screens bump to 16px (_rules.scss).
+  @include responsive.media('touch') {
+    font-size: max(16px, 1em);
+  }
 
   &--dimmed {
     opacity: 0.5;

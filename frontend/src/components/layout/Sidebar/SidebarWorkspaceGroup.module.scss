@@ -49,6 +49,10 @@
   text-align: left;
   color: var(--theme-text-secondary);
 
+  @include responsive.media('touch') {
+    padding-block: var(--space-2-5);
+  }
+
   .header:hover & {
     color: var(--theme-text-primary);
   }
@@ -117,6 +121,11 @@
   @include responsive.hover {
     background-color: var(--theme-surface-active);
     color: var(--theme-text-primary);
+  }
+
+  @include responsive.media('touch') {
+    height: var(--space-9);
+    width: var(--space-9);
   }
 }
 

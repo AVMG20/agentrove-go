@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import type { PermissionRequest } from '@/types/chat.types';
+import type { ElicitationRequest, PermissionRequest } from '@/types/chat.types';
 
 const { debug } = vi.hoisted(() => ({ debug: vi.fn() }));
 
@@ -227,5 +227,35 @@ describe('requestNotificationPermission', () => {
     const { requestNotificationPermission } = await load();
     await requestNotificationPermission();
     expect(browserRequest).not.toHaveBeenCalled();
+  });
+});
+
+describe('notifyElicitationRequest', () => {
+  const question = (id: string, message: string) =>
+    ({ request_id: id, message, tool_call_id: null, requested_schema: {} }) as ElicitationRequest;
+
+  it('shows the agent question once per request id', async () => {
+    const { notifyElicitationRequest } = await load();
+    await notifyElicitationRequest(question('q1', 'Which database should I use?'));
+    await notifyElicitationRequest(question('q1', 'Which database should I use?'));
+
+    expect(shown()).toEqual([{ title: 'Question for you', body: 'Which database should I use?' }]);
+  });
+
+  it('falls back to generic copy for an empty question', async () => {
+    const { notifyElicitationRequest } = await load();
+    await notifyElicitationRequest(question('q2', '  '));
+    expect(lastShown()).toEqual({
+      title: 'Question for you',
+      body: 'The agent is waiting for your answer.',
+    });
+  });
+});
+
+describe('notifyStreamFailed', () => {
+  it('shows the failure reason', async () => {
+    const { notifyStreamFailed } = await load();
+    await notifyStreamFailed({ message: 'rate limited' });
+    expect(lastShown()).toEqual({ title: 'Task failed', body: 'rate limited' });
   });
 });

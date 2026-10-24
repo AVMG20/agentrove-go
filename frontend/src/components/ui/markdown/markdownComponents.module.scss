@@ -13,6 +13,13 @@
 .table {
   min-width: 100%;
 
+  // Phones: columns size to their content (capped per cell) and the wrapper
+  // scrolls sideways, instead of squeezing every column into a word-per-line
+  // strip. Wider screens keep fitting the table to the column.
+  @include responsive.media('mobile') {
+    width: max-content;
+  }
+
   > * + * {
     border-top: 1px solid var(--theme-border);
   }
@@ -35,6 +42,13 @@
 
   @include responsive.hover {
     background-color: var(--theme-surface-secondary);
+  }
+}
+
+.th,
+.td {
+  @include responsive.media('mobile') {
+    max-width: 20rem;
   }
 }
 

@@ -54,6 +54,7 @@ interface UseChatStreamingResult {
   copiedMessageId: string | null;
   handleCopy: (content: string, id: string) => Promise<void>;
   handleMessageSend: (event: FormEvent) => Promise<void>;
+  sendPrompt: (prompt: string) => void;
   handleStop: () => void;
   sendMessage: (
     prompt: string,
@@ -307,19 +308,11 @@ export function useChatStreaming({
           setWasAborted(false);
         });
       }
-      clearInput();
       return;
     }
+    // The draft stays: Stop has its own button, so the composer may hold the next message.
     void stopActiveStreams(currentMessageIdRef.current || undefined);
-    clearInput();
-  }, [
-    cancelPendingStart,
-    chatId,
-    clearInput,
-    markStreamIdleAfterAbort,
-    stopActiveStreams,
-    streamState,
-  ]);
+  }, [cancelPendingStart, chatId, markStreamIdleAfterAbort, stopActiveStreams, streamState]);
 
   useMountEffect(() => {
     cleanupExpiredPdfBlobs();
@@ -366,6 +359,13 @@ export function useChatStreaming({
     ],
   );
 
+  const sendPrompt = useCallback(
+    (prompt: string) => {
+      void handleMessageSendAction(prompt, []);
+    },
+    [handleMessageSendAction],
+  );
+
   return {
     messages,
     setMessages,
@@ -377,6 +377,7 @@ export function useChatStreaming({
     copiedMessageId,
     handleCopy,
     handleMessageSend,
+    sendPrompt,
     handleStop,
     sendMessage,
     isLoading,

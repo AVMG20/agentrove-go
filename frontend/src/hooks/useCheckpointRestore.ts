@@ -1,7 +1,7 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import { chatService } from '@/services/chatService';
-import { invalidateAfterGitRestore } from '@/hooks/queries/useSandboxQueries';
+import { invalidateAfterGitRestore, invalidateGitState } from '@/hooks/queries/useSandboxQueries';
 
 export function useCheckpointRestore(messageId: string, sandboxId?: string) {
   const queryClient = useQueryClient();
@@ -15,7 +15,11 @@ export function useCheckpointRestore(messageId: string, sandboxId?: string) {
       }
       toast.success('Project restored to before this run');
       if (sandboxId) {
-        await invalidateAfterGitRestore(queryClient, sandboxId);
+        // The restore also resets HEAD, so baselines move too.
+        await Promise.all([
+          invalidateAfterGitRestore(queryClient, sandboxId),
+          invalidateGitState(queryClient, sandboxId),
+        ]);
       }
     },
     onError: (error) => {

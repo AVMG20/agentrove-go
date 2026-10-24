@@ -1,5 +1,5 @@
 import { memo } from 'react';
-import { SendButton } from './SendButton';
+import { SendButton, StopButton } from './SendButton';
 import type { SendButtonStatus } from './SendButton';
 import { AttachButton } from './AttachButton';
 import { EnhanceButton } from './EnhanceButton';
@@ -51,13 +51,14 @@ export const Input = memo(function Input(props: InputProps) {
 function InputLayout() {
   const { state, actions, meta } = useInputContext();
 
+  // Stop has its own button, so send only ever sends (or queues while streaming).
   const sendStatus: SendButtonStatus = state.isStreaming
     ? state.hasContent
       ? 'ready'
-      : 'streaming'
-    : state.isLoading
+      : 'idle'
+    : state.isLoading && state.showLoadingSpinner
       ? 'loading'
-      : state.hasContent
+      : state.hasContent && !state.isLoading
         ? 'ready'
         : 'idle';
 
@@ -117,17 +118,25 @@ function InputLayout() {
           />
           <AttachButton
             disabled={state.isDisabled}
+            onFiles={actions.handleAddFiles}
             onAttach={() => {
               actions.resetDragState();
               actions.setShowFileUpload(true);
             }}
           />
+          {state.canStop && <StopButton onClick={actions.handleStopClick} />}
           <SendButton
             status={sendStatus}
-            disabled={sendStatus === 'idle' || state.isEnhancing || state.isDisabled}
+            disabled={
+              sendStatus === 'idle' ||
+              sendStatus === 'loading' ||
+              state.isEnhancing ||
+              state.isDisabled
+            }
             onClick={actions.handleSendClick}
             type="button"
             showLoadingSpinner={state.showLoadingSpinner}
+            queues={state.isStreaming}
           />
         </>
       }

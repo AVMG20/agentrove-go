@@ -269,7 +269,7 @@ func (m *Module) deleteAllChats(w http.ResponseWriter, r *http.Request) error {
 }
 
 // DeleteChats soft-deletes chats and their sub-threads, stops their agents,
-// removes worktrees they own, and tears down workspaces left without chats.
+// and removes worktrees they own. Their projects stay.
 func (m *Module) DeleteChats(ctx context.Context, userID string, ids []string) error {
 	if len(ids) == 0 {
 		return nil
@@ -311,6 +311,9 @@ func (m *Module) DeleteChats(ctx context.Context, userID string, ids []string) e
 			if _, err := tx.ExecContext(ctx, `DELETE FROM queued_messages WHERE chat_id = ?`, v.id); err != nil {
 				return err
 			}
+			if _, err := tx.ExecContext(ctx, `DELETE FROM chat_checkpoints WHERE chat_id = ?`, v.id); err != nil {
+				return err
+			}
 		}
 		return nil
 	})
@@ -327,23 +330,11 @@ func (m *Module) DeleteChats(ctx context.Context, userID string, ids []string) e
 			fn(id)
 		}
 	}
-	// Workspaces with no chats left are deleted along with their sandbox,
-	// matching the original behaviour; otherwise only owned worktrees go.
+	// The projects stay, even with no chats left (a fresh one has none):
+	// only the worktrees the chats owned go.
 	for wsID := range workspaces {
-		var remaining int
-		_ = m.a.DB.QueryRowContext(ctx, `SELECT COUNT(1) FROM chats WHERE workspace_id = ? AND deleted_at IS NULL`, wsID).Scan(&remaining)
 		ws, err := m.a.Store.GetWorkspaceByID(ctx, wsID)
 		if err != nil || ws.DeletedAt.Valid {
-			continue
-		}
-		if remaining == 0 {
-			_, _ = m.a.DB.ExecContext(ctx, `UPDATE workspaces SET deleted_at = ?, updated_at = ? WHERE id = ?`, now, now, wsID)
-			go func() {
-				_ = m.a.Sandboxes.Delete(context.Background(), ws.SandboxProvider, ws.SandboxID)
-				for _, fn := range m.a.Hooks.OnWorkspaceDeleted {
-					fn(wsID)
-				}
-			}()
 			continue
 		}
 		sb, err := m.a.Sandboxes.For(ws)

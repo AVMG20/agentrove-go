@@ -24,18 +24,18 @@ export const MessageActions = memo(function MessageActions({
   // message's action bar for the whole turn.
   const { copiedMessageId, onCopy } = useChatCopiedMessageContext();
 
+  const copied = copiedMessageId === messageId;
   const button = (
     <Button
       onClick={() => onCopy(contentText, messageId)}
       variant="unstyled"
+      aria-label={copied ? 'Copied' : copyLabel}
       className={clsx(
         styles['copy-button'],
-        copiedMessageId === messageId
-          ? styles['copy-button--copied']
-          : styles['copy-button--default'],
+        copied ? styles['copy-button--copied'] : styles['copy-button--default'],
       )}
     >
-      {copiedMessageId === messageId ? (
+      {copied ? (
         <CheckCircle2 className={styles['copy-icon']} />
       ) : (
         <Copy className={styles['copy-icon']} />
@@ -46,7 +46,7 @@ export const MessageActions = memo(function MessageActions({
   return (
     <div className={styles['message-actions']}>
       {showTooltip ? (
-        <Tooltip content={copiedMessageId === messageId ? 'Copied!' : copyLabel} position="bottom">
+        <Tooltip content={copied ? 'Copied!' : copyLabel} position="bottom">
           {button}
         </Tooltip>
       ) : (

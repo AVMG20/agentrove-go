@@ -193,6 +193,9 @@ func (m *Module) updateFile(w http.ResponseWriter, r *http.Request) error {
 	var body struct {
 		FilePath *string `json:"file_path"`
 		Content  *string `json:"content"`
+		// BaseVersion is the version the edit started from; the save is
+		// refused if the file changed on disk since. Empty skips the check.
+		BaseVersion string `json:"base_version"`
 	}
 	if err := httpx.Decode(r, &body); err != nil {
 		return err
@@ -214,11 +217,12 @@ func (m *Module) updateFile(w http.ResponseWriter, r *http.Request) error {
 	if rel == "" {
 		return httpx.BadRequest("Invalid file path")
 	}
-	if err := writeFile(sb, rel, []byte(*body.Content)); err != nil {
-		return httpx.BadRequest(err.Error())
+	version, err := saveFile(sb, rel, *body.Content, body.BaseVersion)
+	if err != nil {
+		return err
 	}
 	sb.Touch()
-	return httpx.OK(w, map[string]any{"success": true, "message": "File " + rel + " updated successfully"})
+	return httpx.OK(w, map[string]any{"success": true, "message": "File " + rel + " updated successfully", "version": version})
 }
 
 func (m *Module) downloadZip(w http.ResponseWriter, r *http.Request) error {

@@ -1,5 +1,6 @@
 @use '@/styles/globals/zlayer' as z;
 @use '@/styles/globals/animations' as anim;
+@use '@/styles/globals/responsive' as responsive;
 
 .backdrop {
   // All modal tiers collapse to the single 'modal' z-layer; nested modals (e.g.
@@ -19,6 +20,13 @@
   background-color: rgb(0 0 0 / 0.45);
   backdrop-filter: blur(2px);
   @include anim.fade-in(var(--duration-fast));
+
+  // On-screen keyboard up (useKeyboardViewport): stay within the visible area so
+  // a sheet's fields and buttons sit above the keyboard, not behind it.
+  :global(html[data-keyboard-open]) & {
+    inset: var(--app-offset-top) 0 auto;
+    height: var(--app-height);
+  }
 }
 
 .container {
@@ -58,6 +66,36 @@
   }
   &--full {
     max-width: 100%;
+  }
+
+  // Phones: every dialog is a bottom sheet — full width, pinned to the bottom
+  // edge past the backdrop's padding, within thumb reach, its content clear of
+  // the home indicator and (in landscape) the notch. Taller ones still scroll in
+  // the backdrop. SessionSheet uses the same geometry.
+  @include responsive.media('mobile') {
+    width: calc(100% + 2 * var(--space-4));
+    max-width: none;
+    margin: auto calc(-1 * var(--space-4)) calc(-1 * var(--space-4));
+    border-bottom: 0;
+    border-radius: var(--radius-2xl) var(--radius-2xl) 0 0;
+    padding: 0 var(--safe-area-right) var(--device-safe-area-bottom) var(--safe-area-left);
+    animation-name: modal-sheet-enter;
+  }
+
+  // Sitting on the keyboard, the home indicator is covered anyway.
+  :global(#{responsive.layout-mode('mobile')}[data-keyboard-open]) & {
+    padding-bottom: 0;
+  }
+}
+
+@keyframes modal-sheet-enter {
+  from {
+    opacity: 0;
+    transform: translateY(var(--space-6));
+  }
+  to {
+    opacity: 1;
+    transform: none;
   }
 }
 

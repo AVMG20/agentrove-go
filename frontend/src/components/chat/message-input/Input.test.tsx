@@ -73,6 +73,7 @@ vi.mock('@/hooks/useInputAttachments', () => ({
     showDrawingModal: false,
     editingImageIndex: null,
     handleFileSelect: vi.fn(),
+    handleAddFiles: vi.fn(),
     handleRemoveFile: vi.fn(),
     handleDrawClick: vi.fn(),
     handleDrawingSave: vi.fn(),
@@ -162,6 +163,30 @@ describe('Input send/queue path', () => {
     // lose the user's message.
     expect(setMessage).not.toHaveBeenCalledWith('');
     expect(onSubmit).not.toHaveBeenCalled();
+  });
+
+  it('offers a separate Stop button while streaming, even with a draft', () => {
+    const onStopStream = vi.fn();
+    const { setMessage } = renderInput({ isStreaming: true, onStopStream });
+    expect(screen.getByRole('button', { name: 'Queue message' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Stop generating' }));
+    expect(onStopStream).toHaveBeenCalledTimes(1);
+    expect(mocks.queueMessage).not.toHaveBeenCalled();
+    expect(setMessage).not.toHaveBeenCalled();
+  });
+
+  it('Esc stops the turn; Enter on an empty composer does not', () => {
+    const onStopStream = vi.fn();
+    renderInput({ isStreaming: true, onStopStream, message: '' });
+    pressEnter();
+    expect(onStopStream).not.toHaveBeenCalled();
+    fireEvent.keyDown(screen.getByLabelText('Message input'), { key: 'Escape' });
+    expect(onStopStream).toHaveBeenCalledTimes(1);
+  });
+
+  it('has no Stop button when idle', () => {
+    renderInput({ isStreaming: false, onStopStream: vi.fn() });
+    expect(screen.queryByRole('button', { name: 'Stop generating' })).toBeNull();
   });
 
   it('does not submit or queue an empty draft', () => {

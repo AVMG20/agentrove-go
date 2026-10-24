@@ -25,6 +25,8 @@ export interface Automation {
   enabled: boolean;
   next_run_at: string;
   last_run_at: string | null;
+  // Newest chat a run started (null once deleted, or before the first run).
+  last_run_chat_id: string | null;
   // 'github' polls github_repo on cron_expression and runs once per new event.
   trigger_type: AutomationTriggerType;
   github_repo: string | null;

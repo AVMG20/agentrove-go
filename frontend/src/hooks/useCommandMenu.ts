@@ -4,12 +4,12 @@ import { useUIStore } from '@/store/uiStore';
 import { useChatStore } from '@/store/chatStore';
 import { useQueryClient } from '@tanstack/react-query';
 import {
-  FILTER_SHORTCUT_MAP,
+  COMMAND_MENU_SHORTCUT_CODE,
   SHORTCUT_MAP,
   executeCommand,
   resolveActiveGitTarget,
 } from '@/components/ui/command-menu/commandRegistry';
-import { MOBILE_BREAKPOINT } from '@/config/constants';
+import { isMobileViewport } from '@/hooks/useIsMobile';
 
 function isEmbeddedEditor(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false;
@@ -25,7 +25,7 @@ export function useCommandMenu() {
       if (!(e.ctrlKey || e.metaKey) || !e.shiftKey) return;
 
       // Skip Monaco/xterm — they own their own command palette.
-      if (e.code === 'KeyP') {
+      if (e.code === COMMAND_MENU_SHORTCUT_CODE) {
         if (isEmbeddedEditor(e.target)) return;
         e.preventDefault();
         const { commandMenuOpen, setCommandMenuOpen } = useUIStore.getState();
@@ -34,22 +34,12 @@ export function useCommandMenu() {
       }
 
       if (isEmbeddedEditor(e.target)) return;
-      // While open, the menu's own handler owns filter chords (they switch tabs there).
       if (useUIStore.getState().commandMenuOpen) return;
-
-      const filter = FILTER_SHORTCUT_MAP.get(e.code);
-      if (filter) {
-        e.preventDefault();
-        const ui = useUIStore.getState();
-        ui.setPendingMenuMode(filter);
-        ui.setCommandMenuOpen(true);
-        return;
-      }
 
       const cmd = SHORTCUT_MAP.get(e.code);
       if (!cmd) return;
 
-      if (cmd.hideOnMobile && window.innerWidth < MOBILE_BREAKPOINT) return;
+      if (cmd.hideOnMobile && isMobileViewport()) return;
       if (cmd.requiresChat && !useChatStore.getState().currentChat) return;
       const gitTarget = resolveActiveGitTarget(queryClient);
       if (cmd.requiresSandbox && !gitTarget.sandboxId) return;

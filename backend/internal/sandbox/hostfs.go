@@ -9,6 +9,7 @@ import (
 	"io/fs"
 	"os"
 	"path"
+	"strings"
 )
 
 // Host-side helpers for box-writable directories. The agent is root in its
@@ -88,8 +89,9 @@ func WriteFileAtomic(root *os.Root, name string, data []byte, perm fs.FileMode, 
 
 // WriteWorkspaceFile writes a file at the workspace-relative path name (e.g.
 // an uploaded attachment), through the swap-safe workspace root and without
-// following a symlink at name. In a Docker box run by a root API the file is
-// handed to the sandbox user so the agent can edit it.
+// following a symlink at name, creating missing parent dirs. In a Docker box
+// run by a root API the new dirs and the file are handed to the sandbox user
+// so the agent can edit them.
 func (s *Sandbox) WriteWorkspaceFile(name string, data []byte) error {
 	root, err := s.OpenWorkspaceRoot()
 	if err != nil {
@@ -99,6 +101,20 @@ func (s *Sandbox) WriteWorkspaceFile(name string, data []byte) error {
 	uid := 0
 	if s.Kind == KindDocker {
 		uid = ContainerUID
+	}
+	cur := ""
+	for _, part := range strings.Split(path.Dir(name), "/") {
+		if part == "." || part == "" {
+			continue
+		}
+		cur = path.Join(cur, part)
+		if err := root.Mkdir(cur, 0o755); err == nil {
+			if uid > 0 && os.Geteuid() == 0 {
+				_ = root.Lchown(cur, uid, uid)
+			}
+		} else if !errors.Is(err, fs.ErrExist) {
+			return err
+		}
 	}
 	return WriteFileAtomic(root, name, data, 0o644, uid)
 }

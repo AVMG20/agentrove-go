@@ -25,6 +25,7 @@ afterEach(() => {
   cleanup();
   browserAvailable = true;
   vi.restoreAllMocks();
+  window.innerWidth = 1024;
 });
 
 describe('ViewSwitcher browser button', () => {
@@ -49,6 +50,21 @@ describe('ViewSwitcher browser button', () => {
     browserAvailable = false;
     renderSwitcher();
     expect(screen.queryByRole('button', { name: 'Toggle Browser view' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Toggle Terminal view' })).toBeTruthy();
+  });
+});
+
+describe('ViewSwitcher hints', () => {
+  it('shows shortcut and split hints on desktop', () => {
+    renderSwitcher();
+    const hints = screen.getAllByRole('tooltip').map((el) => el.textContent);
+    expect(hints.some((hint) => hint?.includes('right-click to split'))).toBe(true);
+  });
+
+  it('drops them on a phone, where a tap would leave them stuck open', () => {
+    window.innerWidth = 390;
+    renderSwitcher();
+    expect(screen.queryAllByRole('tooltip')).toEqual([]);
     expect(screen.getByRole('button', { name: 'Toggle Terminal view' })).toBeTruthy();
   });
 });

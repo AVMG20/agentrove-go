@@ -1,8 +1,9 @@
-import type { PermissionRequest } from '@/types/chat.types';
+import type { ElicitationRequest, PermissionRequest } from '@/types/chat.types';
 import { logger } from '@/utils/logger';
 
 // Dedup OS notifications when SSE envelopes replay on reconnect.
 const NOTIFIED_PERMISSION_REQUESTS = new Set<string>();
+const NOTIFIED_ELICITATION_REQUESTS = new Set<string>();
 
 // The OS clips long bodies anyway.
 const BODY_MAX_CHARS = 200;
@@ -97,10 +98,13 @@ export async function resetAppBadge(): Promise<void> {
   await syncAppBadge(0);
 }
 
+function clip(text: string): string {
+  return text.length > BODY_MAX_CHARS ? `${text.slice(0, BODY_MAX_CHARS).trimEnd()}…` : text;
+}
+
 function assistantBody(message: string | undefined): string {
   const text = message?.trim();
-  if (!text) return 'The assistant has finished responding.';
-  return text.length > BODY_MAX_CHARS ? `${text.slice(0, BODY_MAX_CHARS).trimEnd()}…` : text;
+  return text ? clip(text) : 'The assistant has finished responding.';
 }
 
 export async function notifyStreamComplete(options: NotifyOptions = {}): Promise<boolean> {
@@ -112,28 +116,67 @@ export async function notifyStreamComplete(options: NotifyOptions = {}): Promise
   }
 }
 
+// The turn failed; options.message is the reason.
+export async function notifyStreamFailed(options: NotifyOptions = {}): Promise<boolean> {
+  try {
+    const reason = options.message?.trim();
+    return await deliver(
+      'Task failed',
+      reason ? clip(reason) : 'The turn ended with an error.',
+      options.onClick,
+    );
+  } catch (error) {
+    logger.debug('Failed to send stream failed notification', 'notifications', error);
+    return false;
+  }
+}
+
+// One notification per request id. Claimed synchronously so concurrent replays
+// can't double-notify, and released if nothing was shown so a later replay can.
+async function notifyOnce(
+  notified: Set<string>,
+  requestId: string,
+  title: string,
+  body: string,
+  onClick: (() => void) | undefined,
+): Promise<boolean> {
+  if (notified.has(requestId)) {
+    return false;
+  }
+  notified.add(requestId);
+
+  try {
+    const delivered = await deliver(title, body, onClick);
+    if (!delivered) {
+      notified.delete(requestId);
+    }
+    return delivered;
+  } catch (error) {
+    notified.delete(requestId);
+    logger.debug('Failed to send request notification', 'notifications', error);
+    return false;
+  }
+}
+
 export async function notifyPermissionRequest(
   request: PermissionRequest,
   options: NotifyOptions = {},
 ): Promise<boolean> {
-  // Claimed synchronously so concurrent replays can't double-notify, and
-  // released below if nothing was shown so a later replay can still notify.
-  if (NOTIFIED_PERMISSION_REQUESTS.has(request.request_id)) {
-    return false;
-  }
-  NOTIFIED_PERMISSION_REQUESTS.add(request.request_id);
-
   const { title, body } = buildPermissionNotification(request);
+  return notifyOnce(NOTIFIED_PERMISSION_REQUESTS, request.request_id, title, body, options.onClick);
+}
 
-  try {
-    const delivered = await deliver(title, body, options.onClick);
-    if (!delivered) {
-      NOTIFIED_PERMISSION_REQUESTS.delete(request.request_id);
-    }
-    return delivered;
-  } catch (error) {
-    NOTIFIED_PERMISSION_REQUESTS.delete(request.request_id);
-    logger.debug('Failed to send permission notification', 'notifications', error);
-    return false;
-  }
+// AskUserQuestion and MCP elicitations: the agent is blocked on an answer.
+export async function notifyElicitationRequest(
+  request: ElicitationRequest,
+  options: NotifyOptions = {},
+): Promise<boolean> {
+  const question = request.message.trim();
+  return notifyOnce(
+    NOTIFIED_ELICITATION_REQUESTS,
+    request.request_id,
+    'Question for you',
+    question ? clip(question) : 'The agent is waiting for your answer.',
+    options.onClick,
+  );
 }

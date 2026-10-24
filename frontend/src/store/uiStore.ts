@@ -13,7 +13,7 @@ import type {
 } from '@/types/ui.types';
 import { MAX_CHAT_PANES } from '@/types/ui.types';
 import type { DiffMode } from '@/types/sandbox.types';
-import { MOBILE_BREAKPOINT } from '@/config/constants';
+import { isMobileViewport } from '@/hooks/useIsMobile';
 import {
   activeSplitSlot,
   isSplitTile,
@@ -79,6 +79,9 @@ type UIStoreState = ThemeState &
     setSubThreadDialogOpen: (open: boolean) => void;
     sessionPanelOpen: boolean;
     setSessionPanelOpen: (open: boolean) => void;
+    // Phone-only bottom sheet with the same panel; session-only, not persisted.
+    sessionSheetOpen: boolean;
+    setSessionSheetOpen: (open: boolean) => void;
     createPRDialogOpen: boolean;
     setCreatePRDialogOpen: (open: boolean) => void;
     createBranchDialogOpen: boolean;
@@ -115,11 +118,10 @@ type UIStoreState = ThemeState &
 
 const getInitialSidebarState = (): boolean => {
   if (typeof window === 'undefined') return false;
-  return window.innerWidth >= MOBILE_BREAKPOINT;
+  return !isMobileViewport();
 };
 
-const isDesktop = (): boolean =>
-  typeof window !== 'undefined' && window.innerWidth >= MOBILE_BREAKPOINT;
+const isDesktop = (): boolean => typeof window !== 'undefined' && !isMobileViewport();
 
 function splitAgentTile(slot: SplitSlot): AgentTileId {
   return `agent:split-${slot}`;
@@ -289,6 +291,8 @@ export const useUIStore = create<UIStoreState>()(
       setSubThreadDialogOpen: (open) => set({ subThreadDialogOpen: open }),
       sessionPanelOpen: getInitialSidebarState(),
       setSessionPanelOpen: (open) => set({ sessionPanelOpen: open }),
+      sessionSheetOpen: false,
+      setSessionSheetOpen: (open) => set({ sessionSheetOpen: open }),
       createPRDialogOpen: false,
       setCreatePRDialogOpen: (open) => set({ createPRDialogOpen: open }),
       createBranchDialogOpen: false,

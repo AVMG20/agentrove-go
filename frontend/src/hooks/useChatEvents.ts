@@ -10,6 +10,7 @@ import { queryKeys } from '@/hooks/queries/queryKeys';
 import { subscribeChatEventsFeed } from '@/utils/chatEventsFeed';
 import { resyncActiveStreams } from '@/utils/activeStreams';
 import { logger } from '@/utils/logger';
+import { retryFailedQueuedMessages } from '@/utils/queuedMessageFailure';
 import type { ChatEvent } from '@/types/chat.types';
 
 // Per-user chat lifecycle SSE: out-of-band creates/turns (MCP, agents) surface live.
@@ -106,6 +107,8 @@ export function useChatEvents(options?: { enabled?: boolean }) {
           'useChatEvents',
         );
         syncBackgroundTasks();
+        // Follow-ups that failed on the network while the feed was down.
+        retryFailedQueuedMessages();
       },
       logContext: 'useChatEvents',
     });

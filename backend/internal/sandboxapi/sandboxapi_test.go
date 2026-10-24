@@ -5,12 +5,14 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	"agentrove/internal/httpx"
 	"agentrove/internal/sandbox"
 )
 
@@ -78,11 +80,89 @@ func TestParseLsFiles(t *testing.T) {
 }
 
 func TestEncodeContent(t *testing.T) {
-	if c, bin := EncodeContent("a.png", []byte{0, 1}); !bin || c != base64.StdEncoding.EncodeToString([]byte{0, 1}) {
-		t.Errorf("png: %q %v", c, bin)
+	if c, bin, lossy := EncodeContent("a.png", []byte{0, 1}); !bin || lossy || c != base64.StdEncoding.EncodeToString([]byte{0, 1}) {
+		t.Errorf("png: %q %v %v", c, bin, lossy)
 	}
-	if c, bin := EncodeContent("a.txt", []byte("hé\xff")); bin || c != "hé\uFFFD" {
-		t.Errorf("txt: %q %v", c, bin)
+	if c, bin, lossy := EncodeContent("a.txt", []byte("hé\xff")); bin || !lossy || c != "hé\uFFFD" {
+		t.Errorf("txt: %q %v %v", c, bin, lossy)
+	}
+	// SVG is text: it must open as editable source, not base64.
+	if c, bin, lossy := EncodeContent("icon.svg", []byte("<svg/>")); bin || lossy || c != "<svg/>" {
+		t.Errorf("svg: %q %v %v", c, bin, lossy)
+	}
+}
+
+// Nested repos come out of ls-files as "dir/" and submodules as gitlinks;
+// both are directories, never nameless files.
+func TestParseLsFilesNestedRepos(t *testing.T) {
+	out := "nested/\x00u.txt\x00" +
+		"100644 78981922613b2afb6025042ff6bd878ac1994e85 0\ta.txt\x00" +
+		"160000 cd8baa9c7a28c6aa5e02e57666833aa88ebbd34e 0\tlib/sub\x00" +
+		"100644 78981922613b2afb6025042ff6bd878ac1994e85 1\tc.txt\x00" +
+		"100644 78981922613b2afb6025042ff6bd878ac1994e85 2\tc.txt\x00"
+	var got []string
+	for _, it := range ParseLsFiles(out) {
+		got = append(got, it.Path+":"+it.Type)
+	}
+	want := "[nested:directory u.txt:file a.txt:file lib:directory lib/sub:directory c.txt:file]"
+	if fmt.Sprint(got) != want {
+		t.Fatalf("got %v, want %s", got, want)
+	}
+}
+
+func TestSaveFileVersionCheck(t *testing.T) {
+	ws := t.TempDir()
+	sb := &sandbox.Sandbox{Kind: sandbox.KindDocker, Root: "/home/user/workspace", WorkspacePath: ws}
+	if err := os.WriteFile(filepath.Join(ws, "a.txt"), []byte("v1"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	fc, err := readFile(sb, "a.txt")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The agent edits the file after the editor loaded it.
+	if err := os.WriteFile(filepath.Join(ws, "a.txt"), []byte("agent"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	var he *httpx.Error
+	if _, err := saveFile(sb, "a.txt", "mine", fc.Version); !errors.As(err, &he) || he.Status != 409 {
+		t.Fatalf("stale save = %v, want 409", err)
+	}
+	if b, _ := os.ReadFile(filepath.Join(ws, "a.txt")); string(b) != "agent" {
+		t.Fatalf("stale save overwrote the file: %q", b)
+	}
+	fc, _ = readFile(sb, "a.txt")
+	v, err := saveFile(sb, "a.txt", "mine", fc.Version)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fc, _ = readFile(sb, "a.txt"); fc.Content != "mine" || fc.Version != v {
+		t.Fatalf("after save = %+v, version %s", fc, v)
+	}
+	// No base version: an explicit overwrite.
+	if _, err := saveFile(sb, "a.txt", "forced", ""); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestSaveFileKeepsBOM(t *testing.T) {
+	ws := t.TempDir()
+	sb := &sandbox.Sandbox{Kind: sandbox.KindDocker, Root: "/home/user/workspace", WorkspacePath: ws}
+	p := filepath.Join(ws, "w.txt")
+	if err := os.WriteFile(p, []byte("\xEF\xBB\xBFold"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := saveFile(sb, "w.txt", "new", ""); err != nil {
+		t.Fatal(err)
+	}
+	if b, _ := os.ReadFile(p); string(b) != "\xEF\xBB\xBFnew" {
+		t.Fatalf("saved %q, want the BOM kept", b)
+	}
+	if _, err := saveFile(sb, "w.txt", "\uFEFFnew", ""); err != nil {
+		t.Fatal(err)
+	}
+	if b, _ := os.ReadFile(p); string(b) != "\xEF\xBB\xBFnew" {
+		t.Fatalf("saved %q, want a single BOM", b)
 	}
 }
 
@@ -272,5 +352,46 @@ func TestReadFileSizeCap(t *testing.T) {
 	}
 	if fc, err := readFile(sb, "ok.txt"); err != nil || fc.Content != "hi" {
 		t.Errorf("small file = %+v, %v", fc, err)
+	}
+}
+
+func TestListFilesNestedRepoAndSubmodule(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not installed")
+	}
+	ws, _ := filepath.EvalSymlinks(t.TempDir())
+	run := func(dir string, args ...string) {
+		t.Helper()
+		cmd := exec.Command("git", append([]string{"-c", "user.email=t@t", "-c", "user.name=t"}, args...)...)
+		cmd.Dir = dir
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+	}
+	for _, f := range []string{"a.txt", "sub/x", "nested/y"} {
+		if err := os.MkdirAll(filepath.Dir(filepath.Join(ws, f)), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(ws, f), []byte("x"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	run(filepath.Join(ws, "sub"), "init", "-q")
+	run(filepath.Join(ws, "sub"), "add", "x")
+	run(filepath.Join(ws, "sub"), "commit", "-qm", "x")
+	run(filepath.Join(ws, "nested"), "init", "-q")
+	run(ws, "init", "-q")
+	run(ws, "add", "a.txt", "sub") // sub becomes a gitlink
+	sb := &sandbox.Sandbox{Kind: sandbox.KindDocker, Root: ws, WorkspacePath: ws}
+	items, err := listFiles(context.Background(), sb, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]string{}
+	for _, it := range items {
+		got[it.Path] = it.Type
+	}
+	if len(got) != 3 || got["a.txt"] != "file" || got["sub"] != "directory" || got["nested"] != "directory" {
+		t.Fatalf("listing = %+v", items)
 	}
 }

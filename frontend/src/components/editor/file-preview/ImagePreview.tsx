@@ -24,6 +24,10 @@ export const ImagePreview = memo(function ImagePreview({
     if (!file.content) return null;
 
     try {
+      // SVG comes as text (it's editable source), everything else as base64.
+      if (fileName.toLowerCase().endsWith('.svg') && !isValidBase64(file.content)) {
+        return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(file.content)}`;
+      }
       if (!isValidBase64(file.content)) {
         return null;
       }

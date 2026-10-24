@@ -161,13 +161,19 @@
   }
 }
 
-// Touch has no hover: keep the controls a tap away.
+// Touch has no hover: keep the controls a tap away, at finger size.
 @include responsive.media('touch') {
+  .row {
+    padding-block: var(--space-2-5);
+  }
+
   .timestamp {
     display: none;
   }
 
   .dropdown-btn {
+    right: 0;
+    padding: var(--space-3);
     opacity: 1;
   }
 

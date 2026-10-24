@@ -41,7 +41,7 @@ func newTestModule(t *testing.T) (*Module, *db.DB) {
 	}
 	m := &Module{
 		st: &store{db: d}, sessions: newSessions(),
-		turns: map[string]*turn{}, attached: map[string]*turn{}, starting: map[string]bool{},
+		turns: map[string]*turn{}, attached: map[string]*turn{}, starting: map[string]bool{}, stopStarting: map[string]bool{},
 		bgTasks: map[string][]backgroundTask{}, bgOwner: map[string]string{}, pending: map[string][]claude.Message{},
 		live: map[string]*claude.Session{},
 	}
@@ -234,5 +234,68 @@ func TestSkippedCheckpointsStillRecover(t *testing.T) {
 	}
 	if content != "Hello world" || status != StatusInterrupted {
 		t.Fatalf("recovered %q (%s)", content, status)
+	}
+	msg, err := m.st.getMessage(context.Background(), testMsg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if msg.StreamError != nil {
+		t.Fatalf("interrupted turn has stream_error %q", *msg.StreamError)
+	}
+}
+
+// A failed turn records its reason in stream_error for the UI instead of
+// rendering it as reply text; content_text still carries it for text readers.
+func TestFailedTurnRecordsStreamError(t *testing.T) {
+	m, _ := newTestModule(t)
+	tr := newTestTurn(m)
+	tr.emit("stream_started", map[string]any{})
+	tr.emit("assistant_text", map[string]any{"text": "Partial answer"})
+	tr.finish(StatusFailed, "rate limited")
+
+	msg, err := m.st.getMessage(context.Background(), testMsg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if msg.StreamStatus != StatusFailed || db.Deref(msg.StreamError) != "rate limited" {
+		t.Fatalf("status %q, stream_error %v", msg.StreamStatus, msg.StreamError)
+	}
+	if msg.ContentText != "Partial answer\n\nError: rate limited" {
+		t.Fatalf("content_text = %q", msg.ContentText)
+	}
+	events, _ := msg.ContentRender["events"].([]any)
+	for _, e := range events {
+		if ev, _ := e.(map[string]any); ev["type"] == "assistant_text" && ev["text"] != "Partial answer" {
+			t.Fatalf("error leaked into the render: %v", ev)
+		}
+	}
+}
+
+// Stop while the turn is still starting (waking the box) has no turn to
+// cancel yet; the turn must still end interrupted without running the agent.
+func TestStopWhileStartingInterruptsTurn(t *testing.T) {
+	m, d := newTestModule(t)
+	if !m.reserve(testChat) {
+		t.Fatal("reserve failed")
+	}
+	m.cancelTurn(testChat, time.Second)
+	tr := newTestTurn(m)
+	m.launch(tr) // m.a is nil: running the agent would panic, not interrupt
+	<-tr.done
+	var status string
+	if err := d.QueryRow(`SELECT stream_status FROM messages WHERE id = ?`, testMsg).Scan(&status); err != nil {
+		t.Fatal(err)
+	}
+	if status != StatusInterrupted {
+		t.Fatalf("status = %q, want %q", status, StatusInterrupted)
+	}
+	waitFor(t, time.Second, "release", func() bool { return !m.busy(testChat) })
+	// The stop belonged to that start only.
+	if !m.reserve(testChat) {
+		t.Fatal("chat still held")
+	}
+	m.unreserve(testChat)
+	if m.stopStarting[testChat] {
+		t.Fatal("stop flag left behind")
 	}
 }

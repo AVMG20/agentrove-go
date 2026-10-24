@@ -9,7 +9,7 @@ import { useWorkingChatIds } from '@/hooks/useWorkingChatIds';
 import { useIsMobile } from '@/hooks/useIsMobile';
 import { useChatQuery } from '@/hooks/queries/useChatQueries';
 import { useChannelQuery } from '@/hooks/queries/useChannelQueries';
-import { useWorkspacesList } from '@/hooks/queries/useWorkspaceQueries';
+import { useWorkspacesList, useWorkspacesQuery } from '@/hooks/queries/useWorkspaceQueries';
 import { SidebarActions } from './SidebarActions';
 import { SidebarChannels } from './SidebarChannels';
 import { SidebarChatList } from './SidebarChatList';
@@ -18,7 +18,7 @@ import { type ChatRowProps } from './SidebarChatRow';
 import { buildRecentChatSections } from './sidebarGrouping';
 import { useSidebarChatActions } from './useSidebarChatActions';
 import { useSidebarWorkspaceActions } from './useSidebarWorkspaceActions';
-import { countActiveSidebarFilters } from '@/store/sidebarFilters';
+import { countActiveSidebarFilters, dropMissingWorkspaceFilter } from '@/store/sidebarFilters';
 import styles from './ThreadsPanel.module.scss';
 
 // The sidebar's thread browser: primary actions, channels and the chat list.
@@ -44,6 +44,15 @@ export function ThreadsPanel({ hidden = false }: { hidden?: boolean }) {
   // Filters apply client-side over loaded pages. Lives in the persisted uiStore
   // so reloads keep the narrowed view.
   const filters = useUIStore((state) => state.sidebarFilters);
+  const { isSuccess: workspacesLoaded } = useWorkspacesQuery();
+  useEffect(() => {
+    if (!workspacesLoaded) return;
+    const next = dropMissingWorkspaceFilter(
+      filters,
+      workspaces.map((w) => w.id),
+    );
+    if (next !== filters) useUIStore.getState().setSidebarFilters(next);
+  }, [workspacesLoaded, workspaces, filters]);
 
   const scrollContainerRef = useRef<HTMLDivElement>(null);
 

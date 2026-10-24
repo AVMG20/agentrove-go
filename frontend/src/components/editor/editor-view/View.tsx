@@ -1,4 +1,5 @@
 import { memo, useState, useRef, useCallback, useEffect } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import type * as monaco from 'monaco-editor';
 import { Header } from './Header';
 import { EmptyState } from './EmptyState';
@@ -20,6 +21,9 @@ import {
   useGitChangedPathsQuery,
   useGitFileBaselineQuery,
 } from '@/hooks/queries/useSandboxQueries';
+import { queryKeys } from '@/hooks/queries/queryKeys';
+import { Button } from '@/components/ui/primitives/Button/Button';
+import { ServiceError } from '@/services/base/ServiceError';
 import { isPreviewableFile, isHtmlFile } from '@/utils/fileTypes';
 import toast from 'react-hot-toast';
 import styles from './View.module.scss';
@@ -105,10 +109,18 @@ export const View = memo(function View({
     retry: 1,
   });
 
-  const selectedFileContent =
-    selectedFile && fileContentData?.path === selectedFile.path
-      ? fileContentData.content
-      : undefined;
+  const loadedFile =
+    selectedFile && fileContentData?.path === selectedFile.path ? fileContentData : undefined;
+  const selectedFileContent = loadedFile?.content;
+  // Saving these back would write base64 text or replacement characters to disk.
+  const readOnlyReason = loadedFile?.is_binary
+    ? 'Binary file — shown read-only.'
+    : loadedFile?.lossy
+      ? "This file isn't valid UTF-8 — shown with replacement characters, read-only."
+      : null;
+  const queryClient = useQueryClient();
+  // Path whose save was refused because the file changed on disk.
+  const [conflictPath, setConflictPath] = useState<string | null>(null);
 
   const {
     currentContent,
@@ -122,7 +134,15 @@ export const View = memo(function View({
     confirmCloseTab,
     cancelCloseTab,
     commitSave,
-  } = useEditorDrafts({ selectedFile, selectedFileContent, sandboxId, onCloseFile });
+    baseVersionFor,
+    discardDraft,
+  } = useEditorDrafts({
+    selectedFile,
+    selectedFileContent,
+    selectedFileVersion: loadedFile?.version,
+    sandboxId,
+    onCloseFile,
+  });
 
   // Git paths are cwd-relative while editor paths are workspace-root-relative
   // (see invalidateAfterGitRestore) — strip the cwd prefix before asking git.
@@ -156,38 +176,61 @@ export const View = memo(function View({
   // unsaved draft (the diff compares HEAD against the live buffer).
   const fileHasChanges = displayHasUnsavedChanges || fileChangedInGit;
 
-  const handleUpdateFile = useCallback(async () => {
-    if (!selectedFile || !sandboxId || !hasUnsavedChanges || !hasLoadedSelectedFile) return;
+  const saveFile = useCallback(
+    (overwrite: boolean) => {
+      if (!selectedFile || !sandboxId || !hasUnsavedChanges || !hasLoadedSelectedFile) return;
+      if (readOnlyReason) return;
 
-    // Capture what we're saving; the active tab/content may change before this resolves.
-    const savedPath = selectedFile.path;
-    const submitted = currentContent;
+      // Capture what we're saving; the active tab/content may change before this resolves.
+      const savedPath = selectedFile.path;
+      const submitted = currentContent;
 
-    updateFileMutation.mutate(
-      {
-        sandboxId,
-        filePath: savedPath,
-        content: submitted,
-      },
-      {
-        onSuccess: () => {
-          commitSave(savedPath, submitted);
-          toast.success('File saved');
+      updateFileMutation.mutate(
+        {
+          sandboxId,
+          filePath: savedPath,
+          content: submitted,
+          baseVersion: overwrite ? undefined : baseVersionFor(savedPath),
         },
-        onError: (err) => {
-          toast.error(err instanceof Error ? err.message : 'Failed to update file');
+        {
+          onSuccess: (data) => {
+            commitSave(savedPath, submitted, data.version);
+            setConflictPath((p) => (p === savedPath ? null : p));
+            toast.success('File saved');
+          },
+          onError: (err) => {
+            if (err instanceof ServiceError && err.status === 409) {
+              setConflictPath(savedPath);
+              return;
+            }
+            toast.error(err instanceof Error ? err.message : 'Failed to update file');
+          },
         },
-      },
-    );
-  }, [
-    selectedFile,
-    sandboxId,
-    currentContent,
-    hasUnsavedChanges,
-    hasLoadedSelectedFile,
-    updateFileMutation,
-    commitSave,
-  ]);
+      );
+    },
+    [
+      selectedFile,
+      sandboxId,
+      currentContent,
+      hasUnsavedChanges,
+      hasLoadedSelectedFile,
+      readOnlyReason,
+      updateFileMutation,
+      commitSave,
+      baseVersionFor,
+    ],
+  );
+  const handleUpdateFile = useCallback(() => saveFile(false), [saveFile]);
+
+  // Reload: drop the draft and fetch what's on disk now.
+  const handleReloadFromDisk = useCallback(() => {
+    if (!conflictPath) return;
+    discardDraft(conflictPath);
+    setConflictPath(null);
+    void queryClient.invalidateQueries({
+      queryKey: queryKeys.sandbox.fileContent(sandboxId, conflictPath),
+    });
+  }, [conflictPath, discardDraft, queryClient, sandboxId]);
 
   const handleEditorMount = useCallback(
     (editor: monaco.editor.IStandaloneCodeEditor, monaco: typeof import('monaco-editor')) => {
@@ -409,6 +452,26 @@ export const View = memo(function View({
             onToggleFullscreen={isPreviewActive ? handleTogglePreviewFullscreen : undefined}
           />
 
+          {conflictPath === selectedFile.path && hasUnsavedChanges ? (
+            <div className={styles.notice} role="alert">
+              <span className={styles['notice-text']}>
+                File changed on disk since you started editing.
+              </span>
+              <Button variant="ghost" size="sm" onClick={handleReloadFromDisk}>
+                Reload
+              </Button>
+              <Button variant="primary" size="sm" onClick={() => saveFile(true)}>
+                Overwrite
+              </Button>
+            </div>
+          ) : (
+            readOnlyReason && (
+              <div className={styles.notice}>
+                <span className={styles['notice-text']}>{readOnlyReason}</span>
+              </div>
+            )
+          )}
+
           <ViewContentArea
             isLoadingContent={isLoadingContent}
             viewMode={viewMode}
@@ -429,7 +492,7 @@ export const View = memo(function View({
             language={language}
             currentTheme={currentTheme}
             setupEditorTheme={setupEditorTheme}
-            isReadOnly={updateFileMutation.isPending}
+            isReadOnly={updateFileMutation.isPending || !!readOnlyReason}
             onEditorChange={handleEditorChange}
             onEditorMount={handleEditorMount}
             isPreviewActive={isPreviewActive}

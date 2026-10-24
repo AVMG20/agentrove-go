@@ -8,6 +8,7 @@ import { Input as ChatInput } from '@/components/chat/message-input/Input';
 import { WorkspaceSelector } from '@/components/chat/workspace-selector/WorkspaceSelector';
 import { BranchWorktreeSelector } from '@/components/chat/worktree-selector/BranchWorktreeSelector';
 import { useChatStore } from '@/store/chatStore';
+import { selectDraftText, useComposerDraftStore } from '@/store/composerDraftStore';
 import { useUIStore } from '@/store/uiStore';
 import { useModelStore } from '@/store/modelStore';
 import { useChatSettingsStore, DEFAULT_CHAT_SETTINGS_KEY } from '@/store/chatSettingsStore';
@@ -82,7 +83,12 @@ export function LandingPage() {
   const greetingName = username && username.charAt(0).toUpperCase() + username.slice(1);
 
   const createChat = useCreateChatMutation();
-  const [message, setMessage] = useState('');
+  // New-thread draft persists like a chat's, under the pending-chat key.
+  const message = useComposerDraftStore(selectDraftText(PENDING_NEW_CHAT_KEY));
+  const setMessage = useCallback(
+    (value: string) => useComposerDraftStore.getState().setText(PENDING_NEW_CHAT_KEY, value),
+    [],
+  );
   const [isLoading, setIsLoading] = useState(false);
   const consumedInitialMessageRef = useRef(false);
   const routeState = location.state as {
@@ -121,10 +127,12 @@ export function LandingPage() {
     if (initialWorkspaceId) handleWorkspaceChange(initialWorkspaceId);
   }, [location.key, initialWorkspaceId, handleWorkspaceChange]);
 
-  if (initialMessage && !consumedInitialMessageRef.current) {
+  // An effect, not render: the draft is an external store.
+  useEffect(() => {
+    if (!initialMessage || consumedInitialMessageRef.current) return;
     consumedInitialMessageRef.current = true;
     setMessage(initialMessage);
-  }
+  }, [initialMessage, setMessage]);
 
   const { data: workspaceResources } = useWorkspaceResourcesQuery(
     selectedWorkspaceId ?? undefined,
@@ -211,7 +219,7 @@ export function LandingPage() {
         setIsLoading(false);
       }
     },
-    [createChat, isLoading, message, navigate, selectedModelId, selectedWorkspaceId],
+    [createChat, isLoading, message, navigate, selectedModelId, selectedWorkspaceId, setMessage],
   );
 
   const handleChatSelect = useCallback(
@@ -357,6 +365,7 @@ export function LandingPage() {
       message,
       selectModel,
       selectedModelId,
+      setMessage,
       composerSelectors,
       showRecents,
       recentChats,

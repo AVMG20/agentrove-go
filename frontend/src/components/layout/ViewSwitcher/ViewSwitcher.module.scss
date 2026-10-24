@@ -5,6 +5,9 @@
   display: flex;
   align-items: center;
   gap: var(--space-0-5);
+
+  // Phones switch views from the tab bar at the bottom (MobileTabBar).
+  @include responsive.hide('mobile');
 }
 
 .view-button {

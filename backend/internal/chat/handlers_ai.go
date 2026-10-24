@@ -43,12 +43,9 @@ func (m *Module) generateTitleHandler(w http.ResponseWriter, r *http.Request) er
 		return err
 	}
 	title, err := m.generateText(r.Context(), u.ID, st.TitleModelID, prompts.GenerateTitleSystemPrompt, "Generate a title for this message:\n<message>\n"+prompt+"\n</message>")
-	title = strings.Trim(strings.TrimSpace(title), `"'`)
+	title = clipTitle(strings.Trim(strings.TrimSpace(title), `"'`))
 	if err != nil || title == "" {
 		return httpx.Errorf(503, "Title generation failed")
-	}
-	if len(title) > 255 {
-		title = title[:255]
 	}
 	return httpx.OK(w, map[string]string{"title": title})
 }

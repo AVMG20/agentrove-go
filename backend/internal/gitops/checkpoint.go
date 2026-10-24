@@ -2,8 +2,10 @@ package gitops
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -20,7 +22,22 @@ type Checkpoint struct {
 // One round-trip so a clean tree (the common case) skips the diff capture.
 const checkpointProbe = `git rev-parse HEAD 2>/dev/null && (test -z "$(git status --porcelain 2>/dev/null)" && echo clean || echo dirty)`
 
-const checkpointDiff = `git diff --binary HEAD 2>/dev/null; git ls-files --others --exclude-standard -z | xargs -0 -I{} git diff --binary --no-index -- /dev/null {} 2>/dev/null`
+// CheckpointMaxBytes caps a turn's pre-run diff; a tree dirtier than that
+// (say a large untracked file) gets no checkpoint rather than a huge row.
+const CheckpointMaxBytes = 20 << 20
+
+// ErrCheckpointTooLarge means the uncommitted changes exceed CheckpointMaxBytes.
+var ErrCheckpointTooLarge = errors.New("uncommitted changes are too large to checkpoint")
+
+// checkpointDiffScript prints the whole tree's uncommitted diff, untracked
+// files included, in one git process: intent-to-add entries in a throwaway
+// copy of the index (the real one, and what's staged, stay untouched) make
+// `git diff HEAD` show untracked files as new. At most max+1 bytes come back.
+func checkpointDiffScript(max int) string {
+	return `T=$(mktemp) || exit 1; { cp "$(git rev-parse --git-path index)" "$T" 2>/dev/null || rm -f "$T"; }; ` +
+		`GIT_INDEX_FILE="$T" git add -A -N --ignore-errors -- :/ >/dev/null 2>&1; ` +
+		`GIT_INDEX_FILE="$T" git diff --binary HEAD 2>/dev/null | head -c ` + strconv.Itoa(max+1) + `; rm -f "$T"`
+}
 
 func cdPrefix(cwd string) string {
 	if cwd == "" {
@@ -47,9 +64,12 @@ func CreateCheckpoint(ctx context.Context, sb *sandbox.Sandbox, cwd string) (*Ch
 	if len(lines) > 1 && strings.TrimSpace(lines[1]) == "clean" {
 		return cp, nil
 	}
-	diff, err := sb.Shell(ctx, "", cdPrefix(cwd)+checkpointDiff, time.Minute)
+	diff, err := sb.Shell(ctx, "", cdPrefix(cwd)+checkpointDiffScript(CheckpointMaxBytes), time.Minute)
 	if err != nil {
 		return nil, err
+	}
+	if len(diff.Stdout) > CheckpointMaxBytes {
+		return nil, ErrCheckpointTooLarge
 	}
 	cp.PreRunDiff = diff.Stdout
 	return cp, nil
@@ -73,10 +93,14 @@ func RestoreCheckpoint(ctx context.Context, sb *sandbox.Sandbox, cwd, baseHead, 
 			return res, fmt.Errorf("write checkpoint patch: %s", res.Output())
 		}
 	}
-	script := cdPrefix(cwd) + `cd "$(git rev-parse --show-toplevel)" && ` +
+	return sb.Exec(ctx, sandbox.ExecRequest{Cmd: []string{"bash", "-c", restoreCheckpointScript(cwd, baseHead), "restore", patch}, Timeout: 2 * time.Minute})
+}
+
+// restoreCheckpointScript takes the patch file as $1 (empty: none).
+func restoreCheckpointScript(cwd, baseHead string) string {
+	return cdPrefix(cwd) + `cd "$(git rev-parse --show-toplevel)" && ` +
 		`git reset --hard ` + shellQuote(baseHead) + ` >/dev/null 2>&1; status=$?; ` +
 		`if [ $status -eq 0 ]; then git clean -fd >/dev/null 2>&1; status=$?; fi; ` +
 		`if [ $status -eq 0 ] && [ -n "$1" ]; then git apply --whitespace=nowarn "$1" 2>&1; status=$?; fi; ` +
 		`[ -n "$1" ] && rm -f "$1"; exit $status`
-	return sb.Exec(ctx, sandbox.ExecRequest{Cmd: []string{"bash", "-c", script, "restore", patch}, Timeout: 2 * time.Minute})
 }

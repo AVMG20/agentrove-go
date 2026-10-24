@@ -42,6 +42,13 @@
   padding: 0;
   color: var(--theme-text-secondary);
 
+  // Finger-sized hit area for the composer's icon-only selectors.
+  @include responsive.media('touch') {
+    min-height: var(--space-9);
+    min-width: var(--space-8);
+    justify-content: center;
+  }
+
   @include responsive.hover {
     color: var(--theme-text-primary);
   }
@@ -88,6 +95,11 @@
 
   .trigger-text & {
     color: currentColor;
+
+    @include responsive.media('touch') {
+      height: var(--space-4);
+      width: var(--space-4);
+    }
   }
 
   .trigger-toolbar & {
@@ -194,6 +206,71 @@
       min-height: 0;
       flex-shrink: 1;
     }
+  }
+}
+
+// Phones: the list is a bottom sheet over a scrim, portalled to <body>
+// (Dropdown.tsx), with finger-sized rows, instead of a popover that covers the
+// composer it opened from. On the modal layer: it can open from a dialog, and
+// mounts after it, so it paints on top.
+.scrim {
+  @include z.z('modal');
+  @include anim.fade-in(var(--duration-fast));
+  position: fixed;
+  inset: 0;
+  // Pure-black scrim — an overlay, not a theme surface
+  background-color: rgb(0 0 0 / 0.4);
+}
+
+.panel--sheet {
+  @include z.z('modal');
+  position: fixed;
+  inset: auto 0 var(--keyboard-inset, 0px);
+  display: flex;
+  max-height: min(70dvh, calc(var(--app-height, 100dvh) - var(--space-16)));
+  flex-direction: column;
+  margin: 0;
+  overflow: hidden;
+  border-bottom: 0;
+  border-radius: var(--radius-2xl) var(--radius-2xl) 0 0;
+  background-color: var(--theme-surface-secondary);
+  // Clear of the home indicator and, in landscape, the notch.
+  padding: 0 var(--safe-area-right) var(--device-safe-area-bottom) var(--safe-area-left);
+  animation: dropdown-sheet-enter var(--duration-base) var(--easing-out);
+
+  // Sitting on the keyboard, the home indicator is covered anyway.
+  :global(html[data-keyboard-open]) & {
+    padding-bottom: 0;
+  }
+
+  > * {
+    flex-shrink: 0;
+  }
+
+  > .items {
+    max-height: none;
+    min-height: 0;
+    flex-shrink: 1;
+    padding: var(--space-2);
+  }
+
+  .item-row {
+    min-height: var(--space-11);
+  }
+
+  @include responsive.media('reduced-motion') {
+    animation: none;
+  }
+}
+
+@keyframes dropdown-sheet-enter {
+  from {
+    transform: translateY(var(--space-6));
+    opacity: 0;
+  }
+  to {
+    transform: none;
+    opacity: 1;
   }
 }
 

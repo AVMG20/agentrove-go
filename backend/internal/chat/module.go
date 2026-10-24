@@ -48,6 +48,10 @@ type Module struct {
 	// live is the session whose output and background tasks the chat follows;
 	// a session replaced by a respawn still runs until its Close finishes.
 	live map[string]*claude.Session
+	// stopStarting marks a reserved chat whose turn was stopped before it
+	// launched (e.g. while the box woke up); it then launches only to finish
+	// as interrupted.
+	stopStarting map[string]bool
 
 	// routeMu orders session output against turns attaching and detaching:
 	// output that arrives while no turn is attached is held in pending and
@@ -68,7 +72,7 @@ type Module struct {
 func New(a *app.App) *Module {
 	m := &Module{
 		a: a, st: &store{db: a.DB}, sessions: newSessions(),
-		turns: map[string]*turn{}, attached: map[string]*turn{}, starting: map[string]bool{},
+		turns: map[string]*turn{}, attached: map[string]*turn{}, starting: map[string]bool{}, stopStarting: map[string]bool{},
 		bgTasks: map[string][]backgroundTask{}, bgOwner: map[string]string{}, pending: map[string][]claude.Message{},
 		live: map[string]*claude.Session{},
 	}
@@ -180,14 +184,8 @@ func (m *Module) finalizeDead(ctx context.Context, messageID, status, errText, p
 			break
 		}
 	}
-	if errText != "" {
-		t.applySnapshot("assistant_text", map[string]any{"text": "\n\nError: " + errText})
-	}
-	content := t.contentText()
-	if content == "" && errText != "" {
-		content = errText
-	}
-	dur, _ := m.st.updateSnapshot(ctx, messageID, snapshot{ContentText: content, Render: t.renderCopy(), LastSeq: t.lastSeq, Status: status, RecordActivity: publishUser != ""})
+	content := withErrorText(t.contentText(), errText)
+	dur, _ := m.st.updateSnapshot(ctx, messageID, snapshot{ContentText: content, Render: t.renderCopy(), LastSeq: t.lastSeq, Status: status, StreamError: errText, RecordActivity: publishUser != ""})
 	kind, payload := "cancelled", map[string]any{"status": status, "duration_ms": dur}
 	if status != StatusInterrupted {
 		kind, payload = "error", map[string]any{"error": firstNonEmpty(errText, "Stream ended unexpectedly")}
@@ -244,6 +242,7 @@ func (m *Module) reserve(chatID string) bool {
 func (m *Module) unreserve(chatID string) {
 	m.mu.Lock()
 	delete(m.starting, chatID)
+	delete(m.stopStarting, chatID)
 	m.mu.Unlock()
 }
 
@@ -252,6 +251,11 @@ func (m *Module) launch(t *turn) {
 	m.mu.Lock()
 	m.turns[t.chatID] = t
 	delete(m.starting, t.chatID)
+	if m.stopStarting[t.chatID] {
+		delete(m.stopStarting, t.chatID)
+		t.cancelled.Store(true)
+		t.cancel()
+	}
 	m.mu.Unlock()
 	go func() {
 		defer func() {
@@ -488,9 +492,15 @@ func (m *Module) persistSessionID(chatID, sessionID string) {
 	_, _ = m.a.DB.ExecContext(context.Background(), `UPDATE chats SET session_id = ? WHERE id = ? AND (session_id IS NULL OR session_id != ?)`, sessionID, chatID, sessionID)
 }
 
-// cancelTurn interrupts the chat's turn and waits for it to unwind.
+// cancelTurn interrupts the chat's turn and waits for it to unwind. A turn
+// still starting is marked so it never runs the agent.
 func (m *Module) cancelTurn(chatID string, timeout time.Duration) {
-	t := m.activeTurn(chatID)
+	m.mu.Lock()
+	t := m.turns[chatID]
+	if t == nil && m.starting[chatID] {
+		m.stopStarting[chatID] = true
+	}
+	m.mu.Unlock()
 	if t == nil {
 		return
 	}
@@ -649,10 +659,8 @@ func (m *Module) promptBlocks(sb *sandbox.Sandbox, req *turnRequest) ([]map[stri
 		case "pdf":
 			blocks = append(blocks, map[string]any{"type": "document", "source": map[string]any{"type": "base64", "media_type": "application/pdf", "data": base64.StdEncoding.EncodeToString(data)}})
 		default:
-			dest := filepath.Base(rel)
-			// The workspace is box-writable: write through the swap-safe root
-			// and never through a symlink planted at dest.
-			if err := sb.WriteWorkspaceFile(dest, data); err != nil {
+			dest, err := writeUpload(sb, db.Deref(req.chat.WorktreeCwd), filepath.Base(rel), data)
+			if err != nil {
 				return nil, fmt.Errorf("copy attachment into workspace: %w", err)
 			}
 			notes = append(notes, "- "+name+" is available at "+path.Join(sb.Root, dest))
@@ -662,6 +670,21 @@ func (m *Module) promptBlocks(sb *sandbox.Sandbox, req *turnRequest) ([]map[stri
 		blocks = append(blocks, map[string]any{"type": "text", "text": "<user_attachments>\nUser uploaded the following files. Read them from these sandbox paths when needed.\n" + strings.Join(notes, "\n") + "\n</user_attachments>"})
 	}
 	return blocks, nil
+}
+
+// uploadsDir holds attachments copied for the agent, inside the chat's
+// working dir; its own "*" .gitignore keeps them out of commits.
+const uploadsDir = ".agentrove/uploads"
+
+// writeUpload copies an attachment into the chat's working dir cwd
+// (workspace-relative) and returns its workspace-relative path.
+func writeUpload(sb *sandbox.Sandbox, cwd, name string, data []byte) (string, error) {
+	dir := path.Join(cwd, uploadsDir)
+	if err := sb.WriteWorkspaceFile(path.Join(dir, ".gitignore"), []byte("*\n")); err != nil {
+		return "", err
+	}
+	dest := path.Join(dir, name)
+	return dest, sb.WriteWorkspaceFile(dest, data)
 }
 
 // prepareUserPrompt wraps the prompt with the user's custom instructions;
@@ -839,7 +862,13 @@ func (m *Module) startTurn(ctx context.Context, in startInput) (app.ChatTurnResu
 	m.mu.Lock()
 	m.bgOwner[chat.ID] = in.userID
 	m.mu.Unlock()
-	m.launch(newTurn(m, req))
+	t := newTurn(m, req)
+	if ctx.Err() != nil {
+		// The client gave up on the start (Stop while the box woke up).
+		t.cancelled.Store(true)
+		t.cancel()
+	}
+	m.launch(t)
 	launched = true
 	if in.member == nil {
 		m.publishChatEvent(in.userID, map[string]any{"kind": "stream_started", "chat_id": chat.ID, "message_id": asstMsg.ID})
@@ -872,8 +901,9 @@ func (m *Module) createCheckpoint(ctx context.Context, sb *sandbox.Sandbox, chat
 	cwd := db.Deref(chat.WorktreeCwd)
 	cp, err := gitops.CreateCheckpoint(ctx, sb, cwd)
 	if err != nil || cp == nil {
+		// No row: the turn shows no restore action.
 		if err != nil {
-			slog.Warn("checkpoint failed", "chat", chat.ID, "err", err)
+			slog.Warn("checkpoint failed; restore unavailable for this turn", "chat", chat.ID, "err", err)
 		}
 		return nil
 	}
@@ -884,7 +914,20 @@ func (m *Module) createCheckpoint(ctx context.Context, sb *sandbox.Sandbox, chat
 	if err != nil {
 		return nil
 	}
+	m.pruneCheckpoints(ctx, chat.ID)
 	return &id
+}
+
+// keepCheckpoints is how many recent turns per chat stay restorable; each
+// checkpoint holds a whole dirty tree, so older ones are dropped.
+const keepCheckpoints = 20
+
+func (m *Module) pruneCheckpoints(ctx context.Context, chatID string) {
+	_, err := m.a.DB.ExecContext(ctx, `DELETE FROM chat_checkpoints WHERE chat_id = ? AND id NOT IN
+		(SELECT id FROM chat_checkpoints WHERE chat_id = ? ORDER BY created_at DESC, id DESC LIMIT ?)`, chatID, chatID, keepCheckpoints)
+	if err != nil {
+		slog.Warn("prune checkpoints", "chat", chatID, "err", err)
+	}
 }
 
 const (
@@ -1058,7 +1101,13 @@ func (m *Module) generateText(ctx context.Context, userID, modelID, systemPrompt
 	return m.oneShot(userID).Run(ctx, modelID, systemPrompt, prompt)
 }
 
+// generateTitle replaces a new chat's placeholder title (one derived from the
+// prompt) with a generated one. Deliberate titles (automation runs, MCP
+// create_chat, persona sub-threads) and renames made meanwhile are kept.
 func (m *Module) generateTitle(userID string, chat *models.Chat, prompt string) {
+	if !isPlaceholderTitle(chat.Title, prompt) {
+		return
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 	defer cancel()
 	st, err := m.a.Store.GetUserSettings(ctx, userID)
@@ -1071,18 +1120,39 @@ func (m *Module) generateTitle(userID string, chat *models.Chat, prompt string) 
 		slog.Warn("title generation failed", "chat", chat.ID, "err", err)
 		return
 	}
-	title = strings.Trim(strings.TrimSpace(title), `"'`)
-	if title == "" {
-		return
+	title = clipTitle(strings.Trim(strings.TrimSpace(title), `"'`))
+	if title != "" && m.replaceTitle(ctx, chat.ID, chat.Title, title) {
+		m.publishChatEvent(userID, map[string]any{"kind": "title_updated", "chat_id": chat.ID, "title": title})
 	}
-	if len(title) > 255 {
-		title = title[:255]
+}
+
+// replaceTitle sets the title only while it is still old (a rename made
+// meanwhile wins). updated_at stays: a backfilled title isn't unseen activity.
+func (m *Module) replaceTitle(ctx context.Context, chatID, old, title string) bool {
+	res, err := m.a.DB.ExecContext(ctx, `UPDATE chats SET title = ? WHERE id = ? AND title = ?`, title, chatID, old)
+	if err != nil {
+		return false
 	}
-	// updated_at untouched: a backfilled title isn't unseen activity.
-	if _, err := m.a.DB.ExecContext(ctx, `UPDATE chats SET title = ? WHERE id = ?`, title, chat.ID); err != nil {
-		return
+	n, err := res.RowsAffected()
+	return err == nil && n > 0
+}
+
+// isPlaceholderTitle reports a title the client or MCP derived from the
+// prompt (its start, whitespace collapsed) or a generic default.
+func isPlaceholderTitle(title, prompt string) bool {
+	t := strings.Join(strings.Fields(strings.TrimRight(title, "\uFFFD")), " ")
+	if t == "" || strings.EqualFold(t, "New chat") {
+		return true
 	}
-	m.publishChatEvent(userID, map[string]any{"kind": "title_updated", "chat_id": chat.ID, "title": title})
+	return strings.HasPrefix(strings.Join(strings.Fields(prompt), " "), t)
+}
+
+// clipTitle caps a title at 255 characters without splitting one.
+func clipTitle(title string) string {
+	if r := []rune(title); len(r) > 255 {
+		return string(r[:255])
+	}
+	return title
 }
 
 func guessMIME(name string) string {

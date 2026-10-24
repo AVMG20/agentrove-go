@@ -22,6 +22,17 @@
   }
 }
 
+// Opened by the button; visually hidden rather than display:none so iOS still
+// lets it open the picker.
+.file-input {
+  position: absolute;
+  height: 1px;
+  width: 1px;
+  overflow: hidden;
+  opacity: 0;
+  pointer-events: none;
+}
+
 .icon {
   height: var(--space-3-5);
   width: var(--space-3-5);

@@ -41,6 +41,7 @@ export function AppSidebar() {
 
   return (
     <aside
+      id="app-sidebar"
       aria-label={isSettings ? 'Settings navigation' : 'Threads'}
       className={clsx(styles.sidebar, sidebarOpen && styles['sidebar--open'])}
       // Closed: out of the tab order and the accessibility tree.

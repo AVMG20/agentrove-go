@@ -3,6 +3,7 @@ import {
   EMPTY_SIDEBAR_FILTERS,
   clearSidebarFilters,
   countActiveSidebarFilters,
+  dropMissingWorkspaceFilter,
   type SidebarFilters,
 } from './sidebarFilters';
 
@@ -52,5 +53,19 @@ describe('countActiveSidebarFilters', () => {
 
   it('excludes groupBy from the active count (presentation, not a filter)', () => {
     expect(countActiveSidebarFilters(filters({ groupBy: 'status' }))).toBe(0);
+  });
+});
+
+describe('dropMissingWorkspaceFilter', () => {
+  it('clears a project filter whose project is gone', () => {
+    const f = filters({ workspaceId: 'deleted', statuses: ['unread'] });
+    expect(dropMissingWorkspaceFilter(f, ['ws-1'])).toEqual({ ...f, workspaceId: null });
+  });
+
+  it('keeps the same object when the project exists or no filter is set', () => {
+    const f = filters({ workspaceId: 'ws-1' });
+    expect(dropMissingWorkspaceFilter(f, ['ws-1'])).toBe(f);
+    const none = filters();
+    expect(dropMissingWorkspaceFilter(none, [])).toBe(none);
   });
 });

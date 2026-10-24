@@ -1,5 +1,5 @@
 import { StreamContentBuffer } from '@/utils/stream';
-import type { AssistantStreamEvent, Message } from '@/types/chat.types';
+import type { Message } from '@/types/chat.types';
 import { StreamProcessingError } from '@/types/stream.types';
 
 export interface StreamSessionState {
@@ -23,26 +23,20 @@ export function getStreamErrorMessage(streamError: Error): string {
   return streamError.message || 'An error occurred';
 }
 
+// Mirrors the backend's failed snapshot: the reason goes to stream_error (shown by
+// the turn footer), not into the reply text.
 export function buildFailedMessageUpdate(streamError: Error): (msg: Message) => Message {
   const errorMessage = getStreamErrorMessage(streamError);
 
-  return (msg: Message): Message => {
-    const existingEvents = Array.isArray(msg.content_render?.events)
-      ? msg.content_render.events
-      : [];
-    const nextEvents: AssistantStreamEvent[] = [
-      ...existingEvents,
-      { type: 'assistant_text', text: '\n\nError: ' + errorMessage },
-    ];
-
-    return {
-      ...msg,
-      content_text: msg.content_text || errorMessage,
-      content_render: { events: nextEvents },
-      active_stream_id: null,
-      stream_status: 'failed',
-    };
-  };
+  return (msg: Message): Message => ({
+    ...msg,
+    content_text: msg.content_text
+      ? `${msg.content_text}\n\nError: ${errorMessage}`
+      : `Error: ${errorMessage}`,
+    active_stream_id: null,
+    stream_status: 'failed',
+    stream_error: errorMessage,
+  });
 }
 
 export function buildContentFlushUpdate(

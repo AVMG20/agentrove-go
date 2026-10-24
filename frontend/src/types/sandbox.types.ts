@@ -14,11 +14,16 @@ export interface FileContent {
   content: string;
   type: string;
   is_binary: boolean;
+  // Not valid UTF-8: content has replacement characters and must not be saved back.
+  lossy?: boolean;
+  // Identifies the bytes on disk; sent back as base_version on save.
+  version?: string;
 }
 
 export interface UpdateFileResult {
   success: boolean;
   message: string;
+  version?: string;
 }
 
 // `all` = uncommitted changes (worktree + index vs HEAD); shown as "Uncommitted".

@@ -8,6 +8,12 @@ import App from './App.tsx';
 import 'virtual:palette-overrides.css';
 import { queryClient, persistOptions } from './lib/queryClient';
 import { reloadStaleChunk } from './utils/lazyNamed';
+import { applyLayoutAttributes, subscribeLayoutMode } from './utils/device';
+
+// Phone vs desktop layout for the CSS (html[data-mobile] …), set before the first
+// render so a phone never paints the desktop shell.
+applyLayoutAttributes();
+subscribeLayoutMode(() => applyLayoutAttributes());
 
 window.addEventListener('vite:preloadError', (event) => {
   if (reloadStaleChunk()) {

@@ -1,9 +1,10 @@
-import { Suspense, type ReactNode } from 'react';
+import { Suspense, useEffect, type ReactNode } from 'react';
 import { lazyNamed } from '@/utils/lazyNamed';
 import { useUIStore } from '@/store/uiStore';
 import { useIsMobile } from '@/hooks/useIsMobile';
 import { SplitViewContainer } from '@/components/ui/SplitViewContainer/SplitViewContainer';
 import { CommandMenu } from '@/components/ui/command-menu/CommandMenu';
+import { SessionSheet } from '@/components/chat/session-panel/SessionSheet';
 import { viewLoadingFallback } from '@/components/ui/shared/ViewLoadingFallback/ViewLoadingFallback';
 import { tileIdToViewType } from '@/utils/tileHelpers';
 import type { Chat } from '@/types/chat.types';
@@ -116,10 +117,13 @@ interface WorkspaceSurfaceProps {
 
 export function WorkspaceSurface({ renderView, sessionPanel, children }: WorkspaceSurfaceProps) {
   const sessionPanelOpen = useUIStore((s) => s.sessionPanelOpen);
+  const sessionSheetOpen = useUIStore((s) => s.sessionSheetOpen);
   const createCommitDialogOpen = useUIStore((s) => s.createCommitDialogOpen);
   const createPRDialogOpen = useUIStore((s) => s.createPRDialogOpen);
   const createBranchDialogOpen = useUIStore((s) => s.createBranchDialogOpen);
   const isMobile = useIsMobile();
+  // The surface remounts per chat; don't carry an open sheet into the next one.
+  useEffect(() => () => useUIStore.getState().setSessionSheetOpen(false), []);
 
   return (
     <div className={styles.root}>
@@ -127,6 +131,14 @@ export function WorkspaceSurface({ renderView, sessionPanel, children }: Workspa
         <SplitViewContainer renderView={renderView} />
       </div>
       {sessionPanelOpen && !isMobile && sessionPanel}
+      {isMobile && sessionPanel && (
+        <SessionSheet
+          isOpen={sessionSheetOpen}
+          onClose={() => useUIStore.getState().setSessionSheetOpen(false)}
+        >
+          {sessionPanel}
+        </SessionSheet>
+      )}
       <CommandMenu />
       {children}
       {createCommitDialogOpen && (

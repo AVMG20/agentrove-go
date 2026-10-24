@@ -1,4 +1,5 @@
 import { memo, useCallback, useMemo, useState } from 'react';
+import toast from 'react-hot-toast';
 import { MarkDown } from '@/components/ui/markdown/MarkDown';
 import { Tooltip } from '@/components/ui/Tooltip/Tooltip';
 import { ClaudeIcon } from '@/components/ui/icons/ClaudeIcon';
@@ -259,6 +260,15 @@ export function ChannelView({ channel }: { channel: Channel }) {
     [channel.id],
   );
 
+  const handleRetryQueued = useCallback(
+    (messageId: string) =>
+      void useChannelQueueStore
+        .getState()
+        .retryMessage(channel.id, messageId)
+        .catch((error: Error) => toast.error(error.message || "Couldn't queue the message")),
+    [channel.id],
+  );
+
   const messages = useMemo(
     () =>
       Object.values(messagesById)
@@ -321,6 +331,7 @@ export function ChannelView({ channel }: { channel: Channel }) {
               onCancel={handleCancelQueued}
               onEdit={handleEditQueued}
               onSendNow={handleSendQueuedNow}
+              onRetry={handleRetryQueued}
             />
           }
           composer={

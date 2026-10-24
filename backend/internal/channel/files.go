@@ -28,17 +28,13 @@ var allowedImageTypes = map[string]bool{"image/jpeg": true, "image/png": true, "
 
 const xlsxType = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 
-// claudeNativeTypes are passed to Claude inline; others are copied into the
-// workspace so the agent can read them.
-var claudeNativeTypes = map[string]bool{"image": true, "pdf": true}
-
 // saveFiles stores uploads under STORAGE_PATH/temp/<user>/ like the chat
-// upload path, and copies non-native types into the workspace root.
+// upload path; the member turns copy the ones Claude can't take inline next
+// to their chat (see chat.promptBlocks).
 func (s *Service) saveFiles(ctx context.Context, ch *Channel, files []*multipart.FileHeader) ([]savedFile, error) {
 	if len(files) == 0 {
 		return nil, nil
 	}
-	var sb *sandbox.Sandbox
 	out := make([]savedFile, 0, len(files))
 	for _, fh := range files {
 		ct := fh.Header.Get("Content-Type")
@@ -79,18 +75,6 @@ func (s *Service) saveFiles(ctx context.Context, ch *Channel, files []*multipart
 		}
 		if err := os.WriteFile(abs, data, 0o644); err != nil {
 			return nil, err
-		}
-		if !claudeNativeTypes[fileType] {
-			if sb == nil {
-				if sb, err = s.sandboxFor(ctx, ch); err != nil {
-					return nil, err
-				}
-			}
-			// The workspace is box-writable: write through the swap-safe root
-			// and never through a symlink planted at the target name.
-			if err := sb.WriteWorkspaceFile(unique, data); err != nil {
-				return nil, httpx.Errorf(500, "Failed to copy attachment into the workspace: %v", err)
-			}
 		}
 		out = append(out, savedFile{
 			FileURL:  s.a.Cfg.APIPrefix + "/attachments/temp/preview?path=" + rel,

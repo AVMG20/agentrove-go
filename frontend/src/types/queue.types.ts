@@ -44,5 +44,7 @@ export interface LocalQueuedMessage {
   attachments?: QueueMessageAttachment[];
   queuedAt: number;
   synced: boolean;
+  // Never reached the server (network error); retried by hand or on reconnect.
+  failed?: boolean;
   sendingNow: boolean;
 }

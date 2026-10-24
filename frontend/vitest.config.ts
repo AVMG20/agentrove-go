@@ -10,6 +10,9 @@ export default mergeConfig(
     test: {
       environment: 'node',
       include: ['src/**/*.test.ts', 'src/**/*.test.tsx'],
+      // Stylesheets load as empty strings in tests; this one is read (as ?raw) to
+      // check it agrees with utils/device.ts.
+      css: { include: [/_responsive\.scss/] },
     },
   }),
 );

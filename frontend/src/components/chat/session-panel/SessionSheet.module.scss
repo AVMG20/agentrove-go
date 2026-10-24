@@ -1,0 +1,29 @@
+// BaseModal already makes every dialog a bottom sheet on a phone (full width,
+// pinned to the bottom edge, clear of the insets); this one is a capped column so
+// its body scrolls.
+[role='dialog'].sheet {
+  display: flex;
+  max-height: 85dvh;
+  flex-direction: column;
+}
+
+.handle {
+  margin: var(--space-2) auto 0;
+  height: var(--space-1);
+  width: var(--space-10);
+  flex-shrink: 0;
+  border-radius: var(--radius-full);
+  background-color: var(--theme-border);
+}
+
+.body {
+  min-height: 0;
+  overflow-y: auto;
+
+  // The panel is a fixed-width bordered column on desktop; fill the sheet instead.
+  > * {
+    width: 100%;
+    border-left: 0;
+    background-color: transparent;
+  }
+}
