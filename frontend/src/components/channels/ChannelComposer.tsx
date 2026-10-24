@@ -192,6 +192,7 @@ export function ChannelComposer({
             disabled={postMessage.isPending || !hasDraft}
           />
           <AttachButton
+            onFiles={(picked) => attachments.handleFileSelect([...files, ...picked])}
             onAttach={() => {
               attachments.resetDragState();
               attachments.setShowFileUpload(true);

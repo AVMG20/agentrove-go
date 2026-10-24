@@ -117,6 +117,9 @@ function InputLayout() {
           />
           <AttachButton
             disabled={state.isDisabled}
+            onFiles={(files) =>
+              actions.handleFileSelect([...(state.attachedFiles ?? []), ...files])
+            }
             onAttach={() => {
               actions.resetDragState();
               actions.setShowFileUpload(true);
