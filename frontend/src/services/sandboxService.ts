@@ -58,6 +58,8 @@ async function updateFile(
   sandboxId: string,
   filePath: string,
   content: string,
+  // The version the edit started from; the backend answers 409 if the file changed since.
+  baseVersion?: string,
 ): Promise<UpdateFileResult> {
   validateRequired(sandboxId, 'Sandbox ID');
   validateRequired(filePath, 'File path');
@@ -69,6 +71,7 @@ async function updateFile(
     const response = await apiClient.put<UpdateFileResult>(`/sandbox/${sandboxId}/files`, {
       file_path: filePath,
       content,
+      base_version: baseVersion,
     });
 
     return ensureResponse(response, 'Update file operation returned no response');

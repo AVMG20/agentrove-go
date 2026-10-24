@@ -51,10 +51,12 @@ interface UpdateFileParams {
   sandboxId: string;
   filePath: string;
   content: string;
+  baseVersion?: string;
 }
 
 export const useUpdateFileMutation = createMutation<UpdateFileResult, Error, UpdateFileParams>(
-  ({ sandboxId, filePath, content }) => sandboxService.updateFile(sandboxId, filePath, content),
+  ({ sandboxId, filePath, content, baseVersion }) =>
+    sandboxService.updateFile(sandboxId, filePath, content, baseVersion),
   async (queryClient, _data, { sandboxId, filePath }) => {
     await Promise.all([
       queryClient.invalidateQueries({

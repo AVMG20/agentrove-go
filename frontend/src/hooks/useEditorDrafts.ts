@@ -4,6 +4,8 @@ import type { FileStructure } from '@/types/file-system.types';
 interface UseEditorDraftsArgs {
   selectedFile: FileStructure | null;
   selectedFileContent: string | undefined;
+  // Version of selectedFileContent on disk (see the file content response).
+  selectedFileVersion?: string;
   sandboxId: string | undefined;
   onCloseFile: (path: string) => void;
 }
@@ -12,6 +14,7 @@ interface UseEditorDraftsArgs {
 export function useEditorDrafts({
   selectedFile,
   selectedFileContent,
+  selectedFileVersion,
   sandboxId,
   onCloseFile,
 }: UseEditorDraftsArgs) {
@@ -19,6 +22,11 @@ export function useEditorDrafts({
   // Active file + saved baseline the live buffer diffs against.
   const prevSelectedFileRef = useRef<FileStructure | null>(null);
   const draftsRef = useRef<Map<string, string>>(new Map());
+  // Disk version of the loaded baseline, and the version each draft started
+  // from: a refetch rebases the buffer silently, but the save must still be
+  // checked against what the user actually edited.
+  const loadedVersionRef = useRef<{ path: string; version?: string } | null>(null);
+  const draftBaseRef = useRef<Map<string, string | undefined>>(new Map());
   // Mirrored in state so every tab can show its own unsaved dot.
   const [dirtyPaths, setDirtyPaths] = useState<Set<string>>(() => new Set());
   const [pendingClosePath, setPendingClosePath] = useState<string | null>(null);
@@ -30,6 +38,7 @@ export function useEditorDrafts({
     // same-path files don't bleed across sandboxes. Null prev so content effect re-inits.
     prevSandboxIdRef.current = sandboxId;
     draftsRef.current.clear();
+    draftBaseRef.current.clear();
     prevSelectedFileRef.current = null;
     if (dirtyPaths.size > 0) setDirtyPaths(new Set());
     if (pendingClosePath !== null) setPendingClosePath(null);
@@ -41,8 +50,16 @@ export function useEditorDrafts({
   // Single writer keeps draftsRef and dirtyPaths in lockstep; null clears the draft.
   const setDraft = useCallback((path: string, content: string | null) => {
     const isDirty = content !== null;
-    if (isDirty) draftsRef.current.set(path, content);
-    else draftsRef.current.delete(path);
+    if (isDirty) {
+      draftsRef.current.set(path, content);
+      if (!draftBaseRef.current.has(path)) {
+        const loaded = loadedVersionRef.current;
+        draftBaseRef.current.set(path, loaded?.path === path ? loaded.version : undefined);
+      }
+    } else {
+      draftsRef.current.delete(path);
+      draftBaseRef.current.delete(path);
+    }
     setDirtyPaths((prev) => {
       if (prev.has(path) === isDirty) return prev;
       const next = new Set(prev);
@@ -62,6 +79,9 @@ export function useEditorDrafts({
 
     const prev = prevSelectedFileRef.current;
     const fileChanged = !prev || prev.path !== selectedFile.path;
+    if (selectedFileContent !== undefined) {
+      loadedVersionRef.current = { path: selectedFile.path, version: selectedFileVersion };
+    }
 
     const queryContentChanged =
       selectedFileContent !== undefined &&
@@ -85,7 +105,7 @@ export function useEditorDrafts({
 
       setCurrentContent(draft ?? baseline);
     }
-  }, [selectedFile, selectedFileContent, setDraft]);
+  }, [selectedFile, selectedFileContent, selectedFileVersion, setDraft]);
 
   // Selection updates before the content effect; hide previous file's text for that render.
   const displayContent = hasLoadedSelectedFile ? currentContent : (selectedFileContent ?? '');
@@ -123,14 +143,33 @@ export function useEditorDrafts({
 
   // Rebaseline the saved path (not the now-active tab) so further edits diff against disk.
   const commitSave = useCallback(
-    (savedPath: string, submitted: string) => {
+    (savedPath: string, submitted: string, version?: string) => {
       if (prevSelectedFileRef.current?.path === savedPath) {
         prevSelectedFileRef.current = {
           ...prevSelectedFileRef.current,
           content: submitted,
         };
+        loadedVersionRef.current = { path: savedPath, version };
       }
       setDraft(savedPath, null);
+    },
+    [setDraft],
+  );
+
+  // The disk version the path's edits are based on, for the save's conflict check.
+  const baseVersionFor = useCallback((path: string) => {
+    if (draftBaseRef.current.has(path)) return draftBaseRef.current.get(path);
+    const loaded = loadedVersionRef.current;
+    return loaded?.path === path ? loaded.version : undefined;
+  }, []);
+
+  // Drop the draft and show the loaded baseline ("reload from disk").
+  const discardDraft = useCallback(
+    (path: string) => {
+      setDraft(path, null);
+      if (prevSelectedFileRef.current?.path === path) {
+        setCurrentContent(prevSelectedFileRef.current.content);
+      }
     },
     [setDraft],
   );
@@ -147,5 +186,7 @@ export function useEditorDrafts({
     confirmCloseTab,
     cancelCloseTab,
     commitSave,
+    baseVersionFor,
+    discardDraft,
   };
 }

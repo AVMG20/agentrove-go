@@ -12,6 +12,7 @@ import (
 	"strings"
 	"testing"
 
+	"agentrove/internal/httpx"
 	"agentrove/internal/sandbox"
 )
 
@@ -79,11 +80,15 @@ func TestParseLsFiles(t *testing.T) {
 }
 
 func TestEncodeContent(t *testing.T) {
-	if c, bin := EncodeContent("a.png", []byte{0, 1}); !bin || c != base64.StdEncoding.EncodeToString([]byte{0, 1}) {
-		t.Errorf("png: %q %v", c, bin)
+	if c, bin, lossy := EncodeContent("a.png", []byte{0, 1}); !bin || lossy || c != base64.StdEncoding.EncodeToString([]byte{0, 1}) {
+		t.Errorf("png: %q %v %v", c, bin, lossy)
 	}
-	if c, bin := EncodeContent("a.txt", []byte("hé\xff")); bin || c != "hé\uFFFD" {
-		t.Errorf("txt: %q %v", c, bin)
+	if c, bin, lossy := EncodeContent("a.txt", []byte("hé\xff")); bin || !lossy || c != "hé\uFFFD" {
+		t.Errorf("txt: %q %v %v", c, bin, lossy)
+	}
+	// SVG is text: it must open as editable source, not base64.
+	if c, bin, lossy := EncodeContent("icon.svg", []byte("<svg/>")); bin || lossy || c != "<svg/>" {
+		t.Errorf("svg: %q %v %v", c, bin, lossy)
 	}
 }
 
@@ -102,6 +107,62 @@ func TestParseLsFilesNestedRepos(t *testing.T) {
 	want := "[nested:directory u.txt:file a.txt:file lib:directory lib/sub:directory c.txt:file]"
 	if fmt.Sprint(got) != want {
 		t.Fatalf("got %v, want %s", got, want)
+	}
+}
+
+func TestSaveFileVersionCheck(t *testing.T) {
+	ws := t.TempDir()
+	sb := &sandbox.Sandbox{Kind: sandbox.KindDocker, Root: "/home/user/workspace", WorkspacePath: ws}
+	if err := os.WriteFile(filepath.Join(ws, "a.txt"), []byte("v1"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	fc, err := readFile(sb, "a.txt")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The agent edits the file after the editor loaded it.
+	if err := os.WriteFile(filepath.Join(ws, "a.txt"), []byte("agent"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	var he *httpx.Error
+	if _, err := saveFile(sb, "a.txt", "mine", fc.Version); !errors.As(err, &he) || he.Status != 409 {
+		t.Fatalf("stale save = %v, want 409", err)
+	}
+	if b, _ := os.ReadFile(filepath.Join(ws, "a.txt")); string(b) != "agent" {
+		t.Fatalf("stale save overwrote the file: %q", b)
+	}
+	fc, _ = readFile(sb, "a.txt")
+	v, err := saveFile(sb, "a.txt", "mine", fc.Version)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fc, _ = readFile(sb, "a.txt"); fc.Content != "mine" || fc.Version != v {
+		t.Fatalf("after save = %+v, version %s", fc, v)
+	}
+	// No base version: an explicit overwrite.
+	if _, err := saveFile(sb, "a.txt", "forced", ""); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestSaveFileKeepsBOM(t *testing.T) {
+	ws := t.TempDir()
+	sb := &sandbox.Sandbox{Kind: sandbox.KindDocker, Root: "/home/user/workspace", WorkspacePath: ws}
+	p := filepath.Join(ws, "w.txt")
+	if err := os.WriteFile(p, []byte("\xEF\xBB\xBFold"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := saveFile(sb, "w.txt", "new", ""); err != nil {
+		t.Fatal(err)
+	}
+	if b, _ := os.ReadFile(p); string(b) != "\xEF\xBB\xBFnew" {
+		t.Fatalf("saved %q, want the BOM kept", b)
+	}
+	if _, err := saveFile(sb, "w.txt", "\uFEFFnew", ""); err != nil {
+		t.Fatal(err)
+	}
+	if b, _ := os.ReadFile(p); string(b) != "\xEF\xBB\xBFnew" {
+		t.Fatalf("saved %q, want a single BOM", b)
 	}
 }
 

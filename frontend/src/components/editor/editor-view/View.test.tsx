@@ -1,11 +1,18 @@
 // @vitest-environment jsdom
 import { render, fireEvent, screen, act } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import type { ReactNode } from 'react';
+import { ServiceError } from '@/services/base/ServiceError';
 import type { FileStructure } from '@/types/file-system.types';
 import { View, type ViewProps } from './View';
 
 const h = vi.hoisted(() => ({
-  fileContent: undefined as { path: string; content: string } | undefined,
+  fileContent: undefined as
+    | { path: string; content: string; is_binary?: boolean; lossy?: boolean; version?: string }
+    | undefined,
+  mutate: null as unknown as ReturnType<typeof vi.fn>,
+  editorProps: null as { onChange?: (v: string) => void; options?: { readOnly?: boolean } } | null,
   pendingRaf: null as (() => void) | null,
   models: new Map<string, { content: string; reveals: number[] }>(),
   // 0 simulates a jump into a display:none tile (re-centered on first layout).
@@ -25,6 +32,8 @@ beforeEach(() => {
   h.models.clear();
   h.layoutHeight = 300;
   h.layoutChangeCb = null;
+  h.mutate = vi.fn();
+  h.editorProps = null;
   vi.stubGlobal('requestAnimationFrame', (cb: FrameRequestCallback) => {
     h.pendingRaf = () => cb(performance.now());
     return 1;
@@ -97,8 +106,11 @@ vi.mock('@monaco-editor/react', async () => {
     value: string;
     path: string;
     onMount?: (editor: unknown, monaco: unknown) => void;
+    onChange?: (v: string) => void;
+    options?: { readOnly?: boolean };
   }) {
     const { value, path, onMount } = props;
+    h.editorProps = props;
     useEffect(() => {
       if (!h.models.has(path)) h.models.set(path, { content: value, reveals: [] });
       onMount?.(makeEditor(path), makeMonaco());
@@ -116,7 +128,7 @@ vi.mock('@monaco-editor/react', async () => {
 
 vi.mock('@/hooks/queries/useSandboxQueries', () => ({
   useFileContentQuery: () => ({ data: h.fileContent, isLoading: false, error: null }),
-  useUpdateFileMutation: () => ({ isPending: false, mutate: vi.fn() }),
+  useUpdateFileMutation: () => ({ isPending: false, mutate: h.mutate }),
   useGitChangedPathsQuery: () => ({ data: { paths: [] } }),
   useGitFileBaselineQuery: () => ({
     data: undefined,
@@ -129,7 +141,7 @@ vi.mock('@/hooks/useEditorTheme', () => ({
   useEditorTheme: () => ({ currentTheme: 'custom-light', setupEditorTheme: vi.fn() }),
 }));
 vi.mock('@/hooks/useResolvedTheme', () => ({ useResolvedTheme: () => 'light' }));
-vi.mock('react-hot-toast', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
+vi.mock('react-hot-toast', () => ({ default: { success: vi.fn(), error: vi.fn() } }));
 vi.mock('@/components/editor/file-preview/FilePreview', () => ({ FilePreview: () => null }));
 
 async function renderView(overrides: Partial<ViewProps> = {}) {
@@ -148,8 +160,12 @@ async function renderView(overrides: Partial<ViewProps> = {}) {
   // The editor is loaded through React.lazy — await the async act so the
   // Suspense fallback resolves before the jump effect runs.
   let result!: ReturnType<typeof render>;
+  const queryClient = new QueryClient();
+  const wrapper = ({ children }: { children: ReactNode }) => (
+    <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+  );
   await act(async () => {
-    result = render(<View {...props} />);
+    result = render(<View {...props} />, { wrapper });
   });
   return result;
 }
@@ -289,5 +305,47 @@ describe('View jump-to-line reveal', () => {
       h.layoutChangeCb?.({ height: 400 });
     });
     expect(model?.reveals).toEqual([12, 12]);
+  });
+});
+
+describe('View saving', () => {
+  const file: FileStructure = { path: 'src/a.ts', type: 'file', content: '' };
+  const open = () => renderView({ selectedFile: file, fileStructure: [file], openFiles: [file] });
+
+  it('opens binary and non-UTF-8 files read-only', async () => {
+    h.fileContent = { path: 'src/a.ts', content: 'h\uFFFDllo', lossy: true, version: 'v1' };
+    await open();
+    expect(h.editorProps?.options?.readOnly).toBe(true);
+    expect(screen.getByText(/isn't valid UTF-8/)).toBeTruthy();
+  });
+
+  it('sends the version the draft started from, even after the file changed on disk', async () => {
+    h.fileContent = { path: 'src/a.ts', content: 'one', version: 'v1' };
+    const { rerender } = await open();
+    expect(h.editorProps?.options?.readOnly).toBe(false);
+    await act(async () => {
+      h.editorProps?.onChange?.('mine');
+    });
+    // The agent rewrites the file; the refetch rebases the buffer silently.
+    h.fileContent = { path: 'src/a.ts', content: 'agent', version: 'v2' };
+    await act(async () => {
+      rerender(<View {...viewProps(file, null)} />);
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByText('Save'));
+    });
+    expect(h.mutate.mock.calls[0][0]).toMatchObject({ content: 'mine', baseVersion: 'v1' });
+
+    // 409: offer reload or overwrite; overwrite saves without a base version.
+    await act(async () => {
+      h.mutate.mock.calls[0][1].onError(
+        new ServiceError('File changed on disk', 'API_ERROR', null, 409),
+      );
+    });
+    expect(screen.getByText(/File changed on disk/)).toBeTruthy();
+    await act(async () => {
+      fireEvent.click(screen.getByText('Overwrite'));
+    });
+    expect(h.mutate.mock.calls[1][0]).toMatchObject({ content: 'mine', baseVersion: undefined });
   });
 });
