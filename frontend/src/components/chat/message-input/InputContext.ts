@@ -52,6 +52,7 @@ export interface InputActions {
   handleStopClick: (e: React.MouseEvent) => void;
   handleEnhancePrompt: () => void;
   handleFileSelect: (files: File[]) => void;
+  handleAddFiles: (files: File[]) => void;
   handleRemoveFile: (index: number) => void;
   handleRemoveSelection: (index: number) => void;
   handleDrawClick: (index: number) => void;

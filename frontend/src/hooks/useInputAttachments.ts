@@ -52,6 +52,8 @@ export function useInputAttachments({ attachedFiles, onAttach }: UseInputAttachm
     showDrawingModal,
     editingImageIndex,
     handleFileSelect,
+    // Adds files to the current ones (validated), e.g. from the phone picker.
+    handleAddFiles: handleDroppedFiles,
     handleRemoveFile,
     handleDrawClick,
     handleDrawingSave,

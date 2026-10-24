@@ -73,6 +73,7 @@ vi.mock('@/hooks/useInputAttachments', () => ({
     showDrawingModal: false,
     editingImageIndex: null,
     handleFileSelect: vi.fn(),
+    handleAddFiles: vi.fn(),
     handleRemoveFile: vi.fn(),
     handleDrawClick: vi.fn(),
     handleDrawingSave: vi.fn(),
