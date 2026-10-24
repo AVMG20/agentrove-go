@@ -134,7 +134,10 @@
 
 .frame {
   display: block;
-  width: 100%;
+  // iOS Safari grows an iframe to its content's width despite width: 100%,
+  // which scrolls the whole viewer sideways; this pins it to the screen.
+  width: 1px;
+  min-width: 100%;
   flex: 1;
   border: 0;
   // Pages without their own background render on white, like a browser tab.
