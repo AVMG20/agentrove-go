@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -83,6 +84,24 @@ func TestEncodeContent(t *testing.T) {
 	}
 	if c, bin := EncodeContent("a.txt", []byte("hé\xff")); bin || c != "hé\uFFFD" {
 		t.Errorf("txt: %q %v", c, bin)
+	}
+}
+
+// Nested repos come out of ls-files as "dir/" and submodules as gitlinks;
+// both are directories, never nameless files.
+func TestParseLsFilesNestedRepos(t *testing.T) {
+	out := "nested/\x00u.txt\x00" +
+		"100644 78981922613b2afb6025042ff6bd878ac1994e85 0\ta.txt\x00" +
+		"160000 cd8baa9c7a28c6aa5e02e57666833aa88ebbd34e 0\tlib/sub\x00" +
+		"100644 78981922613b2afb6025042ff6bd878ac1994e85 1\tc.txt\x00" +
+		"100644 78981922613b2afb6025042ff6bd878ac1994e85 2\tc.txt\x00"
+	var got []string
+	for _, it := range ParseLsFiles(out) {
+		got = append(got, it.Path+":"+it.Type)
+	}
+	want := "[nested:directory u.txt:file a.txt:file lib:directory lib/sub:directory c.txt:file]"
+	if fmt.Sprint(got) != want {
+		t.Fatalf("got %v, want %s", got, want)
 	}
 }
 
@@ -272,5 +291,46 @@ func TestReadFileSizeCap(t *testing.T) {
 	}
 	if fc, err := readFile(sb, "ok.txt"); err != nil || fc.Content != "hi" {
 		t.Errorf("small file = %+v, %v", fc, err)
+	}
+}
+
+func TestListFilesNestedRepoAndSubmodule(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not installed")
+	}
+	ws, _ := filepath.EvalSymlinks(t.TempDir())
+	run := func(dir string, args ...string) {
+		t.Helper()
+		cmd := exec.Command("git", append([]string{"-c", "user.email=t@t", "-c", "user.name=t"}, args...)...)
+		cmd.Dir = dir
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+	}
+	for _, f := range []string{"a.txt", "sub/x", "nested/y"} {
+		if err := os.MkdirAll(filepath.Dir(filepath.Join(ws, f)), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(ws, f), []byte("x"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	run(filepath.Join(ws, "sub"), "init", "-q")
+	run(filepath.Join(ws, "sub"), "add", "x")
+	run(filepath.Join(ws, "sub"), "commit", "-qm", "x")
+	run(filepath.Join(ws, "nested"), "init", "-q")
+	run(ws, "init", "-q")
+	run(ws, "add", "a.txt", "sub") // sub becomes a gitlink
+	sb := &sandbox.Sandbox{Kind: sandbox.KindDocker, Root: ws, WorkspacePath: ws}
+	items, err := listFiles(context.Background(), sb, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]string{}
+	for _, it := range items {
+		got[it.Path] = it.Type
+	}
+	if len(got) != 3 || got["a.txt"] != "file" || got["sub"] != "directory" || got["nested"] != "directory" {
+		t.Fatalf("listing = %+v", items)
 	}
 }

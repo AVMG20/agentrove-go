@@ -10,6 +10,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"unicode/utf8"
 
@@ -49,13 +50,27 @@ type FileMetadata struct {
 
 func boolPtr(b bool) *bool { return &b }
 
-// ParseLsFiles turns `git ls-files -z` output into entries, synthesizing the
-// parent directories git doesn't list.
+// lsFilesStage matches the "<mode> <object> <stage>\t" prefix `ls-files -s`
+// puts on tracked entries (untracked ones are bare paths).
+var lsFilesStage = regexp.MustCompile(`^([0-7]{6}) [0-9a-f]{40,64} [0-3]\t`)
+
+// ParseLsFiles turns `git ls-files -s -z` output into entries, synthesizing
+// the parent directories git doesn't list. A nested repository (listed as
+// "dir/" among untracked files) and a submodule (a 160000 gitlink) are
+// directories whose contents aren't listed.
 func ParseLsFiles(out string) []FileMetadata {
 	items := []FileMetadata{}
 	seen := map[string]bool{}
 	for _, rel := range strings.Split(out, "\x00") {
-		if rel == "" {
+		isDir := false
+		if m := lsFilesStage.FindStringSubmatch(rel); m != nil {
+			rel = rel[len(m[0]):]
+			isDir = m[1] == "160000"
+		}
+		if strings.HasSuffix(rel, "/") {
+			rel, isDir = strings.TrimRight(rel, "/"), true
+		}
+		if rel == "" || seen[rel] {
 			continue
 		}
 		parts := strings.Split(rel, "/")
@@ -67,7 +82,12 @@ func ParseLsFiles(out string) []FileMetadata {
 			seen[dir] = true
 			items = append(items, FileMetadata{Path: dir, Type: "directory"})
 		}
-		items = append(items, FileMetadata{Path: rel, Type: "file", IsBinary: boolPtr(isBinaryPath(rel))})
+		seen[rel] = true
+		if isDir {
+			items = append(items, FileMetadata{Path: rel, Type: "directory"})
+		} else {
+			items = append(items, FileMetadata{Path: rel, Type: "file", IsBinary: boolPtr(isBinaryPath(rel))})
+		}
 	}
 	return items
 }
@@ -79,7 +99,7 @@ func listFiles(ctx context.Context, sb *sandbox.Sandbox, rel string) ([]FileMeta
 	if err != nil {
 		return nil, err
 	}
-	res, err := repo.Run(ctx, "ls-files", "--cached", "--others", "--exclude-standard", "-z")
+	res, err := repo.Run(ctx, "ls-files", "--cached", "--others", "--exclude-standard", "-s", "-z")
 	if err == nil && res.Exit == 0 && res.Stdout != "" {
 		return ParseLsFiles(res.Stdout), nil
 	}
