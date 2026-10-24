@@ -10,6 +10,7 @@ import {
 import clsx from 'clsx';
 import { useMountEffect } from '@/hooks/useMountEffect';
 import { useIsMobile } from '@/hooks/useIsMobile';
+import { composerEnterKeyHint } from '@/utils/composerKeys';
 import { getHighlightTokenRanges } from '@/utils/mentionParser';
 import { HighlightedText } from '@/components/ui/shared/HighlightedText/HighlightedText';
 import { Textarea as PrimitiveTextarea } from '@/components/ui/primitives/Textarea/Textarea';
@@ -170,6 +171,7 @@ export function Textarea({
         placeholder={placeholder}
         disabled={isLoading || disabled}
         rows={1}
+        enterKeyHint={composerEnterKeyHint()}
         className={clsx(
           styles['textarea-field'],
           hasTokens && styles['textarea-field--highlighted'],

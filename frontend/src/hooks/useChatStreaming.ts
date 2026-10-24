@@ -307,19 +307,11 @@ export function useChatStreaming({
           setWasAborted(false);
         });
       }
-      clearInput();
       return;
     }
+    // The draft stays: Stop has its own button, so the composer may hold the next message.
     void stopActiveStreams(currentMessageIdRef.current || undefined);
-    clearInput();
-  }, [
-    cancelPendingStart,
-    chatId,
-    clearInput,
-    markStreamIdleAfterAbort,
-    stopActiveStreams,
-    streamState,
-  ]);
+  }, [cancelPendingStart, chatId, markStreamIdleAfterAbort, stopActiveStreams, streamState]);
 
   useMountEffect(() => {
     cleanupExpiredPdfBlobs();

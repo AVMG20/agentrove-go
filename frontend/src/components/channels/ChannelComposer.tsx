@@ -5,6 +5,7 @@ import { ComposerAttachmentSlots } from '@/components/chat/message-input/Compose
 import { ComposerField } from '@/components/chat/message-input/ComposerField';
 import { EnhanceButton } from '@/components/chat/message-input/EnhanceButton';
 import { SendButton, type SendButtonStatus } from '@/components/chat/message-input/SendButton';
+import { isComposerSendKey } from '@/utils/composerKeys';
 import { MentionSuggestionsPanel } from '@/components/chat/message-input/MentionSuggestionsPanel';
 import { Textarea } from '@/components/chat/message-input/Textarea';
 import { useChatContext } from '@/hooks/useChatContext';
@@ -167,7 +168,7 @@ export function ChannelComposer({
             onCursorPositionChange={setCursorPosition}
             onKeyDown={(e) => {
               if (mentions.handleKeyDown(e) || handleTokenDeleteKeyDown(e)) return;
-              if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
+              if (isComposerSendKey(e)) {
                 e.preventDefault();
                 void handleSend();
               }
