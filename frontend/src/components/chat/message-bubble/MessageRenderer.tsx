@@ -5,6 +5,7 @@ import { useMessageRenderQuery } from '@/hooks/queries/useChatQueries';
 import { buildSegments, segmentsEqual, type MessageSegment } from './segmentBuilder';
 import { AgentToolsContext } from '@/contexts/AgentToolsContext';
 import { ARTIFACT_TOOL_NAMES } from '@/components/chat/tools/registry';
+import { latestArtifactSegments } from '@/components/chat/tools/agentrove/artifactResult';
 import type { AssistantStreamEvent } from '@/types/chat.types';
 import type { ToolAggregate } from '@/types/tools.types';
 
@@ -118,7 +119,7 @@ export const MessageRenderer = memo(function MessageRenderer({
       ARTIFACT_TOOL_NAMES.has(segment.tool.name);
     return {
       rolledSegments: traceSegments.filter((segment) => !isArtifact(segment)),
-      artifactSegments: traceSegments.filter(isArtifact),
+      artifactSegments: latestArtifactSegments(traceSegments.filter(isArtifact)),
     };
   }, [traceSegments, rollUpTrace]);
   const segmentViewProps = {

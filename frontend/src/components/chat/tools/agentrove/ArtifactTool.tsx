@@ -2,24 +2,8 @@ import { memo } from 'react';
 import { AppWindow, ArrowUpRight } from 'lucide-react';
 import type { ToolAggregate } from '@/types/tools.types';
 import { AgentRoveTool } from './AgentRoveTool';
-import { parseAgentRoveResult } from './agentRoveDescriptors';
+import { extractArtifact } from './artifactResult';
 import styles from './ArtifactTool.module.scss';
-
-interface PublishedArtifact {
-  id: string;
-  title: string;
-  version: number;
-}
-
-const extractArtifact = (result: unknown): PublishedArtifact | null => {
-  const artifact = parseAgentRoveResult(result).data?.artifact;
-  if (typeof artifact !== 'object' || artifact === null) return null;
-  const { id, title, version } = artifact as Record<string, unknown>;
-  if (typeof id !== 'string' || typeof title !== 'string' || typeof version !== 'number') {
-    return null;
-  }
-  return { id, title, version };
-};
 
 // create/update/edit/restore_artifact: a card linking to the published page once
 // the call succeeded; the generic AgentRove line while running or on failure.
