@@ -8,6 +8,20 @@
   height: 100dvh;
   overflow: hidden;
   background-color: var(--theme-surface);
+
+  // Phone in landscape: keep content clear of the notch side.
+  @include responsive.media('mobile') {
+    padding-left: var(--safe-area-left);
+    padding-right: var(--safe-area-right);
+  }
+
+  // On-screen keyboard up (useKeyboardViewport): pin the shell to the visible
+  // area so the title bar stays put and the composer sits on the keyboard.
+  :global(html[data-keyboard-open]) & {
+    position: fixed;
+    inset: var(--app-offset-top) 0 auto;
+    height: var(--app-height);
+  }
 }
 
 // Keyboard skip link — visually hidden until focused, then pinned top-left above all chrome
@@ -56,4 +70,9 @@
   overflow-x: hidden;
   overflow-y: auto;
   background-color: var(--theme-surface);
+
+  // The tab bar below sits on the home-indicator inset, so the page doesn't.
+  &--above-tab-bar {
+    --safe-area-bottom: 0px;
+  }
 }

@@ -1,12 +1,15 @@
 import { type ReactNode, useEffect } from 'react';
 import clsx from 'clsx';
+import { useMatch } from 'react-router-dom';
 import { TitleBar } from '@/components/layout/TitleBar/TitleBar';
 import { AppSidebar } from '@/components/layout/Sidebar/AppSidebar';
+import { MobileTabBar } from '@/components/layout/MobileTabBar/MobileTabBar';
 import { Link } from '@/components/ui/primitives/Link/Link';
 import { useUIStore } from '@/store/uiStore';
 import { useSwipeGesture } from '@/hooks/useSwipeGesture';
 import { isMobileViewport, useIsMobile } from '@/hooks/useIsMobile';
 import { useMountEffect } from '@/hooks/useMountEffect';
+import { useKeyboardViewport } from '@/hooks/useKeyboardViewport';
 import styles from './Layout.module.scss';
 
 function useSidebarWidthVar() {
@@ -52,9 +55,15 @@ function useSidebarToggleTransition() {
 export function Layout({ children }: { children: ReactNode }) {
   const sidebarOpen = useUIStore((state) => state.sidebarOpen);
   const isMobile = useIsMobile();
+  // Pages with workspace views (chat, channel, new thread) get the phone tab bar.
+  const isChat = useMatch('/chat/:chatId') != null;
+  const isChannel = useMatch('/channels/:channelId') != null;
+  const isLanding = useMatch('/') != null;
+  const showTabBar = isMobile && (isChat || isChannel || isLanding);
 
   useSidebarWidthVar();
   useSidebarToggleTransition();
+  useKeyboardViewport(isMobile);
 
   // The open state is persisted for the docked desktop sidebar; on a phone the
   // drawer should never greet you open over the page.
@@ -90,9 +99,13 @@ export function Layout({ children }: { children: ReactNode }) {
 
       <div className={styles.column}>
         <TitleBar />
-        <main id="main-content" className={styles.main}>
+        <main
+          id="main-content"
+          className={clsx(styles.main, showTabBar && styles['main--above-tab-bar'])}
+        >
           {children}
         </main>
+        {showTabBar && <MobileTabBar />}
       </div>
     </div>
   );
