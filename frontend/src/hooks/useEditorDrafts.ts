@@ -103,6 +103,19 @@ export function useEditorDrafts({
     [setDraft],
   );
 
+  // Unsaved buffers live only in memory: ask before a reload or tab close drops them.
+  const hasDirtyBuffers = dirtyPaths.size > 0;
+  useEffect(() => {
+    if (!hasDirtyBuffers) return;
+    const warn = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      // Older browsers need returnValue set to show the prompt.
+      event.returnValue = '';
+    };
+    window.addEventListener('beforeunload', warn);
+    return () => window.removeEventListener('beforeunload', warn);
+  }, [hasDirtyBuffers]);
+
   // Dirty close prompts first — draft is session-only and would be discarded silently.
   const handleCloseTab = useCallback(
     (path: string) => {
