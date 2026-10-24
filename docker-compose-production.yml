@@ -30,7 +30,9 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock
     environment:
       ENVIRONMENT: production
-      SECRET_KEY: ${SECRET_KEY:?Set SECRET_KEY to a 32+ character value}
+      # Not required here: Coolify interpolates the file at build time without
+      # runtime secrets. The API refuses to start unless it's 32+ characters.
+      SECRET_KEY: ${SECRET_KEY:-}
       STORAGE_PATH: /data/agentrove/storage
       HOST_STORAGE_PATH: ${AGENTROVE_STORAGE_SOURCE:-/data/agentrove-go/storage}
       DOCKER_IMAGE: ${DOCKER_IMAGE:-agentrove-sandbox:latest}
