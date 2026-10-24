@@ -10,10 +10,17 @@ $breakpoint-lg: 1024px;
 $breakpoint-xl: 1280px;
 $breakpoint-xxl: 1536px;
 
+// A phone on its side is wide but short: it gets the phone layout too. Keep in
+// sync with MOBILE_MEDIA_QUERY (useIsMobile.ts).
+$phone-landscape-max-height: 500px;
+$wide: '(min-width: #{$breakpoint-md})';
+
 $queries: (
-  // mobile/desktop split — matches useIsMobile()'s 768px edge
-  'mobile': '(max-width: #{$breakpoint-md - 1px})',
-  'desktop': '(min-width: #{$breakpoint-md})',
+  // mobile/desktop split — matches useIsMobile(): narrow, or a short touch screen
+  'mobile':
+    '(max-width: #{$breakpoint-md - 1px}), (max-height: #{$phone-landscape-max-height - 1px}) and (pointer: coarse)',
+  'desktop':
+    '#{$wide} and (min-height: #{$phone-landscape-max-height}), #{$wide} and (pointer: fine), #{$wide} and (pointer: none)',
   'sm-up': '(min-width: #{$breakpoint-sm})',
   'md-up': '(min-width: #{$breakpoint-md})',
   'lg-up': '(min-width: #{$breakpoint-lg})',
@@ -24,6 +31,10 @@ $queries: (
   'lg-down': '(max-width: #{$breakpoint-lg - 1px})',
   'xl-down': '(max-width: #{$breakpoint-xl - 1px})',
   'touch': '(hover: none)',
+  // Finger-driven screens (phones, tablets): fields here must be >= 16px (iOS zoom)
+  'coarse-touch': '(hover: none) and (pointer: coarse)',
+  // A phone on its side (part of 'mobile'): vertical room is what's scarce
+  'short': '(max-height: #{$phone-landscape-max-height - 1px}) and (pointer: coarse)',
   'not-touch': '(hover: hover)',
   'reduced-motion': '(prefers-reduced-motion: reduce)'
 );

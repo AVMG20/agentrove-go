@@ -9,7 +9,7 @@ import {
   executeCommand,
   resolveActiveGitTarget,
 } from '@/components/ui/command-menu/commandRegistry';
-import { MOBILE_BREAKPOINT } from '@/config/constants';
+import { isMobileViewport } from '@/hooks/useIsMobile';
 
 function isEmbeddedEditor(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false;
@@ -49,7 +49,7 @@ export function useCommandMenu() {
       const cmd = SHORTCUT_MAP.get(e.code);
       if (!cmd) return;
 
-      if (cmd.hideOnMobile && window.innerWidth < MOBILE_BREAKPOINT) return;
+      if (cmd.hideOnMobile && isMobileViewport()) return;
       if (cmd.requiresChat && !useChatStore.getState().currentChat) return;
       const gitTarget = resolveActiveGitTarget(queryClient);
       if (cmd.requiresSandbox && !gitTarget.sandboxId) return;
