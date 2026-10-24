@@ -9,6 +9,7 @@ import {
   ComponentType,
   SVGProps,
 } from 'react';
+import { createPortal } from 'react-dom';
 import { Check, ChevronDown, Search, X } from 'lucide-react';
 import clsx from 'clsx';
 import { useDropdown } from '@/hooks/useDropdown';
@@ -151,7 +152,11 @@ const Dropdown = memo(function Dropdown<T>({
   triggerClassName,
   dropdownAlign = 'left',
 }: DropdownProps<T>) {
-  const { isOpen, dropdownRef, setIsOpen } = useDropdown();
+  // Phones: the list is a bottom sheet portalled to <body> with its scrim, so no
+  // ancestor (a dialog's scrolling, blurred backdrop; the composer's stacking
+  // context; a row hidden while the keyboard is up) can move, clip or hide it.
+  const sheetRef = useRef<HTMLDivElement>(null);
+  const { isOpen, dropdownRef, setIsOpen } = useDropdown(sheetRef);
   const panelRef = useRef<HTMLDivElement>(null);
   const isMobile = useIsMobile();
   // Phones get the list as a bottom sheet, so it needs no anchoring or fitting.
@@ -176,6 +181,38 @@ const Dropdown = memo(function Dropdown<T>({
   useEffect(() => {
     onOpenChange?.(isOpen);
   }, [isOpen, onOpenChange]);
+
+  // Escape closes just this list, before a dialog it sits in sees the key (the
+  // search field handles its own Escape: clear first, then close).
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleKeyDown = (event: globalThis.KeyboardEvent) => {
+      if (event.key !== 'Escape' || event.defaultPrevented) return;
+      if (panelRef.current?.contains(event.target as Node)) return;
+      event.preventDefault();
+      setIsOpen(false);
+    };
+    window.addEventListener('keydown', handleKeyDown, true);
+    return () => window.removeEventListener('keydown', handleKeyDown, true);
+  }, [isOpen, setIsOpen]);
+
+  const renderLayer = (panel: ReactNode) =>
+    isMobile
+      ? createPortal(
+          // React events still bubble to the trigger's ancestors through the portal;
+          // stop mousedown here so a toolbar's focus-keeping preventDefault (the
+          // composer's) can't keep taps from focusing the sheet's search field.
+          <div
+            ref={sheetRef}
+            className={styles['sheet-layer']}
+            onMouseDown={(e) => e.stopPropagation()}
+          >
+            <div className={styles.scrim} onClick={() => setIsOpen(false)} aria-hidden />
+            {panel}
+          </div>,
+          document.body,
+        )
+      : panel;
 
   const handleSearchKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
     if (event.key === 'Escape') {
@@ -244,27 +281,50 @@ const Dropdown = memo(function Dropdown<T>({
         )}
       </Button>
 
-      {isOpen && !disabled && isMobile && (
-        // Inside dropdownRef, so a tap here isn't an outside click; it closes directly.
-        <div className={styles.scrim} onClick={() => setIsOpen(false)} aria-hidden />
-      )}
-      {isOpen && !disabled && (
-        <div
-          ref={panelRef}
-          role="listbox"
-          style={isMobile ? undefined : { width, maxHeight: fit?.maxHeight }}
-          className={clsx(
-            styles.panel,
-            styles[`panel--${panelSide}`],
-            styles[`panel--${dropdownAlign}`],
-            fit?.maxHeight !== undefined && styles['panel--capped'],
-            isMobile && styles['panel--sheet'],
-          )}
-        >
-          {renderHeader?.()}
-          {searchable && searchVariant === 'boxed' && (
-            <div className={styles['search-box']}>
-              <div className={styles['search-box-field']}>
+      {isOpen &&
+        !disabled &&
+        renderLayer(
+          <div
+            ref={panelRef}
+            role="listbox"
+            style={isMobile ? undefined : { width, maxHeight: fit?.maxHeight }}
+            className={clsx(
+              styles.panel,
+              styles[`panel--${panelSide}`],
+              styles[`panel--${dropdownAlign}`],
+              fit?.maxHeight !== undefined && styles['panel--capped'],
+              isMobile && styles['panel--sheet'],
+            )}
+          >
+            {renderHeader?.()}
+            {searchable && searchVariant === 'boxed' && (
+              <div className={styles['search-box']}>
+                <div className={styles['search-box-field']}>
+                  <Search className={styles['search-icon']} />
+                  <input
+                    type="text"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    onKeyDown={handleSearchKeyDown}
+                    placeholder={searchPlaceholder}
+                    autoFocus={!isMobile}
+                    className={styles['search-input']}
+                  />
+                  {searchQuery && (
+                    <Button
+                      onClick={() => setSearchQuery('')}
+                      variant="unstyled"
+                      aria-label="Clear search"
+                      className={styles['search-clear']}
+                    >
+                      <X />
+                    </Button>
+                  )}
+                </div>
+              </div>
+            )}
+            {searchable && searchVariant === 'underline' && (
+              <div className={styles['search-underline']}>
                 <Search className={styles['search-icon']} />
                 <input
                   type="text"
@@ -273,117 +333,94 @@ const Dropdown = memo(function Dropdown<T>({
                   onKeyDown={handleSearchKeyDown}
                   placeholder={searchPlaceholder}
                   autoFocus={!isMobile}
-                  className={styles['search-input']}
+                  className={styles['search-underline-input']}
                 />
                 {searchQuery && (
                   <Button
                     onClick={() => setSearchQuery('')}
                     variant="unstyled"
                     aria-label="Clear search"
-                    className={styles['search-clear']}
+                    className={styles['search-underline-clear']}
                   >
                     <X />
                   </Button>
                 )}
               </div>
-            </div>
-          )}
-          {searchable && searchVariant === 'underline' && (
-            <div className={styles['search-underline']}>
-              <Search className={styles['search-icon']} />
-              <input
-                type="text"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                onKeyDown={handleSearchKeyDown}
-                placeholder={searchPlaceholder}
-                autoFocus={!isMobile}
-                className={styles['search-underline-input']}
-              />
-              {searchQuery && (
-                <Button
-                  onClick={() => setSearchQuery('')}
-                  variant="unstyled"
-                  aria-label="Clear search"
-                  className={styles['search-underline-clear']}
-                >
-                  <X />
-                </Button>
-              )}
-            </div>
-          )}
-          <div className={clsx(styles.items, itemsClassName)}>
-            {displayItems.map((entry, index) => {
-              if (entry.type === 'divider') {
-                return <div key={`divider-${index}`} role="separator" className={styles.divider} />;
-              }
-              if (entry.type === 'header') {
+            )}
+            <div className={clsx(styles.items, itemsClassName)}>
+              {displayItems.map((entry, index) => {
+                if (entry.type === 'divider') {
+                  return (
+                    <div key={`divider-${index}`} role="separator" className={styles.divider} />
+                  );
+                }
+                if (entry.type === 'header') {
+                  return (
+                    <div
+                      key={`header-${entry.label}`}
+                      className={clsx(
+                        styles['group-header'],
+                        index !== 0 && styles['group-header--divided'],
+                      )}
+                    >
+                      {entry.label}
+                    </div>
+                  );
+                }
+
+                const item = entry.data;
+                const isSelected = getItemKey(item) === getItemKey(value);
                 return (
-                  <div
-                    key={`header-${entry.label}`}
+                  <SelectItem
+                    key={getItemKey(item)}
+                    isSelected={isSelected}
+                    role="option"
+                    onSelect={() => {
+                      onSelect(item);
+                      setIsOpen(false);
+                    }}
                     className={clsx(
-                      styles['group-header'],
-                      index !== 0 && styles['group-header--divided'],
+                      styles['item-row'],
+                      selectionStyle === 'accent' && styles['item-row--accent'],
                     )}
                   >
-                    {entry.label}
-                  </div>
-                );
-              }
-
-              const item = entry.data;
-              const isSelected = getItemKey(item) === getItemKey(value);
-              return (
-                <SelectItem
-                  key={getItemKey(item)}
-                  isSelected={isSelected}
-                  role="option"
-                  onSelect={() => {
-                    onSelect(item);
-                    setIsOpen(false);
-                  }}
-                  className={clsx(
-                    styles['item-row'],
-                    selectionStyle === 'accent' && styles['item-row--accent'],
-                  )}
-                >
-                  {selectionStyle === 'check' && (
-                    <Check
-                      className={clsx(
-                        styles['item-check'],
-                        isSelected && styles['item-check--selected'],
-                      )}
-                    />
-                  )}
-                  {selectionStyle === 'accent' && isSelected && (
-                    <div className={styles['item-accent']} />
-                  )}
-                  <div className={clsx(styles['item-content'], itemClassName)}>
-                    {renderItem ? (
-                      renderItem(item, isSelected)
-                    ) : (
-                      <FloatingTooltip
-                        content={getItemLabel(item)}
-                        className={styles['item-content']}
-                      >
-                        <span
-                          className={clsx(
-                            styles['item-label'],
-                            isSelected && styles['item-label--selected'],
-                          )}
-                        >
-                          {getItemLabel(item)}
-                        </span>
-                      </FloatingTooltip>
+                    {selectionStyle === 'check' && (
+                      <Check
+                        className={clsx(
+                          styles['item-check'],
+                          isSelected && styles['item-check--selected'],
+                        )}
+                      />
                     )}
-                  </div>
-                </SelectItem>
-              );
-            })}
-          </div>
-          {renderFooter?.()}
-        </div>
-      )}
+                    {selectionStyle === 'accent' && isSelected && (
+                      <div className={styles['item-accent']} />
+                    )}
+                    <div className={clsx(styles['item-content'], itemClassName)}>
+                      {renderItem ? (
+                        renderItem(item, isSelected)
+                      ) : (
+                        <FloatingTooltip
+                          content={getItemLabel(item)}
+                          className={styles['item-content']}
+                        >
+                          <span
+                            className={clsx(
+                              styles['item-label'],
+                              isSelected && styles['item-label--selected'],
+                            )}
+                          >
+                            {getItemLabel(item)}
+                          </span>
+                        </FloatingTooltip>
+                      )}
+                    </div>
+                  </SelectItem>
+                );
+              })}
+            </div>
+            {renderFooter?.()}
+          </div>,
+        )}
     </div>
   );
 }) as <T>(props: DropdownProps<T>) => ReactElement;

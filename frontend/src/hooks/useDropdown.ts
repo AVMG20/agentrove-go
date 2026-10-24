@@ -1,12 +1,16 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, type RefObject } from 'react';
 
-export const useDropdown = () => {
+// `portalRef`: a panel rendered elsewhere in the DOM (a portal) that still counts
+// as inside, so tapping it doesn't close the dropdown.
+export const useDropdown = (portalRef?: RefObject<HTMLElement | null>) => {
   const [isOpen, setIsOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+      const target = event.target as Node;
+      if (portalRef?.current?.contains(target)) return;
+      if (dropdownRef.current && !dropdownRef.current.contains(target)) {
         setIsOpen(false);
       }
     };
@@ -15,7 +19,7 @@ export const useDropdown = () => {
       document.addEventListener('mousedown', handleClickOutside);
       return () => document.removeEventListener('mousedown', handleClickOutside);
     }
-  }, [isOpen]);
+  }, [isOpen, portalRef]);
 
   return { isOpen, dropdownRef, setIsOpen };
 };
