@@ -160,7 +160,6 @@ export const AttachmentViewer = memo(function AttachmentViewer({
               <ThumbnailWrapper
                 key={attachment.id}
                 attachment={attachment}
-                onDownload={handleDownload}
                 onPreview={canPreview ? () => setPreviewIndex(imageIndex) : undefined}
               >
                 <ImageThumbnail

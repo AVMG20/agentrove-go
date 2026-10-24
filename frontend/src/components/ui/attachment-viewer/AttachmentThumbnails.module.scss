@@ -26,10 +26,10 @@
   opacity: 0;
   transition: opacity var(--duration-fast);
 
-  // Touch: no overlay button on a small thumbnail — tapping opens the preview,
-  // which has its own download action.
+  // No hover on touch: keep it visible (PDF/spreadsheet thumbnails; image
+  // thumbnails have no button — a tap opens the viewer, which downloads).
   @include responsive.media('touch') {
-    display: none;
+    opacity: 1;
   }
 }
 
