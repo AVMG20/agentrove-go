@@ -47,6 +47,11 @@
 .theme-control {
   width: var(--space-48);
   flex-shrink: 0;
+
+  // Phones: leave the setting's description more than a one-word column.
+  @include responsive.media('mobile') {
+    width: var(--space-32);
+  }
 }
 
 .theme-select {
