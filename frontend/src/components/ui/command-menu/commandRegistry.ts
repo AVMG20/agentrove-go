@@ -37,7 +37,8 @@ export interface ViewCommandItem {
   id: ViewType;
   label: string;
   icon: React.ComponentType<{ className?: string }>;
-  shortcut: string;
+  // Mod+Shift+<key>; see SHORTCUT_KEYS for the allowed set.
+  shortcut?: string;
   hideOnMobile?: boolean;
   requiresChat?: boolean;
   requiresSandbox?: boolean;
@@ -48,7 +49,8 @@ export interface ActionCommandItem {
   id: string;
   label: string;
   icon: React.ComponentType<{ className?: string }>;
-  shortcut: string;
+  // No shortcut = palette only; there are fewer safe chords than commands.
+  shortcut?: string;
   hideOnMobile?: boolean;
   requiresChat?: boolean;
   requiresSandbox?: boolean;
@@ -81,22 +83,60 @@ export type MenuListItem =
   | { kind: 'file'; file: FlatFileItem }
   | { kind: 'command'; command: CommandItem };
 
+// Every global chord is Mod+Shift+<key> (⌘⇧ on macOS, Ctrl+Shift elsewhere). A page
+// can't intercept some of these and others open browser tools, so keys in
+// RESERVED_SHORTCUT_KEYS are never bound (checked by commandRegistry.test.ts):
+// - handled by the browser before the page sees them: N (incognito/private window,
+//   Firefox reopen window), T (reopen tab), W (close window), P (Firefox private
+//   window), Q (quit; macOS log out)
+// - DevTools in Chrome/Firefox: I, J, C, K (console), E (network), M (responsive
+//   design; Chrome profile switcher); R hard reload; G find previous
+// - text editing in inputs: V (paste as plain text), Z (redo)
+// - U (Linux IBus/GTK Unicode entry), / (macOS Help search), [ ] (macOS tab switch)
+// What's left (A B D F H L O S X Y . ,) only collides with minor, overridable
+// browser UI (bookmarks bar/manager, bookmark all tabs, tab search, history and
+// Safari sidebar, Firefox screenshots): keydown reaches the page first and our
+// preventDefault wins, and each has a menu entry. Not every command gets a chord.
+export const RESERVED_SHORTCUT_KEYS = new Set([
+  'n',
+  't',
+  'w',
+  'p',
+  'q',
+  'i',
+  'j',
+  'c',
+  'k',
+  'e',
+  'm',
+  'r',
+  'g',
+  'v',
+  'z',
+  'u',
+  '/',
+  '[',
+  ']',
+]);
+
+// Opens/closes the command menu (sidebar "Search").
+export const COMMAND_MENU_SHORTCUT = 's';
+
 const VIEW_COMMANDS: ViewCommandItem[] = [
   { type: 'view', id: 'agent', label: 'Agent', icon: MessagesSquare, shortcut: 'a' },
-  { type: 'view', id: 'editor', label: 'Editor', icon: CodeXml, shortcut: 'e' },
-  { type: 'view', id: 'terminal', label: 'Terminal', icon: Terminal, shortcut: 't' },
+  { type: 'view', id: 'editor', label: 'Editor', icon: CodeXml, shortcut: 'f' },
+  { type: 'view', id: 'terminal', label: 'Terminal', icon: Terminal, shortcut: 'x' },
   { type: 'view', id: 'diff', label: 'Diff', icon: GitBranch, shortcut: 'd' },
-  { type: 'view', id: 'browser', label: 'Browser', icon: Globe, shortcut: 'g' },
+  { type: 'view', id: 'browser', label: 'Browser', icon: Globe, shortcut: 'b' },
 ];
 
 const ACTION_COMMANDS: ActionCommandItem[] = [
-  { type: 'action', id: 'new-thread', label: 'New thread', icon: MessageSquarePlus, shortcut: 'w' },
+  { type: 'action', id: 'new-thread', label: 'New thread', icon: MessageSquarePlus, shortcut: 'o' },
   {
     type: 'action',
     id: 'new-sub-thread',
     label: 'New sub-thread',
     icon: GitBranch,
-    shortcut: 'n',
     requiresChat: true,
   },
   {
@@ -104,7 +144,6 @@ const ACTION_COMMANDS: ActionCommandItem[] = [
     id: 'create-commit',
     label: 'Create commit',
     icon: GitCommitHorizontal,
-    shortcut: 'c',
     requiresChat: true,
   },
   {
@@ -128,7 +167,6 @@ const ACTION_COMMANDS: ActionCommandItem[] = [
     id: 'switch-branch',
     label: 'Switch branch',
     icon: GitBranch,
-    shortcut: 'b',
     requiresSandbox: true,
   },
   {
@@ -136,7 +174,6 @@ const ACTION_COMMANDS: ActionCommandItem[] = [
     id: 'push-remote',
     label: 'Push to remote',
     icon: ArrowUpFromLine,
-    shortcut: 'u',
     requiresSandbox: true,
   },
   {
@@ -144,12 +181,11 @@ const ACTION_COMMANDS: ActionCommandItem[] = [
     id: 'pull-remote',
     label: 'Pull from remote',
     icon: ArrowDownFromLine,
-    shortcut: 'j',
     requiresSandbox: true,
   },
 ];
 
-export const SESSION_PANEL_SHORTCUT = 'g';
+export const SESSION_PANEL_SHORTCUT = 'y';
 
 const SETTING_COMMANDS: ActionCommandItem[] = [
   {
@@ -170,7 +206,7 @@ const SETTING_COMMANDS: ActionCommandItem[] = [
   },
   // Opens the theme picker sub-mode (every theme as a list) instead of one command per
   // theme — keeps the chord space sane as themes grow.
-  { type: 'action', id: 'set-theme', label: 'Set theme', icon: Palette, shortcut: 'm' },
+  { type: 'action', id: 'set-theme', label: 'Set theme', icon: Palette },
   { type: 'action', id: 'open-settings', label: 'Settings', icon: Settings, shortcut: ',' },
 ];
 
@@ -184,27 +220,17 @@ const PUNCTUATION_CODES: Record<string, string> = { '.': 'Period', ',': 'Comma' 
 
 const shortcutToCode = (key: string) => PUNCTUATION_CODES[key] ?? `Key${key.toUpperCase()}`;
 
+export const COMMAND_MENU_SHORTCUT_CODE = shortcutToCode(COMMAND_MENU_SHORTCUT);
+
 export const SHORTCUT_MAP = new Map<string, CommandItem>(
-  ALL_COMMANDS.map((cmd) => [shortcutToCode(cmd.shortcut), cmd]),
+  ALL_COMMANDS.flatMap((cmd) => (cmd.shortcut ? [[shortcutToCode(cmd.shortcut), cmd]] : [])),
 );
 
-// ⌘⇧<key> chords that jump straight to a filter tab — opening the menu on it when
-// closed, switching tabs when open. 'all' is covered by the ⌘⇧P toggle. Keys must
-// not collide with command shortcuts above.
-export const FILTER_SHORTCUTS: Record<Exclude<MainFilter, 'all'>, string> = {
-  chats: 'k',
-  messages: 's',
-  files: 'o',
-  grep: 'f',
-  actions: 'x',
-};
-
-export const FILTER_SHORTCUT_MAP = new Map<string, MainFilter>(
-  (Object.entries(FILTER_SHORTCUTS) as [MainFilter, string][]).map(([filter, key]) => [
-    shortcutToCode(key),
-    filter,
-  ]),
-);
+// Hint text for a command's chord, or undefined when it has none.
+export function commandShortcutLabel(id: string): string | undefined {
+  const shortcut = ALL_COMMANDS.find((cmd) => cmd.id === id)?.shortcut;
+  return shortcut ? formatShortcut(shortcut) : undefined;
+}
 
 // Commands that switch the menu into a sub-mode instead of dispatching an action.
 export const COMMAND_TO_MODE: Partial<Record<string, MenuMode>> = {

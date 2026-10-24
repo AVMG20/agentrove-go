@@ -22,7 +22,7 @@ const SWITCHABLE_VIEWS: SwitchableView[] = ['diff', 'editor', 'terminal', 'brows
 // Same shortcut bindings as the command palette so tooltips can't drift.
 const VIEW_SHORTCUTS = new Map<ViewType, string>(
   ALL_COMMANDS.flatMap((cmd) =>
-    cmd.type === 'view' ? [[cmd.id, formatShortcut(cmd.shortcut)] as const] : [],
+    cmd.type === 'view' && cmd.shortcut ? [[cmd.id, formatShortcut(cmd.shortcut)] as const] : [],
   ),
 );
 

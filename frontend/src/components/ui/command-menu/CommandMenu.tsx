@@ -7,7 +7,7 @@ import { CommandMenuInput } from './CommandMenuInput';
 import { CommandMenuList } from './CommandMenuList';
 import { useCommandMenu } from './useCommandMenu';
 import { FILTER_LABELS, isMainMode, isPanelMode } from './commandMenuModes';
-import { FILTER_SHORTCUTS, MAIN_FILTERS, formatShortcut } from './commandRegistry';
+import { MAIN_FILTERS } from './commandRegistry';
 import styles from './CommandMenu.module.scss';
 
 export function CommandMenu() {
@@ -91,7 +91,6 @@ export function CommandMenu() {
                 onMouseDown={(e) => e.preventDefault()}
                 onClick={() => switchFilter(filter)}
                 className={clsx(styles.filter, filter === mode && styles['filter--active'])}
-                title={filter === 'all' ? undefined : formatShortcut(FILTER_SHORTCUTS[filter])}
               >
                 {FILTER_LABELS[filter]}
               </Button>
