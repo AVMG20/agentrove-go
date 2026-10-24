@@ -6,7 +6,7 @@ import { AppSidebar } from '@/components/layout/Sidebar/AppSidebar';
 import { MobileTabBar } from '@/components/layout/MobileTabBar/MobileTabBar';
 import { Link } from '@/components/ui/primitives/Link/Link';
 import { useUIStore } from '@/store/uiStore';
-import { useSwipeGesture } from '@/hooks/useSwipeGesture';
+import { useDrawerSwipe } from '@/hooks/useDrawerSwipe';
 import { isMobileViewport, useIsMobile } from '@/hooks/useIsMobile';
 import { useMountEffect } from '@/hooks/useMountEffect';
 import { useKeyboardViewport } from '@/hooks/useKeyboardViewport';
@@ -71,11 +71,7 @@ export function Layout({ children }: { children: ReactNode }) {
     if (isMobileViewport()) useUIStore.getState().setSidebarOpen(false);
   });
 
-  useSwipeGesture({
-    onSwipeRight: () => useUIStore.getState().setSidebarOpen(true),
-    onSwipeLeft: () => sidebarOpen && useUIStore.getState().setSidebarOpen(false),
-    enabled: isMobile,
-  });
+  useDrawerSwipe(isMobile);
 
   return (
     <div className={styles.layout}>
@@ -87,9 +83,10 @@ export function Layout({ children }: { children: ReactNode }) {
         Skip to main content
       </Link>
 
-      {sidebarOpen && (
+      {isMobile && (
+        // Always mounted on a phone so it can fade with the drawer as it's dragged.
         <div
-          className={styles.scrim}
+          className={clsx(styles.scrim, sidebarOpen && styles['scrim--open'])}
           onClick={() => useUIStore.getState().setSidebarOpen(false)}
           aria-hidden="true"
         />
