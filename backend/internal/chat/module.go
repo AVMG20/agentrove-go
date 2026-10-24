@@ -894,8 +894,9 @@ func (m *Module) createCheckpoint(ctx context.Context, sb *sandbox.Sandbox, chat
 	cwd := db.Deref(chat.WorktreeCwd)
 	cp, err := gitops.CreateCheckpoint(ctx, sb, cwd)
 	if err != nil || cp == nil {
+		// No row: the turn shows no restore action.
 		if err != nil {
-			slog.Warn("checkpoint failed", "chat", chat.ID, "err", err)
+			slog.Warn("checkpoint failed; restore unavailable for this turn", "chat", chat.ID, "err", err)
 		}
 		return nil
 	}
@@ -906,7 +907,20 @@ func (m *Module) createCheckpoint(ctx context.Context, sb *sandbox.Sandbox, chat
 	if err != nil {
 		return nil
 	}
+	m.pruneCheckpoints(ctx, chat.ID)
 	return &id
+}
+
+// keepCheckpoints is how many recent turns per chat stay restorable; each
+// checkpoint holds a whole dirty tree, so older ones are dropped.
+const keepCheckpoints = 20
+
+func (m *Module) pruneCheckpoints(ctx context.Context, chatID string) {
+	_, err := m.a.DB.ExecContext(ctx, `DELETE FROM chat_checkpoints WHERE chat_id = ? AND id NOT IN
+		(SELECT id FROM chat_checkpoints WHERE chat_id = ? ORDER BY created_at DESC, id DESC LIMIT ?)`, chatID, chatID, keepCheckpoints)
+	if err != nil {
+		slog.Warn("prune checkpoints", "chat", chatID, "err", err)
+	}
 }
 
 const (

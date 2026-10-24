@@ -311,6 +311,9 @@ func (m *Module) DeleteChats(ctx context.Context, userID string, ids []string) e
 			if _, err := tx.ExecContext(ctx, `DELETE FROM queued_messages WHERE chat_id = ?`, v.id); err != nil {
 				return err
 			}
+			if _, err := tx.ExecContext(ctx, `DELETE FROM chat_checkpoints WHERE chat_id = ?`, v.id); err != nil {
+				return err
+			}
 		}
 		return nil
 	})
