@@ -70,8 +70,15 @@ $space-steps: (
       --space-#{$name}: #{$step * $space-base};
     }
 
-    // iOS safe areas — used by edge-touching surfaces (title bar, chat composer)
+    // iOS safe areas — used by edge-touching surfaces (title bar, chat composer).
+    // A surface that covers the bottom inset itself (the phone tab bar) zeroes
+    // --safe-area-bottom for the page above it; --device-safe-area-bottom always
+    // holds the real inset, for sheets pinned to the screen edge.
     --safe-area-top: env(safe-area-inset-top, 0px);
-    --safe-area-bottom: env(safe-area-inset-bottom, 0px);
+    --device-safe-area-bottom: env(safe-area-inset-bottom, 0px);
+    --safe-area-bottom: var(--device-safe-area-bottom);
+    // Notch side of a phone in landscape.
+    --safe-area-left: env(safe-area-inset-left, 0px);
+    --safe-area-right: env(safe-area-inset-right, 0px);
   }
 }

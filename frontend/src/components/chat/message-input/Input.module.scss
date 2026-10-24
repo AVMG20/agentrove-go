@@ -6,7 +6,8 @@
   align-items: center;
   justify-content: space-between;
   gap: var(--space-2);
-  padding: var(--space-1-5) var(--space-2) var(--safe-area-bottom);
+  // No bottom inset here: the chat's composer surface already pads for it.
+  padding: var(--space-1-5) var(--space-2) 0;
 
   // Controls stay right-aligned when there's no usage to show.
   > :last-child {
