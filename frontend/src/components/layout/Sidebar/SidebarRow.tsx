@@ -10,6 +10,8 @@ interface SidebarRowProps {
   isActive: boolean;
   // Keep the row actions visible (dropdown open); hover/focus reveal them via CSS.
   isRevealed: boolean;
+  // Clicks anywhere on the row outside its buttons, so the whole row opens it.
+  onRowClick?: (e: MouseEvent<HTMLDivElement>) => void;
   leading?: ReactNode;
   title: ReactNode;
   subtitle?: ReactNode;
@@ -22,6 +24,7 @@ export function SidebarRow({
   ref,
   isActive,
   isRevealed,
+  onRowClick,
   leading,
   title,
   subtitle,
@@ -30,12 +33,20 @@ export function SidebarRow({
   onDropdownClick,
 }: SidebarRowProps) {
   return (
+    // Keyboard users reach the same action through the title button.
     <div
       ref={ref}
+      onClick={
+        onRowClick &&
+        ((e) => {
+          if (!(e.target as HTMLElement).closest('button, a')) onRowClick(e);
+        })
+      }
       className={clsx(
         styles.row,
         isActive && stateClasses.ACTIVE,
         (isRevealed || isActive) && styles['row--revealed'],
+        onRowClick && styles['row--clickable'],
       )}
     >
       {/* Pad for timestamp/dropdown so long titles truncate before them. */}
@@ -70,7 +81,6 @@ interface SidebarRowTitleProps {
   // An agent turn is running in this thread.
   isWorking?: boolean;
   onClick: (e: MouseEvent<HTMLButtonElement>) => void;
-  trailing?: ReactNode;
 }
 
 export function SidebarRowTitle({
@@ -79,7 +89,6 @@ export function SidebarRowTitle({
   isCurrent,
   isWorking = false,
   onClick,
-  trailing,
 }: SidebarRowTitleProps) {
   return (
     <Button
@@ -97,7 +106,6 @@ export function SidebarRowTitle({
       >
         {label}
       </span>
-      {trailing}
     </Button>
   );
 }

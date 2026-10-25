@@ -84,8 +84,8 @@ func (m *Module) buildTools() []*tool {
 		},
 		{
 			name: "get_current_chat",
-			description: "Return the chat this MCP server is running inside, when known.\n\nUse its chat_id as send_message's " +
-				"parent_chat_id to create sub-threads under the current chat. Returns {\"chat_id\": null} if unknown.",
+			description: "Return the chat this MCP server is running inside, when known.\n\nUse it to tell the current chat " +
+				"apart from others (e.g. stop_chat refuses it). Returns {\"chat_id\": null} if unknown.",
 			schema: object(props{}),
 			handler: func(ctx context.Context, c *caller, _ json.RawMessage) (any, error) {
 				var id any
@@ -97,10 +97,9 @@ func (m *Module) buildTools() []*tool {
 		},
 		{
 			name: "list_chats",
-			description: "List existing chats for discovery, most recent first.\n\nUse a chat's id with send_message — as chat_id to " +
-				"continue it, or as parent_chat_id to add a sub-thread (only top-level chats, where parent_chat_id is null, can be " +
-				"parents). Filter by workspace_id to scope to one workspace. Returns id, title, workspace_id, parent_chat_id, " +
-				"sub_thread_count and updated_at, plus pagination.",
+			description: "List existing chats for discovery, most recent first.\n\nUse a chat's id as send_message's chat_id to " +
+				"continue it. Filter by workspace_id to scope to one workspace. Returns id, title, workspace_id and updated_at, " +
+				"plus pagination.",
 			schema:  object(props{"workspace_id": optStr(), "page": integer(1), "per_page": integer(20)}),
 			handler: m.listChats,
 		},
@@ -149,9 +148,7 @@ func (m *Module) buildTools() []*tool {
 			name: "send_message",
 			description: "Send a prompt to Bitbox and start the agent turn.\n\nOmit chat_id to create a new chat first " +
 				"(auto-resolving the workspace and a Claude model unless given, titled from `title` or the prompt) and send the " +
-				"prompt to it; pass chat_id to continue an existing chat. Set parent_chat_id (when creating) to make the new chat a " +
-				"sub-thread of that parent — it inherits the parent's workspace, and the parent must be a top-level chat " +
-				"(sub-threads can't nest).\n\nPer-turn options: thinking_mode sets reasoning effort; worktree=true runs the turn " +
+				"prompt to it; pass chat_id to continue an existing chat.\n\nPer-turn options: thinking_mode sets reasoning effort; worktree=true runs the turn " +
 				"in an isolated git worktree (its own branch); persona selects a custom persona by name (defaults to the standard " +
 				"persona).\nbase_branch: start the worktree from this branch instead of current HEAD; only used with " +
 				"worktree=true.\n\nFollow-up turns (chat_id given) inherit the chat's previous model_id, thinking_mode and persona " +
@@ -159,7 +156,7 @@ func (m *Module) buildTools() []*tool {
 				"streaming message_id. To get the reply, poll get_messages and watch that message's stream_status flip from " +
 				"\"in_progress\" to \"completed\". The turn runs unattended with bypassPermissions.",
 			schema: object(props{
-				"prompt": str(""), "chat_id": optStr(), "parent_chat_id": optStr(), "title": optStr(), "workspace_id": optStr(),
+				"prompt": str(""), "chat_id": optStr(), "title": optStr(), "workspace_id": optStr(),
 				"model_id": optStr(), "thinking_mode": effort(), "worktree": boolean(), "base_branch": optStr(), "persona": optStr(),
 			}, "prompt"),
 			handler: m.sendMessage,
@@ -271,7 +268,7 @@ func (m *Module) buildTools() []*tool {
 		},
 		{
 			name: "stop_chat",
-			description: "Stop the in-progress agent turn in a chat, e.g. a sub-thread started with send_message.\n\nCancels the " +
+			description: "Stop the in-progress agent turn in a chat, e.g. a chat started with send_message.\n\nCancels the " +
 				"running turn and waits briefly for it to unwind, so a follow-up send_message to the same chat can start right " +
 				"away. The partial reply is kept with stream_status \"interrupted\" (see get_messages). Stopping an idle chat is a " +
 				"no-op. The chat this server runs inside (get_current_chat) can't be stopped — that would cancel the turn making " +
@@ -286,8 +283,8 @@ func (m *Module) buildTools() []*tool {
 				"page. The first call (no cursor) returns the MOST RECENT messages; pass the returned next_cursor to fetch the " +
 				"preceding, older page. Repeat while has_more is true to read the entire chat — no part of the history is " +
 				"unreachable.\n\nAlso returns context_usage — {tokens_used, context_window, percentage} for the chat's agent " +
-				"session. A high percentage means follow-ups in this chat run with little headroom; prefer a fresh chat or " +
-				"sub-thread with a distilled handoff instead of continuing a nearly-full one.",
+				"session. A high percentage means follow-ups in this chat run with little headroom; prefer a new chat with a " +
+				"distilled handoff instead of continuing a nearly-full one.",
 			schema:  object(props{"chat_id": str(""), "limit": integer(20), "cursor": optStr()}, "chat_id"),
 			handler: m.getMessages,
 		},

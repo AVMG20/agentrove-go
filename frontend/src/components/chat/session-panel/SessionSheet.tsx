@@ -9,7 +9,7 @@ interface SessionSheetProps {
 }
 
 // The session panel as a bottom sheet on phones, where it has no room beside
-// the chat. Acting on anything in it (open a diff, a sub-thread, a PR) closes
+// the chat. Acting on anything in it (open a diff, an artifact, a PR) closes
 // it, since that action's result is behind the sheet.
 export function SessionSheet({ isOpen, onClose, children }: SessionSheetProps) {
   const handleClick = (event: MouseEvent) => {

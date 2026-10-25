@@ -29,15 +29,12 @@ export const ChatDropdown = memo(function ChatDropdown({
   onClose,
 }: ChatDropdownProps) {
   const isPinned = !!chat.pinned_at;
-  const isSubThread = !!chat.parent_chat_id;
 
   return (
     <SidebarMenu ref={ref} position={position} onClose={onClose}>
-      {!isSubThread && (
-        <SidebarMenuItem icon={isPinned ? PinOff : Pin} onClick={() => onTogglePin(chat)}>
-          {isPinned ? 'Unpin' : 'Pin'}
-        </SidebarMenuItem>
-      )}
+      <SidebarMenuItem icon={isPinned ? PinOff : Pin} onClick={() => onTogglePin(chat)}>
+        {isPinned ? 'Unpin' : 'Pin'}
+      </SidebarMenuItem>
       {onOpenInSplit && (
         <FloatingTooltip
           content={splitDisabled ? 'Split view is full (max 4 chats)' : ''}

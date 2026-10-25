@@ -94,7 +94,7 @@ export function SidebarChatList({
                       workspaceId={section.key}
                       name={section.label ?? 'Unknown project'}
                       onNewThread={onNewWorkspaceThread}
-                      onOpenMenu={rowProps.onWorkspaceBadgeClick}
+                      onOpenMenu={rowProps.onOpenWorkspaceMenu}
                     >
                       {section.chats.map((chat) => (
                         <SidebarChatRow

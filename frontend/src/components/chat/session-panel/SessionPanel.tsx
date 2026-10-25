@@ -1,14 +1,10 @@
 import { memo, useEffect, type ReactNode } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { AppWindow, Box, CornerLeftUp, ExternalLink, Folder, GitBranch, Plus } from 'lucide-react';
+import { AppWindow, Box, ExternalLink, Folder, GitBranch } from 'lucide-react';
 import clsx from 'clsx';
 import { Button } from '@/components/ui/primitives/Button/Button';
 import { FloatingTooltip } from '@/components/ui/FloatingTooltip/FloatingTooltip';
-import { AsciiSpinner } from '@/components/ui/AsciiSpinner/AsciiSpinner';
-import { ChatStatusDot } from '@/components/ui/ChatStatusDot/ChatStatusDot';
 import { ClaudeIcon } from '@/components/ui/icons/ClaudeIcon';
 import { useArtifactsQuery } from '@/hooks/queries/useArtifactQueries';
-import { useChatQuery, useSubThreadsQuery } from '@/hooks/queries/useChatQueries';
 import { useModelMap } from '@/hooks/queries/useModelQueries';
 import {
   useGitBranchesQuery,
@@ -17,11 +13,8 @@ import {
 } from '@/hooks/queries/useSandboxQueries';
 import { useBranchPullRequests } from '@/hooks/queries/useGitHubQueries';
 import { useBoxQuery } from '@/hooks/queries/useWorkspaceQueries';
-import { useBlockedChatIds } from '@/hooks/useBlockedChatIds';
-import { useIsChatWorking } from '@/hooks/useWorkingChatIds';
 import { useChatAgentKind } from '@/hooks/useChatAgentKind';
 import { useChatSessionState } from '@/hooks/useChatSessionContext';
-import { useStreamStore } from '@/store/streamStore';
 import { useUIStore } from '@/store/uiStore';
 import type { Chat } from '@/types/chat.types';
 import type { Channel } from '@/types/channel.types';
@@ -29,8 +22,6 @@ import type { DiffMode, GitDiffTotals } from '@/types/sandbox.types';
 import type { Workspace } from '@/types/workspace.types';
 import { getRelativeTime } from '@/utils/date';
 import { getContextUsageDisplay } from '@/utils/contextUsage';
-import { stripMarkdownTitle } from '@/utils/format';
-import { chatStatusTone } from '@/utils/message';
 import { openExternalUrl } from '@/utils/openExternal';
 import { projectPath } from '@/utils/box';
 import styles from './SessionPanel.module.scss';
@@ -182,103 +173,6 @@ function ContextCard({ chat }: { chat: Chat }) {
           style={{ width: `${percentage}%` }}
         />
       </div>
-    </Card>
-  );
-}
-
-function SubThreadRow({ thread, onSelect }: { thread: Chat; onSelect: (chatId: string) => void }) {
-  const agentKind = useChatAgentKind(thread.id, thread.session_agent_kind);
-  const isStreaming = useIsChatWorking(thread.id);
-  const isCompleted = useStreamStore((s) => s.completedChatIds.has(thread.id));
-  const isBlocked = useBlockedChatIds().has(thread.id);
-  const status = chatStatusTone({
-    blocked: isBlocked,
-    streaming: isStreaming,
-    completed: isCompleted,
-  });
-  return (
-    <Button
-      variant="unstyled"
-      type="button"
-      className={styles['thread-row']}
-      onClick={() => onSelect(thread.id)}
-    >
-      <span className={styles['row-icon']}>
-        {status === 'running' ? (
-          <AsciiSpinner className={styles.spinner} />
-        ) : agentKind ? (
-          <ClaudeIcon aria-hidden className={styles.glyph} />
-        ) : null}
-        {status && status !== 'running' && (
-          <ChatStatusDot
-            tone={status}
-            className={clsx(agentKind && styles['status-corner'])}
-            ringClassName={styles['status-ring']}
-          />
-        )}
-      </span>
-      <span className={styles['row-text']}>{stripMarkdownTitle(thread.title)}</span>
-      <span className={styles.timestamp}>{getRelativeTime(thread.updated_at)}</span>
-    </Button>
-  );
-}
-
-function ParentThreadCard({ parentChatId }: { parentChatId: string }) {
-  const navigate = useNavigate();
-  const { data: parent } = useChatQuery(parentChatId);
-  return (
-    <Card title="Parent thread">
-      <Button
-        variant="unstyled"
-        type="button"
-        className={styles['thread-row']}
-        onClick={() => navigate(`/chat/${parentChatId}`)}
-      >
-        <span className={styles['row-icon']}>
-          <CornerLeftUp className={styles.glyph} />
-        </span>
-        <span className={styles['row-text']}>
-          {parent ? stripMarkdownTitle(parent.title) : 'Parent thread'}
-        </span>
-      </Button>
-    </Card>
-  );
-}
-
-function SubThreadsCard({ chatId }: { chatId: string }) {
-  const navigate = useNavigate();
-  const { data: subThreads } = useSubThreadsQuery(chatId);
-  return (
-    <Card
-      title="Sub-threads"
-      action={
-        <FloatingTooltip content="New sub-thread">
-          <Button
-            variant="unstyled"
-            type="button"
-            className={styles['header-button']}
-            aria-label="New sub-thread"
-            onClick={() => {
-              focusPrimaryAgent();
-              useUIStore.getState().setSubThreadDialogOpen(true);
-            }}
-          >
-            <Plus className={styles.glyph} />
-          </Button>
-        </FloatingTooltip>
-      }
-    >
-      {subThreads && subThreads.length > 0 ? (
-        subThreads.map((thread) => (
-          <SubThreadRow
-            key={thread.id}
-            thread={thread}
-            onSelect={(id) => navigate(`/chat/${id}`)}
-          />
-        ))
-      ) : (
-        <p className={styles.empty}>No sub-threads yet</p>
-      )}
     </Card>
   );
 }
@@ -466,11 +360,6 @@ export const SessionPanel = memo(function SessionPanel({
       ) : (
         <>
           <ContextCard chat={chat} />
-          {chat.parent_chat_id ? (
-            <ParentThreadCard parentChatId={chat.parent_chat_id} />
-          ) : (
-            <SubThreadsCard chatId={chat.id} />
-          )}
           <ArtifactsCard chatId={chat.id} />
         </>
       )}

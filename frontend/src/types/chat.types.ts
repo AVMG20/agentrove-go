@@ -90,10 +90,8 @@ export interface Chat {
   context_token_usage?: number;
   pinned_at: string | null;
   worktree_cwd: string | null;
-  parent_chat_id: string | null;
   // Member chats belong to a channel and are only shown through it.
   channel_id: string | null;
-  sub_thread_count: number;
   session_agent_kind: AgentKind | null;
   unread: boolean;
   last_model_id: string | null;
@@ -167,7 +165,8 @@ export interface CreateChatRequest {
   title: string;
   model_id: string;
   workspace_id: string;
-  parent_chat_id?: string;
+  // Run in that chat's worktree (post-stream actions reviewing its changes).
+  worktree_chat_id?: string;
 }
 
 // The backend only runs Claude.

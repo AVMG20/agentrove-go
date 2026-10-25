@@ -83,7 +83,7 @@ async function createCompletion(
   );
 }
 
-// Server-side turn without a client EventSource (background sub-threads).
+// Server-side turn without a client EventSource (post-stream actions).
 async function startCompletion(request: ChatRequest): Promise<{ messageId: string }> {
   validateRequired(request.prompt, 'Prompt');
 
@@ -103,7 +103,7 @@ async function checkChatStatus(chatId: string): Promise<ChatStatusResponse | nul
 }
 
 async function getActiveStreams(): Promise<ActiveStreamSnapshot[]> {
-  // One request covers every chat/sub-thread.
+  // One request covers every chat.
   return serviceCall(async () => {
     const streams = await apiClient.get<ActiveStreamSnapshot[]>('/chat/chats/active-streams');
     return streams ?? [];
@@ -167,7 +167,6 @@ async function listChats(params?: {
   per_page?: number;
   workspace_id?: string;
   pinned?: boolean;
-  include_sub_threads?: boolean;
 }): Promise<PaginatedChats> {
   return serviceCall(async () => {
     const queryString = buildQueryString(params);
@@ -251,14 +250,6 @@ async function createChatEventsSource(): Promise<EventSource> {
 
   const params = new URLSearchParams({ token });
   return new EventSource(`${apiClient.getBaseUrl()}/chat/chats/events?${params.toString()}`);
-}
-
-async function getSubThreads(chatId: string): Promise<Chat[]> {
-  validateId(chatId, 'Chat ID');
-  return serviceCall(async () => {
-    const response = await apiClient.get<Chat[]>(`/chat/chats/${chatId}/sub-threads`);
-    return ensureResponse(response, 'Failed to fetch sub-threads');
-  });
 }
 
 async function markChatViewed(chatId: string): Promise<void> {
@@ -389,6 +380,5 @@ export const chatService = {
   markChatViewed,
   pinChat,
   unpinChat,
-  getSubThreads,
   createChatEventsSource,
 };

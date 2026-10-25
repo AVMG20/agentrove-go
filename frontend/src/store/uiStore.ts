@@ -75,8 +75,6 @@ type UIStoreState = ThemeState &
     // Mode-switch commands set this; CommandMenu consumes it on next open.
     pendingMenuMode: MenuMode | null;
     setPendingMenuMode: (mode: MenuMode | null) => void;
-    subThreadDialogOpen: boolean;
-    setSubThreadDialogOpen: (open: boolean) => void;
     sessionPanelOpen: boolean;
     setSessionPanelOpen: (open: boolean) => void;
     // Phone-only bottom sheet with the same panel; session-only, not persisted.
@@ -287,8 +285,6 @@ export const useUIStore = create<UIStoreState>()(
       setCommandMenuOpen: (open) => set({ commandMenuOpen: open }),
       pendingMenuMode: null,
       setPendingMenuMode: (mode) => set({ pendingMenuMode: mode }),
-      subThreadDialogOpen: false,
-      setSubThreadDialogOpen: (open) => set({ subThreadDialogOpen: open }),
       sessionPanelOpen: getInitialSidebarState(),
       setSessionPanelOpen: (open) => set({ sessionPanelOpen: open }),
       sessionSheetOpen: false,

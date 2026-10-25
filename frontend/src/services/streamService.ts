@@ -186,7 +186,7 @@ class StreamService {
     if (!parsed?.chatId) return;
     const chatId = parsed.chatId;
 
-    // Ignore unregistered chats (e.g. sub-threads) — advancing their cursor would skip content on later replay.
+    // Ignore unregistered chats (e.g. background turns) — advancing their cursor would skip content on later replay.
     const currentStream = useStreamStore.getState().getStreamByChat(chatId);
     if (!currentStream) return;
     const streamId = currentStream.id;

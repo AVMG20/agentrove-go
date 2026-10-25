@@ -50,6 +50,7 @@ export function SidebarChannelItem({
 
   return (
     <SidebarRow
+      onRowClick={() => onSelect(channel.id)}
       isActive={isActive}
       isRevealed={isDropdownOpen}
       leading={

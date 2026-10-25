@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -174,13 +175,13 @@ func qualified(prefix, cols string) string {
 	return strings.Join(parts, ", ")
 }
 
-// list annotates each workspace with its visible top-level chat count and
+// list annotates each workspace with its visible chat count and
 // latest chat activity, most recently active first.
 func (m *Module) list(w http.ResponseWriter, r *http.Request) error {
 	u := auth.UserFrom(r.Context())
 	rows, err := m.a.DB.QueryContext(r.Context(), `SELECT `+qualified("w.", models.WorkspaceColumns)+`, COUNT(c.id), MAX(c.updated_at)
 		FROM workspaces w
-		LEFT JOIN chats c ON c.workspace_id = w.id AND c.deleted_at IS NULL AND c.channel_id IS NULL AND c.parent_chat_id IS NULL
+		LEFT JOIN chats c ON c.workspace_id = w.id AND c.deleted_at IS NULL AND c.channel_id IS NULL
 		WHERE w.user_id = ? AND w.deleted_at IS NULL
 		GROUP BY w.id
 		ORDER BY MAX(c.updated_at) IS NULL, MAX(c.updated_at) DESC, w.updated_at DESC`, u.ID)
@@ -269,9 +270,9 @@ func (m *Module) delete(w http.ResponseWriter, r *http.Request) error {
 				return err
 			}
 			chatIDs = append(chatIDs, id)
-			// Only the chat's own worktree: a sub-thread's inherited cwd
-			// won't match its own id.
-			if cwd != nil && *cwd == gitops.ChatWorktreePath(id) {
+			// Each chat worktree once: chats can share one, and it may
+			// outlive the chat that created it.
+			if cwd != nil && strings.HasPrefix(*cwd, ".worktrees/") && !slices.Contains(ownedWorktrees, *cwd) {
 				ownedWorktrees = append(ownedWorktrees, *cwd)
 			}
 		}

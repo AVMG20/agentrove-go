@@ -13,8 +13,6 @@ const chat = (id: string): Chat =>
     updated_at: '2020-01-01T00:00:00Z',
     pinned_at: null,
     worktree_cwd: null,
-    parent_chat_id: null,
-    sub_thread_count: 0,
     session_agent_kind: null,
     unread: false,
   }) as Chat;

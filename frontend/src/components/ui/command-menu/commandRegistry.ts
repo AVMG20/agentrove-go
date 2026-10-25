@@ -134,13 +134,6 @@ const ACTION_COMMANDS: ActionCommandItem[] = [
   { type: 'action', id: 'new-thread', label: 'New thread', icon: MessageSquarePlus, shortcut: 'o' },
   {
     type: 'action',
-    id: 'new-sub-thread',
-    label: 'New sub-thread',
-    icon: GitBranch,
-    requiresChat: true,
-  },
-  {
-    type: 'action',
     id: 'create-commit',
     label: 'Create commit',
     icon: GitCommitHorizontal,
@@ -255,7 +248,7 @@ export interface GitTarget {
   worktreeCwd?: string;
 }
 
-// Chat-scoped actions (sub-threads) target the pane the user last interacted with —
+// Chat-scoped actions (scripts, git) target the pane the user last interacted with —
 // in split view a split pane is a different chat. The split chat is cache-warm
 // here since it's rendered in the split.
 function getActiveChat(queryClient: QueryClient): Chat | null {
@@ -320,13 +313,6 @@ export function executeCommand(
     ui.toggleView(cmd.id, toggle);
   } else if (cmd.id === 'new-thread') {
     navigate('/');
-  } else if (cmd.id === 'new-sub-thread') {
-    const chat = getActiveChat(queryClient);
-    if (!chat || chat.parent_chat_id || chat.channel_id) {
-      toast.error('Open a top-level thread first');
-    } else {
-      ui.setSubThreadDialogOpen(toggle ? !ui.subThreadDialogOpen : true);
-    }
   } else if (cmd.id === 'create-commit') {
     ui.setCreateCommitDialogOpen(toggle ? !ui.createCommitDialogOpen : true);
   } else if (cmd.id === 'create-pr') {

@@ -19,9 +19,9 @@ func ValidBaseRef(ref string) bool {
 		!strings.Contains(ref, "@{") && !strings.HasSuffix(ref, "/") && !strings.HasSuffix(ref, ".lock")
 }
 
-// ChatWorktreePath is the workspace-relative worktree dir of a chat. Comparing
-// a chat's worktree_cwd to it doubles as the ownership test on deletion (a
-// sub-thread inherits its parent's cwd, which won't match its own id).
+// ChatWorktreePath is the workspace-relative worktree dir of a chat. Chats
+// created with worktree_chat_id share another chat's dir; deletion removes a
+// worktree once no live chat uses it.
 func ChatWorktreePath(chatID string) string {
 	short := chatID
 	if len(short) > 8 {

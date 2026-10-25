@@ -51,6 +51,10 @@
   }
 }
 
+.row--clickable {
+  cursor: pointer;
+}
+
 // Right padding reserves room for the timestamp/dropdown so long titles truncate
 // before reaching them.
 .title-col {

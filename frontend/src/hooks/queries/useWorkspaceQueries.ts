@@ -134,7 +134,6 @@ export const useDeleteWorkspaceMutation = createMutation<void, Error, string>(
         queryClient.removeQueries({ queryKey: queryKeys.chat(chat.id) });
         queryClient.removeQueries({ queryKey: queryKeys.messages(chat.id) });
         queryClient.removeQueries({ queryKey: queryKeys.contextUsage(chat.id) });
-        queryClient.removeQueries({ queryKey: queryKeys.subThreads(chat.id) });
       }
     }
 

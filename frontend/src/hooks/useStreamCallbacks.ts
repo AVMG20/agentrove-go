@@ -467,7 +467,7 @@ export function useStreamCallbacks({
       if (!isCurrentChat) return;
 
       // Re-stamp read so initiation's updated_at bump doesn't re-flag unread.
-      // Skip sub-threads routed through this pane that weren't being viewed.
+      // Skip chats routed through this pane that weren't being viewed.
       if (targetChatId && targetChatId === chatId) {
         void markChatViewed(queryClient, targetChatId);
       }
@@ -480,10 +480,6 @@ export function useStreamCallbacks({
       timerIdsRef.current = [];
 
       if (chatId) {
-        if (currentChat?.parent_chat_id) {
-          queryClient.invalidateQueries({ queryKey: [queryKeys.chats, 'infinite'] });
-          queryClient.invalidateQueries({ queryKey: queryKeys.workspaces });
-        }
         // Aggregation is a post-stream background task — wait before refetch.
         timerIdsRef.current.push(
           setTimeout(() => {
@@ -496,7 +492,6 @@ export function useStreamCallbacks({
       flushBufferedContent,
       chatId,
       currentChat?.sandbox_id,
-      currentChat?.parent_chat_id,
       notifyBackground,
       pendingStopRef,
       queryClient,

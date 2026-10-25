@@ -162,12 +162,12 @@ describe('useBackgroundNotify', () => {
     expect(notify).not.toHaveBeenCalled();
   });
 
-  it('notifies for sub-threads, which are never painted as tiles', async () => {
+  it('notifies for background chats, which are never painted as tiles', async () => {
     vi.spyOn(document, 'hasFocus').mockReturnValue(true);
     setRoute('/chat/chat-1');
     const { result } = renderHook(() => useBackgroundNotify(), { wrapper });
 
-    result.current('sub-thread-1', notify);
+    result.current('background-chat-1', notify);
     await flush();
     expect(notify).toHaveBeenCalledTimes(1);
   });

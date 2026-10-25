@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback, type RefObject } from 'react';
+import { useState, useRef, useCallback, type RefObject } from 'react';
 import { useMountEffect } from '@/hooks/useMountEffect';
 import type { NavigateFunction } from 'react-router-dom';
 import toast from 'react-hot-toast';
@@ -9,7 +9,6 @@ import {
   useUpdateChatMutation,
   usePinChatMutation,
 } from '@/hooks/queries/useChatQueries';
-import { useToggleSet } from '@/hooks/useToggleSet';
 import { useUIStore } from '@/store/uiStore';
 import { MAX_CHAT_PANES } from '@/types/ui.types';
 import { useChatStore } from '@/store/chatStore';
@@ -17,7 +16,6 @@ import { mutateWithToast, calculateDropdownPosition } from './sidebarHelpers';
 
 interface UseSidebarChatActionsParams {
   selectedChatId: string | null;
-  selectedChatParentId?: string | null;
   isMobile: boolean;
   navigate: NavigateFunction;
   scrollContainerRef: RefObject<HTMLDivElement | null>;
@@ -25,7 +23,6 @@ interface UseSidebarChatActionsParams {
 
 export function useSidebarChatActions({
   selectedChatId,
-  selectedChatParentId,
   isMobile,
   navigate,
   scrollContainerRef,
@@ -36,8 +33,6 @@ export function useSidebarChatActions({
     chat: Chat;
     position: { top: number; left: number };
   } | null>(null);
-  // Tracks which parent chats have their sub-threads expanded — collapsed by default to keep the sidebar compact
-  const [expandedSubThreads, toggleSubThreadExpand, setExpandedSubThreads] = useToggleSet<string>();
 
   const dropdownRef = useRef<HTMLDivElement>(null);
   const deleteChat = useDeleteChatMutation();
@@ -45,17 +40,6 @@ export function useSidebarChatActions({
   const generateChatTitle = useGenerateChatTitleMutation();
   const pinChat = usePinChatMutation();
   const splitChatIds = useUIStore((state) => state.splitChatIds);
-
-  // Auto-expand parent when navigating to a sub-thread from outside the sidebar
-  useEffect(() => {
-    if (!selectedChatParentId) return;
-    setExpandedSubThreads((prev) => {
-      if (prev.has(selectedChatParentId)) return prev;
-      const next = new Set(prev);
-      next.add(selectedChatParentId);
-      return next;
-    });
-  }, [selectedChatParentId, setExpandedSubThreads]);
 
   useMountEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -82,16 +66,6 @@ export function useSidebarChatActions({
     scrollContainer.addEventListener('scroll', handleScroll, { passive: true });
     return () => scrollContainer.removeEventListener('scroll', handleScroll);
   });
-
-  // Clears any open dropdown when collapsing sub-threads, since the dropdown
-  // target may become hidden
-  const handleToggleSubThreads = useCallback(
-    (chatId: string) => {
-      toggleSubThreadExpand(chatId);
-      if (dropdownStateRef.current) setDropdown(null);
-    },
-    [toggleSubThreadExpand],
-  );
 
   const onChatSelect = useCallback((chatId: string) => navigate(`/chat/${chatId}`), [navigate]);
 
@@ -154,7 +128,7 @@ export function useSidebarChatActions({
       } else if (uiState.splitChatIds.includes(chatToDelete)) {
         uiState.closeSplitChat(chatToDelete);
       }
-      if (chatToDelete === selectedChatId || chatToDelete === selectedChatParentId) {
+      if (chatToDelete === selectedChatId) {
         navigate('/');
       }
       // Release any pending File blobs held for this chat.
@@ -164,7 +138,7 @@ export function useSidebarChatActions({
     } finally {
       setChatToDelete(null);
     }
-  }, [chatToDelete, deleteChat, selectedChatId, selectedChatParentId, navigate]);
+  }, [chatToDelete, deleteChat, selectedChatId, navigate]);
 
   const handleDropdownClick = useCallback((e: React.MouseEvent<HTMLButtonElement>, chat: Chat) => {
     e.stopPropagation();
@@ -235,7 +209,6 @@ export function useSidebarChatActions({
     dropdown,
     setDropdown,
     dropdownRef,
-    expandedSubThreads,
     chatToDelete,
     setChatToDelete,
     chatToRename,
@@ -246,7 +219,6 @@ export function useSidebarChatActions({
     dropdownCanSplit,
     updateChat,
     generateChatTitle,
-    handleToggleSubThreads,
     handleChatSelect,
     handleOpenInSplit,
     handleDropdownOpenInSplit,

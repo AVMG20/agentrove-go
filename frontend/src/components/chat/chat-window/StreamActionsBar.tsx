@@ -16,8 +16,7 @@ export function StreamActionsBar({ chatId }: StreamActionsBarProps) {
 
   const enabledActions = (settings?.stream_actions ?? []).filter((action) => action.enabled);
 
-  // Only top-level threads spawn sub-thread reviews (nesting is one level).
-  if (!chat || chat.parent_chat_id || enabledActions.length === 0) {
+  if (!chat || enabledActions.length === 0) {
     return null;
   }
 

@@ -27,7 +27,7 @@ func (m *Module) listWorkspaces(ctx context.Context, c *caller, _ json.RawMessag
 // workspaces lists the user's workspaces, most recently active first.
 func (m *Module) workspaces(ctx context.Context, userID string, limit int) ([]map[string]any, error) {
 	rows, err := m.a.DB.QueryContext(ctx, `SELECT w.id, w.name FROM workspaces w
-		LEFT JOIN chats c ON c.workspace_id = w.id AND c.deleted_at IS NULL AND c.channel_id IS NULL AND c.parent_chat_id IS NULL
+		LEFT JOIN chats c ON c.workspace_id = w.id AND c.deleted_at IS NULL AND c.channel_id IS NULL
 		WHERE w.user_id = ? AND w.deleted_at IS NULL
 		GROUP BY w.id ORDER BY MAX(c.updated_at) IS NULL, MAX(c.updated_at) DESC, w.updated_at DESC LIMIT ?`, userID, limit)
 	if err != nil {
@@ -86,7 +86,7 @@ func (m *Module) listChats(ctx context.Context, c *caller, args json.RawMessage)
 	}
 	a.Page = max(a.Page, 1)
 	a.PerPage = min(max(a.PerPage, 1), 100)
-	where := `c.user_id = ? AND c.deleted_at IS NULL AND c.channel_id IS NULL AND c.parent_chat_id IS NULL`
+	where := `c.user_id = ? AND c.deleted_at IS NULL AND c.channel_id IS NULL`
 	params := []any{c.userID}
 	if a.WorkspaceID != nil && *a.WorkspaceID != "" {
 		where += ` AND c.workspace_id = ?`
@@ -96,8 +96,7 @@ func (m *Module) listChats(ctx context.Context, c *caller, args json.RawMessage)
 	if err := m.a.DB.QueryRowContext(ctx, `SELECT COUNT(1) FROM chats c WHERE `+where, params...).Scan(&total); err != nil {
 		return nil, err
 	}
-	rows, err := m.a.DB.QueryContext(ctx, `SELECT c.id, c.title, c.workspace_id, c.parent_chat_id, c.updated_at,
-		(SELECT COUNT(1) FROM chats s WHERE s.parent_chat_id = c.id AND s.user_id = c.user_id AND s.deleted_at IS NULL AND s.channel_id IS NULL)
+	rows, err := m.a.DB.QueryContext(ctx, `SELECT c.id, c.title, c.workspace_id, c.updated_at
 		FROM chats c WHERE `+where+` ORDER BY c.pinned_at IS NULL, c.pinned_at DESC, c.updated_at DESC LIMIT ? OFFSET ?`,
 		append(params, a.PerPage, (a.Page-1)*a.PerPage)...)
 	if err != nil {
@@ -107,13 +106,11 @@ func (m *Module) listChats(ctx context.Context, c *caller, args json.RawMessage)
 	chats := []map[string]any{}
 	for rows.Next() {
 		var id, title, ws string
-		var parent *string
 		var updated db.Time
-		var subs int
-		if err := rows.Scan(&id, &title, &ws, &parent, &updated, &subs); err != nil {
+		if err := rows.Scan(&id, &title, &ws, &updated); err != nil {
 			return nil, err
 		}
-		chats = append(chats, map[string]any{"id": id, "title": title, "workspace_id": ws, "parent_chat_id": parent, "sub_thread_count": subs, "updated_at": updated})
+		chats = append(chats, map[string]any{"id": id, "title": title, "workspace_id": ws, "updated_at": updated})
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
@@ -128,7 +125,6 @@ func (m *Module) sendMessage(ctx context.Context, c *caller, args json.RawMessag
 	var a struct {
 		Prompt       string  `json:"prompt"`
 		ChatID       *string `json:"chat_id"`
-		ParentChatID *string `json:"parent_chat_id"`
 		Title        *string `json:"title"`
 		WorkspaceID  *string `json:"workspace_id"`
 		ModelID      *string `json:"model_id"`
@@ -188,11 +184,7 @@ func (m *Module) sendMessage(ctx context.Context, c *caller, args json.RawMessag
 		if title == "" {
 			title = "New chat"
 		}
-		var parent *string
-		if a.ParentChatID != nil && *a.ParentChatID != "" {
-			parent = a.ParentChatID
-		}
-		chat, err := automation.CreateChat(ctx, m.a, c.userID, ws, title, parent, nil)
+		chat, err := automation.CreateChat(ctx, m.a, c.userID, ws, title, nil)
 		if err != nil {
 			return nil, err
 		}

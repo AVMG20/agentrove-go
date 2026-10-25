@@ -42,7 +42,7 @@ export interface Persona {
   content: string;
 }
 
-// Post-stream button: runs `command` on `model_id` in a new sub-thread.
+// Post-stream button: runs `command` on `model_id` in a new thread sharing the chat's worktree.
 export interface StreamAction {
   label: string;
   enabled: boolean;

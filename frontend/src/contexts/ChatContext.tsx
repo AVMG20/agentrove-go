@@ -14,7 +14,6 @@ interface ChatProviderProps {
   chatId?: string;
   sandboxId?: string;
   worktreeCwd?: string;
-  parentChatId?: string;
   fileStructure?: FileStructure[] | null;
   customSkills?: CustomSkill[] | null;
   builtinSlashCommands?: Record<AgentKind, SlashCommand[]> | null;
@@ -26,7 +25,6 @@ export function ChatProvider({
   chatId,
   sandboxId,
   worktreeCwd,
-  parentChatId,
   fileStructure,
   customSkills,
   builtinSlashCommands,
@@ -43,7 +41,6 @@ export function ChatProvider({
       chatId,
       sandboxId,
       worktreeCwd,
-      parentChatId,
       fileStructure: resolvedFileStructure,
       customSkills: resolvedCustomSkills,
       builtinSlashCommands: resolvedBuiltinSlashCommands,
@@ -53,7 +50,6 @@ export function ChatProvider({
       chatId,
       sandboxId,
       worktreeCwd,
-      parentChatId,
       resolvedFileStructure,
       resolvedCustomSkills,
       resolvedBuiltinSlashCommands,

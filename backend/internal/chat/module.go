@@ -820,8 +820,8 @@ func (m *Module) startTurn(ctx context.Context, in startInput) (app.ChatTurnResu
 		return res, err
 	}
 
-	// A chat bound to a worktree (incl. a sub-thread inheriting its parent's)
-	// always runs there; otherwise create one only when this turn asks.
+	// A chat bound to a worktree (incl. one created in another chat's) always
+	// runs there; otherwise create one only when this turn asks.
 	if chat.WorktreeCwd == nil && in.worktree {
 		wt, err := gitops.CreateWorktree(ctx, sb, chat.ID, db.Deref(in.baseBranch))
 		if err != nil {
@@ -877,24 +877,12 @@ func (m *Module) startTurn(ctx context.Context, in startInput) (app.ChatTurnResu
 	return res, nil
 }
 
-// bumpChatForTurn moves the chat (and its parent) to the top and records the
-// turn's settings as the source of truth for follow-ups.
+// bumpChatForTurn moves the chat to the top and records the turn's settings
+// as the source of truth for follow-ups.
 func (m *Module) bumpChatForTurn(ctx context.Context, chat *models.Chat, in startInput) error {
-	now := db.Now()
-	return m.a.DB.Tx(ctx, func(tx *sql.Tx) error {
-		if chat.ParentChatID != nil {
-			// Ordering-only bump: keep an already-read parent read.
-			if _, err := tx.ExecContext(ctx, `UPDATE chats SET last_viewed_at = ? WHERE id = ? AND last_viewed_at >= updated_at`, now, *chat.ParentChatID); err != nil {
-				return err
-			}
-			if _, err := tx.ExecContext(ctx, `UPDATE chats SET updated_at = ? WHERE id = ?`, now, *chat.ParentChatID); err != nil {
-				return err
-			}
-		}
-		_, err := tx.ExecContext(ctx, `UPDATE chats SET updated_at = ?, last_model_id = ?, last_thinking_mode = ?, last_persona_name = ? WHERE id = ?`,
-			now, in.modelID, in.thinkingMode, in.persona, chat.ID)
-		return err
-	})
+	_, err := m.a.DB.ExecContext(ctx, `UPDATE chats SET updated_at = ?, last_model_id = ?, last_thinking_mode = ?, last_persona_name = ? WHERE id = ?`,
+		db.Now(), in.modelID, in.thinkingMode, in.persona, chat.ID)
+	return err
 }
 
 func (m *Module) createCheckpoint(ctx context.Context, sb *sandbox.Sandbox, chat *models.Chat, messageID string) *string {
@@ -1103,7 +1091,7 @@ func (m *Module) generateText(ctx context.Context, userID, modelID, systemPrompt
 
 // generateTitle replaces a new chat's placeholder title (one derived from the
 // prompt) with a generated one. Deliberate titles (automation runs, MCP
-// create_chat, persona sub-threads) and renames made meanwhile are kept.
+// create_chat) and renames made meanwhile are kept.
 func (m *Module) generateTitle(userID string, chat *models.Chat, prompt string) {
 	if !isPlaceholderTitle(chat.Title, prompt) {
 		return

@@ -21,10 +21,10 @@ import (
 func (m *Module) createChat(w http.ResponseWriter, r *http.Request) error {
 	u := user(r)
 	var body struct {
-		Title        string  `json:"title"`
-		ModelID      string  `json:"model_id"`
-		WorkspaceID  string  `json:"workspace_id"`
-		ParentChatID *string `json:"parent_chat_id"`
+		Title          string  `json:"title"`
+		ModelID        string  `json:"model_id"`
+		WorkspaceID    string  `json:"workspace_id"`
+		WorktreeChatID *string `json:"worktree_chat_id"`
 	}
 	if err := httpx.Decode(r, &body); err != nil {
 		return err
@@ -32,31 +32,24 @@ func (m *Module) createChat(w http.ResponseWriter, r *http.Request) error {
 	if body.Title == "" || len(body.Title) > 255 {
 		return httpx.Unprocessable("title must be 1-255 characters")
 	}
-	c, err := m.CreateChat(r.Context(), u.ID, body.Title, body.WorkspaceID, body.ParentChatID)
+	c, err := m.CreateChat(r.Context(), u.ID, body.Title, body.WorkspaceID, body.WorktreeChatID)
 	if err != nil {
 		return err
 	}
 	return httpx.Created(w, c)
 }
 
-// CreateChat inserts a chat (optionally a sub-thread) and announces it.
-func (m *Module) CreateChat(ctx context.Context, userID, title, workspaceID string, parentID *string) (*models.Chat, error) {
+// CreateChat inserts a chat and announces it. With worktreeChatID the new chat
+// joins that chat's workspace and runs in its worktree, so it sees its changes.
+func (m *Module) CreateChat(ctx context.Context, userID, title, workspaceID string, worktreeChatID *string) (*models.Chat, error) {
 	var worktree *string
-	if parentID != nil && *parentID != "" {
-		parent, err := m.a.Store.GetChat(ctx, userID, *parentID)
+	if worktreeChatID != nil && *worktreeChatID != "" {
+		src, err := m.a.Store.GetChat(ctx, userID, *worktreeChatID)
 		if err != nil {
-			return nil, httpx.NotFound("Parent chat not found")
+			return nil, httpx.NotFound("Chat not found")
 		}
-		if parent.ParentChatID != nil {
-			return nil, httpx.BadRequest("Cannot create a sub-thread of a sub-thread")
-		}
-		workspaceID = parent.WorkspaceID
-		// Sub-threads run in the parent's worktree so they see its changes.
-		worktree = parent.WorktreeCwd
-		now := db.Now()
-		_, _ = m.a.DB.ExecContext(ctx, `UPDATE chats SET last_viewed_at = CASE WHEN last_viewed_at >= updated_at THEN ? ELSE last_viewed_at END, updated_at = ? WHERE id = ?`, now, now, parent.ID)
-	} else {
-		parentID = nil
+		workspaceID = src.WorkspaceID
+		worktree = src.WorktreeCwd
 	}
 	ws, err := m.a.Store.GetWorkspace(ctx, userID, workspaceID)
 	if err != nil {
@@ -64,8 +57,8 @@ func (m *Module) CreateChat(ctx context.Context, userID, title, workspaceID stri
 	}
 	id := uuid.NewString()
 	now := db.Now()
-	_, err = m.a.DB.ExecContext(ctx, `INSERT INTO chats (id, title, user_id, workspace_id, parent_chat_id, worktree_cwd, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?)`, id, title, userID, ws.ID, parentID, worktree, now, now)
+	_, err = m.a.DB.ExecContext(ctx, `INSERT INTO chats (id, title, user_id, workspace_id, worktree_cwd, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?)`, id, title, userID, ws.ID, worktree, now, now)
 	if err != nil {
 		return nil, err
 	}
@@ -84,9 +77,6 @@ func (m *Module) listChats(w http.ResponseWriter, r *http.Request) error {
 	perPage := httpx.QueryInt(r, "per_page", 10, 1, 100)
 	where := []string{"c.user_id = ?", "c.deleted_at IS NULL", "c.channel_id IS NULL"}
 	args := []any{u.ID}
-	if q.Get("include_sub_threads") != "true" {
-		where = append(where, "c.parent_chat_id IS NULL")
-	}
 	if ws := q.Get("workspace_id"); ws != "" {
 		where = append(where, "c.workspace_id = ?")
 		args = append(args, ws)
@@ -103,8 +93,7 @@ func (m *Module) listChats(w http.ResponseWriter, r *http.Request) error {
 	if err := m.a.DB.QueryRowContext(r.Context(), `SELECT COUNT(1) FROM chats c WHERE `+cond, args...).Scan(&total); err != nil {
 		return err
 	}
-	rows, err := m.a.DB.QueryContext(r.Context(), `SELECT `+models.ChatColumns+`,
-		(SELECT COUNT(1) FROM chats s WHERE s.parent_chat_id = c.id AND s.deleted_at IS NULL AND s.channel_id IS NULL)
+	rows, err := m.a.DB.QueryContext(r.Context(), `SELECT `+models.ChatColumns+`
 		FROM chats c JOIN workspaces w ON w.id = c.workspace_id WHERE `+cond+`
 		ORDER BY (c.pinned_at IS NULL), c.pinned_at DESC, c.updated_at DESC LIMIT ? OFFSET ?`,
 		append(args, perPage, (page-1)*perPage)...)
@@ -115,7 +104,7 @@ func (m *Module) listChats(w http.ResponseWriter, r *http.Request) error {
 	items := []*models.Chat{}
 	for rows.Next() {
 		c := &models.Chat{}
-		if err := rows.Scan(append(c.ScanFields(), &c.SubThreadCount)...); err != nil {
+		if err := rows.Scan(c.ScanFields()...); err != nil {
 			return err
 		}
 		c.Finish()
@@ -124,37 +113,12 @@ func (m *Module) listChats(w http.ResponseWriter, r *http.Request) error {
 	return httpx.OK(w, models.NewPaginated(items, page, perPage, total))
 }
 
-func (m *Module) subThreads(w http.ResponseWriter, r *http.Request) error {
-	u := user(r)
-	parent, err := m.a.Store.GetChat(r.Context(), u.ID, r.PathValue("chat_id"))
-	if err != nil {
-		return err
-	}
-	rows, err := m.a.DB.QueryContext(r.Context(), `SELECT `+models.ChatColumns+` FROM chats c JOIN workspaces w ON w.id = c.workspace_id
-		WHERE c.parent_chat_id = ? AND c.user_id = ? AND c.deleted_at IS NULL AND c.channel_id IS NULL ORDER BY c.updated_at DESC`, parent.ID, u.ID)
-	if err != nil {
-		return err
-	}
-	defer rows.Close()
-	out := []*models.Chat{}
-	for rows.Next() {
-		c := &models.Chat{}
-		if err := rows.Scan(c.ScanFields()...); err != nil {
-			return err
-		}
-		c.Finish()
-		out = append(out, c)
-	}
-	return httpx.OK(w, out)
-}
-
 func (m *Module) getChat(w http.ResponseWriter, r *http.Request) error {
 	u := user(r)
 	c, err := m.a.Store.GetMemberChat(r.Context(), u.ID, r.PathValue("chat_id"))
 	if err != nil {
 		return err
 	}
-	_ = m.a.DB.QueryRowContext(r.Context(), `SELECT COUNT(1) FROM chats WHERE parent_chat_id = ? AND deleted_at IS NULL AND channel_id IS NULL`, c.ID).Scan(&c.SubThreadCount)
 	return httpx.OK(w, c)
 }
 
@@ -250,7 +214,7 @@ func (m *Module) deleteChat(w http.ResponseWriter, r *http.Request) error {
 
 func (m *Module) deleteAllChats(w http.ResponseWriter, r *http.Request) error {
 	u := user(r)
-	rows, err := m.a.DB.QueryContext(r.Context(), `SELECT id FROM chats WHERE user_id = ? AND deleted_at IS NULL AND channel_id IS NULL AND parent_chat_id IS NULL`, u.ID)
+	rows, err := m.a.DB.QueryContext(r.Context(), `SELECT id FROM chats WHERE user_id = ? AND deleted_at IS NULL AND channel_id IS NULL`, u.ID)
 	if err != nil {
 		return err
 	}
@@ -268,8 +232,8 @@ func (m *Module) deleteAllChats(w http.ResponseWriter, r *http.Request) error {
 	return httpx.NoContent(w)
 }
 
-// DeleteChats soft-deletes chats and their sub-threads, stops their agents,
-// and removes worktrees they own. Their projects stay.
+// DeleteChats soft-deletes chats, stops their agents, and removes worktrees
+// they own. Their projects stay.
 func (m *Module) DeleteChats(ctx context.Context, userID string, ids []string) error {
 	if len(ids) == 0 {
 		return nil
@@ -286,8 +250,7 @@ func (m *Module) DeleteChats(ctx context.Context, userID string, ids []string) e
 		args = append(args, userID)
 		ph := db.Placeholders(len(ids))
 		rows, err := tx.QueryContext(ctx, `SELECT id, workspace_id, COALESCE(worktree_cwd, '') FROM chats
-			WHERE (id IN (`+ph+`) OR parent_chat_id IN (`+ph+`)) AND user_id = ? AND deleted_at IS NULL AND channel_id IS NULL`,
-			append(append(append([]any{}, args[:len(ids)]...), args[:len(ids)]...), userID)...)
+			WHERE id IN (`+ph+`) AND user_id = ? AND deleted_at IS NULL AND channel_id IS NULL`, args...)
 		if err != nil {
 			return err
 		}
@@ -330,8 +293,10 @@ func (m *Module) DeleteChats(ctx context.Context, userID string, ids []string) e
 			fn(id)
 		}
 	}
-	// The projects stay, even with no chats left (a fresh one has none):
-	// only the worktrees the chats owned go.
+	// The projects stay, even with no chats left (a fresh one has none). A
+	// chat worktree goes once no live chat runs in it: chats created with
+	// worktree_chat_id share it, and the last one out removes it.
+	removed := map[string]bool{}
 	for wsID := range workspaces {
 		ws, err := m.a.Store.GetWorkspaceByID(ctx, wsID)
 		if err != nil || ws.DeletedAt.Valid {
@@ -342,10 +307,17 @@ func (m *Module) DeleteChats(ctx context.Context, userID string, ids []string) e
 			continue
 		}
 		for _, v := range victims {
-			if v.workspace == wsID && v.worktree != "" && v.worktree == gitops.ChatWorktreePath(v.id) {
-				wt := v.worktree
-				go gitops.RemoveWorktree(context.Background(), sb, wt)
+			if v.workspace != wsID || !strings.HasPrefix(v.worktree, ".worktrees/") || removed[wsID+"\x00"+v.worktree] {
+				continue
 			}
+			var users int
+			if err := m.a.DB.QueryRowContext(ctx, `SELECT COUNT(1) FROM chats WHERE workspace_id = ? AND worktree_cwd = ? AND deleted_at IS NULL`,
+				wsID, v.worktree).Scan(&users); err != nil || users > 0 {
+				continue
+			}
+			removed[wsID+"\x00"+v.worktree] = true
+			wt := v.worktree
+			go gitops.RemoveWorktree(context.Background(), sb, wt)
 		}
 	}
 	return nil

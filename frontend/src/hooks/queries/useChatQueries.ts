@@ -72,7 +72,7 @@ export const useInfiniteChatsQuery = (options?: {
 };
 
 // Backs the composer's `@` chat mentions: one fetch per staleTime window, filtered
-// client-side like files. Includes sub-threads (the top-level-only sidebar doesn't).
+// client-side like files.
 export const useRecentChatsQuery = (enabled: boolean) => {
   return useQuery({
     queryKey: queryKeys.chatsRecent,
@@ -80,7 +80,6 @@ export const useRecentChatsQuery = (enabled: boolean) => {
       chatService.listChats({
         page: 1,
         per_page: RECENT_CHATS_PER_PAGE,
-        include_sub_threads: true,
       }),
     enabled,
     staleTime: 1000 * 60 * 5,
@@ -160,16 +159,6 @@ export const useContextUsageQuery = (
 export async function applyCreatedChat(queryClient: QueryClient, newChat: Chat): Promise<void> {
   queryClient.setQueryData(queryKeys.chat(newChat.id), newChat);
   queryClient.invalidateQueries({ queryKey: queryKeys.chatsRecent });
-
-  if (newChat.parent_chat_id) {
-    // Sub-thread create bumps parent updated_at (workspace ordering).
-    await Promise.all([
-      queryClient.invalidateQueries({ queryKey: queryKeys.subThreads(newChat.parent_chat_id) }),
-      queryClient.invalidateQueries({ queryKey: [queryKeys.chats, 'infinite'] }),
-      queryClient.invalidateQueries({ queryKey: queryKeys.workspaces }),
-    ]);
-    return;
-  }
 
   queryClient.setQueriesData<InfiniteData<PaginatedChats>>(
     { queryKey: [queryKeys.chats, 'infinite'], predicate: isGlobalChatsQuery },
@@ -259,11 +248,7 @@ export const useUpdateChatMutation = createMutation<
           ...oldData,
           pages: oldData.pages.map((page) => ({
             ...page,
-            items: page.items.map((chat) =>
-              chat.id === updatedChat.id
-                ? { ...updatedChat, sub_thread_count: chat.sub_thread_count }
-                : chat,
-            ),
+            items: page.items.map((chat) => (chat.id === updatedChat.id ? updatedChat : chat)),
           })),
         };
       },
@@ -275,23 +260,13 @@ export const useUpdateChatMutation = createMutation<
       if (!oldData) return oldData;
       return {
         ...oldData,
-        items: oldData.items.map((chat) =>
-          chat.id === updatedChat.id
-            ? { ...updatedChat, sub_thread_count: chat.sub_thread_count }
-            : chat,
-        ),
+        items: oldData.items.map((chat) => (chat.id === updatedChat.id ? updatedChat : chat)),
       };
     });
     queryClient.invalidateQueries({ queryKey: queryKeys.chatsRecent });
 
     queryClient.invalidateQueries({ queryKey: queryKeys.workspaces });
     queryClient.invalidateQueries({ queryKey: queryKeys.chatsSearchAll });
-
-    if (updatedChat.parent_chat_id) {
-      queryClient.invalidateQueries({
-        queryKey: queryKeys.subThreads(updatedChat.parent_chat_id),
-      });
-    }
   },
 );
 
@@ -326,31 +301,9 @@ export const useDeleteChatMutation = createMutation<void, Error, string>(
       },
     );
 
-    // One pass: find parent if sub-thread, clean child caches if deleting a parent.
-    let parentId = queryClient.getQueryData<Chat>(queryKeys.chat(chatId))?.parent_chat_id;
-    const allCachedEntries = queryClient.getQueriesData<Chat | Chat[]>({ queryKey: ['chat'] });
-    for (const [key, data] of allCachedEntries) {
-      if (!parentId && Array.isArray(data) && data.some((sub) => sub.id === chatId)) {
-        parentId = key[1] as string;
-      }
-      if (!Array.isArray(data) && data?.parent_chat_id === chatId) {
-        queryClient.removeQueries({ queryKey: queryKeys.chat(data.id) });
-        queryClient.removeQueries({ queryKey: queryKeys.messages(data.id) });
-        queryClient.removeQueries({ queryKey: queryKeys.contextUsage(data.id) });
-        useMessageQueueStore.getState().cleanupChat(data.id);
-        useUIStore.getState().cleanupChat(data.id);
-        useComposerDraftStore.getState().clearDraft(data.id);
-      }
-    }
-
-    if (parentId) {
-      queryClient.invalidateQueries({ queryKey: queryKeys.subThreads(parentId) });
-    }
-
     queryClient.removeQueries({ queryKey: queryKeys.chat(chatId) });
     queryClient.removeQueries({ queryKey: queryKeys.messages(chatId) });
     queryClient.removeQueries({ queryKey: queryKeys.contextUsage(chatId) });
-    queryClient.removeQueries({ queryKey: queryKeys.subThreads(chatId) });
     queryClient.invalidateQueries({ queryKey: [queryKeys.chats, 'infinite'] });
     queryClient.invalidateQueries({ queryKey: queryKeys.chatsRecent });
     queryClient.invalidateQueries({ queryKey: queryKeys.workspaces });
@@ -378,32 +331,6 @@ interface EnhancePromptParams {
   prompt: string;
   modelId: string;
 }
-
-export const useSubThreadsQuery = (chatId: string | undefined) => {
-  return useQuery({
-    queryKey: queryKeys.subThreads(chatId),
-    queryFn: () => chatService.getSubThreads(chatId!),
-    enabled: !!chatId,
-  });
-};
-
-// parentChatId is captured in the closure — safe because the dialog closes
-// on create (onClose + navigate), so the parentChatId can't go stale.
-export const useCreateSubThreadMutation = (parentChatId: string) => {
-  const queryClient = useQueryClient();
-
-  return useMutation({
-    mutationFn: (data: CreateChatRequest) => chatService.createChat(data),
-    onSuccess: async (newChat) => {
-      queryClient.setQueryData(queryKeys.chat(newChat.id), newChat);
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: queryKeys.subThreads(parentChatId) }),
-        queryClient.invalidateQueries({ queryKey: [queryKeys.chats, 'infinite'] }),
-        queryClient.invalidateQueries({ queryKey: queryKeys.workspaces }),
-      ]);
-    },
-  });
-};
 
 export const useGenerateChatTitleMutation = () => {
   return useMutation({

@@ -1,7 +1,6 @@
 import type { Chat } from '@/types/chat.types';
 import type { WorkspaceBadge } from '@/hooks/queries/useSidebarChatLists';
 import { SidebarChatItem } from './SidebarChatItem';
-import { SubThreadList } from './SubThreadList';
 
 // Bundle row handlers/state so pinned and recent sections forward one object.
 export interface ChatRowProps {
@@ -16,9 +15,8 @@ export interface ChatRowProps {
   onOpenInSplit?: (chatId: string) => void;
   canOpenChatInSplit: (chatId: string) => boolean;
   onDropdownClick: (e: React.MouseEvent<HTMLButtonElement>, chat: Chat) => void;
-  onWorkspaceBadgeClick: (e: React.MouseEvent<HTMLButtonElement>, workspaceId: string) => void;
-  expandedSubThreads: Set<string>;
-  onToggleSubThreads: (chatId: string) => void;
+  // Project group headers' options menu (grouped view).
+  onOpenWorkspaceMenu: (e: React.MouseEvent<HTMLButtonElement>, workspaceId: string) => void;
 }
 
 interface SidebarChatRowProps {
@@ -41,43 +39,22 @@ export function SidebarChatRow({ chat, rowProps, hideWorkspace = false }: Sideba
     onOpenInSplit,
     canOpenChatInSplit,
     onDropdownClick,
-    onWorkspaceBadgeClick,
-    expandedSubThreads,
-    onToggleSubThreads,
   } = rowProps;
-  const hasSubThreads = chat.sub_thread_count > 0;
 
   return (
-    <div>
-      <SidebarChatItem
-        chat={chat}
-        isSelected={chat.id === selectedChatId}
-        isActive={chat.id === selectedChatId || splitChatIds.includes(chat.id)}
-        isDropdownOpen={dropdownChatId === chat.id}
-        isChatStreaming={streamingChatIdSet.has(chat.id)}
-        isChatBlocked={blockedChatIdSet.has(chat.id)}
-        isChatCompleted={completedChatIdSet.has(chat.id)}
-        workspaceBadge={hideWorkspace ? undefined : workspaceBadgeById.get(chat.workspace_id)}
-        onSelect={onChatSelect}
-        onOpenInSplit={onOpenInSplit}
-        canOpenInSplit={canOpenChatInSplit(chat.id)}
-        onDropdownClick={onDropdownClick}
-        onWorkspaceBadgeClick={onWorkspaceBadgeClick}
-        onToggleSubThreads={hasSubThreads ? onToggleSubThreads : undefined}
-        isSubThreadsExpanded={hasSubThreads ? expandedSubThreads.has(chat.id) : undefined}
-      />
-      {hasSubThreads && expandedSubThreads.has(chat.id) && (
-        <SubThreadList
-          parentChatId={chat.id}
-          selectedChatId={selectedChatId}
-          splitChatIds={splitChatIds}
-          onSelect={onChatSelect}
-          onDropdownClick={onDropdownClick}
-          streamingChatIdSet={streamingChatIdSet}
-          blockedChatIdSet={blockedChatIdSet}
-          completedChatIdSet={completedChatIdSet}
-        />
-      )}
-    </div>
+    <SidebarChatItem
+      chat={chat}
+      isSelected={chat.id === selectedChatId}
+      isActive={chat.id === selectedChatId || splitChatIds.includes(chat.id)}
+      isDropdownOpen={dropdownChatId === chat.id}
+      isChatStreaming={streamingChatIdSet.has(chat.id)}
+      isChatBlocked={blockedChatIdSet.has(chat.id)}
+      isChatCompleted={completedChatIdSet.has(chat.id)}
+      workspaceBadge={hideWorkspace ? undefined : workspaceBadgeById.get(chat.workspace_id)}
+      onSelect={onChatSelect}
+      onOpenInSplit={onOpenInSplit}
+      canOpenInSplit={canOpenChatInSplit(chat.id)}
+      onDropdownClick={onDropdownClick}
+    />
   );
 }

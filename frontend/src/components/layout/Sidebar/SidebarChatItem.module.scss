@@ -52,64 +52,14 @@
   box-shadow: 0 0 0 1px var(--theme-surface-secondary);
 }
 
-.caret-btn {
-  @include anim.transition-colors;
-  // Negative margin + padding keeps a large thumb target without shifting the row
-  margin: calc(var(--space-1) * -1);
-  flex-shrink: 0;
-  padding: var(--space-1);
-  color: var(--theme-text-tertiary);
-
-  @include responsive.hover {
-    color: var(--theme-text-primary);
-  }
-}
-
-.caret-slot {
-  position: relative;
-  display: flex;
-  height: var(--space-3-5);
-  width: var(--space-3-5);
-  align-items: center;
-  justify-content: center;
-}
-
-.chevron {
-  height: var(--space-3-5);
-  width: var(--space-3-5);
-  transition: transform var(--duration-base);
-
-  &--expanded {
-    transform: rotate(90deg);
-  }
-}
-
-.resting-slot {
-  display: flex;
-  flex-shrink: 0;
-  align-items: center;
-}
-
-.subthread-hint {
-  height: var(--space-3);
-  width: var(--space-3);
-  flex-shrink: 0;
-  color: var(--theme-text-quaternary);
-}
-
 .workspace-badge {
   @include type.type-meta(500);
-  @include anim.transition-colors;
   display: flex;
   max-width: 100%;
   align-items: center;
   gap: var(--space-1);
   align-self: flex-start;
   color: var(--theme-text-quaternary);
-
-  @include responsive.hover {
-    color: var(--theme-text-primary);
-  }
 
   // pl-5 (icon 14px + gap 6px) indents the name under the title, not the icon
   &--indented {

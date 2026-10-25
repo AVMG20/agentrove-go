@@ -21,7 +21,7 @@ function pruneIfStillOrphan(chatId: string, markDone: boolean): void {
   }
 }
 
-// Interval reconcile: background sub-threads register metadata without an EventSource,
+// Interval reconcile: background turns (post-stream actions) register metadata without an EventSource,
 // so removeStream never fires for them — prune settled orphans so indicators clear.
 export function useGlobalStream(options?: UseGlobalStreamOptions) {
   const hasPrunedRef = useRef(false);

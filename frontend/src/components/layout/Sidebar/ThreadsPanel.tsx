@@ -33,7 +33,6 @@ export function ThreadsPanel({ hidden = false }: { hidden?: boolean }) {
   const { data: selectedChat } = useChatQuery(selectedChatId ?? undefined);
   const { data: selectedChannel } = useChannelQuery(selectedChannelId ?? undefined);
   const selectedChatWorkspaceId = selectedChat?.workspace_id ?? selectedChannel?.workspace_id;
-  const selectedChatParentId = selectedChat?.parent_chat_id;
   // Chats whose stream finished successfully since last viewed — drives the "Done" badge
   const completedChatIds = useStreamStore((state) => state.completedChatIds);
   const splitChatIds = useUIStore((state) => state.splitChatIds);
@@ -68,7 +67,6 @@ export function ThreadsPanel({ hidden = false }: { hidden?: boolean }) {
 
   const chatActions = useSidebarChatActions({
     selectedChatId,
-    selectedChatParentId,
     isMobile,
     navigate,
     scrollContainerRef,
@@ -170,9 +168,7 @@ export function ThreadsPanel({ hidden = false }: { hidden?: boolean }) {
     onOpenInSplit: chatActions.showSplitAffordance ? chatActions.handleOpenInSplit : undefined,
     canOpenChatInSplit: chatActions.canOpenChatInSplit,
     onDropdownClick: chatActions.handleDropdownClick,
-    onWorkspaceBadgeClick: workspaceActions.handleWorkspaceContextMenu,
-    expandedSubThreads: chatActions.expandedSubThreads,
-    onToggleSubThreads: chatActions.handleToggleSubThreads,
+    onOpenWorkspaceMenu: workspaceActions.handleWorkspaceContextMenu,
   };
 
   return (

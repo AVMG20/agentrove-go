@@ -23,13 +23,11 @@ import {
   WorkspaceSurface,
   WorkspaceTile,
 } from '@/components/layout/WorkspaceSurface/WorkspaceSurface';
-import { SubThreadDialog } from './SubThreadDialog';
 
 export function ChatPage() {
   const { chatId } = useParams();
   const navigate = useNavigate();
   useCommandMenu();
-  const subThreadDialogOpen = useUIStore((s) => s.subThreadDialogOpen);
 
   const activeViews = useActiveViews();
   const splitChatIds = useUIStore((s) => s.splitChatIds);
@@ -151,7 +149,6 @@ export function ChatPage() {
     useUIStore.setState({
       pendingFileOpen: null,
       pendingDiffMode: null,
-      subThreadDialogOpen: false,
       createCommitDialogOpen: false,
       createPRDialogOpen: false,
       createBranchDialogOpen: false,
@@ -195,7 +192,6 @@ export function ChatPage() {
       chatId={chatId}
       sandboxId={currentChat?.sandbox_id}
       worktreeCwd={worktreeCwd}
-      parentChatId={currentChat?.parent_chat_id ?? undefined}
       fileStructure={fileStructure}
       customSkills={workspaceResources?.skills}
       builtinSlashCommands={workspaceResources?.builtin_slash_commands}
@@ -214,9 +210,7 @@ export function ChatPage() {
           sessionPanel={
             currentChat && <SessionPanel chat={currentChat} workspace={currentWorkspace} />
           }
-        >
-          {subThreadDialogOpen && <SubThreadDialog />}
-        </WorkspaceSurface>
+        />
       </ChatSessionOrchestrator>
     </ChatProvider>
   );

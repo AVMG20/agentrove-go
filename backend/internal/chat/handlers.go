@@ -22,7 +22,6 @@ func (m *Module) Routes(mux *http.ServeMux) {
 	mux.HandleFunc("GET "+p+"/chats/background-tasks", req(m.backgroundTasks))
 	mux.HandleFunc("GET "+p+"/chats/events", req(m.chatEventsFeed))
 	mux.HandleFunc("GET "+p+"/chats/streams", req(m.streamsFeed))
-	mux.HandleFunc("GET "+p+"/chats/{chat_id}/sub-threads", req(m.subThreads))
 	mux.HandleFunc("GET "+p+"/chats/{chat_id}", req(m.getChat))
 	mux.HandleFunc("GET "+p+"/chats/{chat_id}/context-usage", req(m.contextUsage))
 	mux.HandleFunc("PATCH "+p+"/chats/{chat_id}", req(m.updateChat))

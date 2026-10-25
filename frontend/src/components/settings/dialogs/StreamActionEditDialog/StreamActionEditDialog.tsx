@@ -215,7 +215,7 @@ export function StreamActionEditDialog({
               />
             </div>
             <p className={styles.hint}>
-              A slash command, skill, or prompt — sent verbatim to the sub-thread.
+              A slash command, skill, or prompt — sent verbatim to the new thread.
             </p>
           </div>
         </div>
