@@ -4,7 +4,7 @@ import clsx from 'clsx';
 import { Button } from '@/components/ui/primitives/Button/Button';
 import { FloatingTooltip } from '@/components/ui/FloatingTooltip/FloatingTooltip';
 import { ClaudeIcon } from '@/components/ui/icons/ClaudeIcon';
-import { useArtifactsQuery } from '@/hooks/queries/useArtifactQueries';
+import { useChatArtifactsQuery } from '@/hooks/queries/useArtifactQueries';
 import { useModelMap } from '@/hooks/queries/useModelQueries';
 import {
   useGitBranchesQuery,
@@ -179,8 +179,7 @@ function ContextCard({ chat }: { chat: Chat }) {
 
 // Only shown once the agent has published something from this chat.
 function ArtifactsCard({ chatId }: { chatId: string }) {
-  const { data: artifacts } = useArtifactsQuery();
-  const published = artifacts?.filter((artifact) => artifact.chat_id === chatId);
+  const { data: published } = useChatArtifactsQuery(chatId);
   if (!published || published.length === 0) return null;
   return (
     <Card title="Artifacts">

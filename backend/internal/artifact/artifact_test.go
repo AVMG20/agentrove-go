@@ -245,3 +245,46 @@ func TestApplyEditsRefusesAmplification(t *testing.T) {
 		t.Errorf("small edit = %q, %v", got, err)
 	}
 }
+
+func TestListSearchAndPages(t *testing.T) {
+	m, mux := setup(t)
+	ctx := t.Context()
+	for _, title := range []string{"Sales report", "Weekly 100% report", "Roadmap", "snake_case notes"} {
+		if _, err := m.svc.Create(ctx, owner, title, "<p>x</p>", nil); err != nil {
+			t.Fatal(err)
+		}
+	}
+	titles := func(o ListOptions) []string {
+		list, err := m.svc.List(ctx, owner, o)
+		if err != nil {
+			t.Fatal(err)
+		}
+		out := []string{}
+		for _, a := range list {
+			out = append(out, a.Title)
+		}
+		return out
+	}
+	if got := titles(ListOptions{Query: "REPORT"}); len(got) != 2 {
+		t.Fatalf("search: %v", got)
+	}
+	// LIKE wildcards in the query match literally.
+	if got := titles(ListOptions{Query: "100%"}); len(got) != 1 || got[0] != "Weekly 100% report" {
+		t.Fatalf("percent: %v", got)
+	}
+	if got := titles(ListOptions{Query: "e_c"}); len(got) != 1 {
+		t.Fatalf("underscore: %v", got)
+	}
+	first, second := titles(ListOptions{Limit: 3}), titles(ListOptions{Limit: 3, Offset: 3})
+	if len(first) != 3 || len(second) != 1 {
+		t.Fatalf("pages: %v %v", first, second)
+	}
+
+	session, _ := m.a.Keys.IssueToken(owner, auth.AudienceSession, time.Hour)
+	if rec := do(mux, "GET", "/api/v1/artifacts?q=road&limit=20", session, ``); rec.Code != 200 || !strings.Contains(rec.Body.String(), "Roadmap") || strings.Contains(rec.Body.String(), "Sales") {
+		t.Fatalf("http search: %d %s", rec.Code, rec.Body)
+	}
+	if rec := do(mux, "GET", "/api/v1/artifacts?limit=0", session, ``); rec.Code != 422 {
+		t.Fatalf("bad limit: %d", rec.Code)
+	}
+}

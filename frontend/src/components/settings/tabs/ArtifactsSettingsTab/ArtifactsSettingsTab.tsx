@@ -1,11 +1,14 @@
-import { useCallback } from 'react';
-import { AppWindow, Globe, Link2, Lock } from 'lucide-react';
+import { useCallback, useMemo, useState } from 'react';
+import { AppWindow, Globe, Link2, Lock, Search } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { ListManagementTab } from '@/components/ui/ListManagementTab/ListManagementTab';
+import { Button } from '@/components/ui/primitives/Button/Button';
+import { Input } from '@/components/ui/primitives/Input/Input';
 import { Switch } from '@/components/ui/primitives/Switch/Switch';
+import { useDebouncedValue } from '@/hooks/useDebouncedValue';
 import {
-  useArtifactsQuery,
+  useArtifactPagesQuery,
   useDeleteArtifactMutation,
   useUpdateArtifactMutation,
 } from '@/hooks/queries/useArtifactQueries';
@@ -15,10 +18,12 @@ import { artifactService } from '@/services/artifactService';
 import styles from './ArtifactsSettingsTab.module.scss';
 
 export function ArtifactsSettingsTab() {
-  const { data: artifacts } = useArtifactsQuery();
+  const [search, setSearch] = useState('');
+  const query = useDebouncedValue(search.trim(), 250);
+  const pages = useArtifactPagesQuery(query);
   const deleteArtifact = useDeleteArtifactMutation();
   const updateArtifact = useUpdateArtifactMutation();
-  const items = artifacts ?? null;
+  const items = useMemo(() => pages.data?.pages.flat() ?? null, [pages.data]);
 
   const handleDelete = useCallback(
     async (index: number) => {
@@ -64,7 +69,38 @@ export function ArtifactsSettingsTab() {
       description="Pages agents published for you. Private ones open only for you while signed in; public ones open for anyone with the link."
       items={items}
       emptyIcon={AppWindow}
-      emptyText="No artifacts yet — ask an agent to build a page"
+      emptyText={
+        query ? 'No artifacts match your search' : 'No artifacts yet — ask an agent to build a page'
+      }
+      toolbar={
+        <div className={styles['search-wrap']}>
+          <Search className={styles['search-icon']} aria-hidden="true" />
+          <Input
+            variant="unstyled"
+            type="search"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search artifacts…"
+            aria-label="Search artifacts"
+            className={styles['search-input']}
+          />
+        </div>
+      }
+      footerContent={
+        pages.hasNextPage && (
+          <div className={styles['load-more']}>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => void pages.fetchNextPage()}
+              isLoading={pages.isFetchingNextPage}
+            >
+              Load more
+            </Button>
+          </div>
+        )
+      }
       deleteConfirmTitle="Delete artifact"
       deleteConfirmMessage={(artifact) =>
         `Delete "${artifact.title}"? Its link stops working for everyone. This can't be undone.`

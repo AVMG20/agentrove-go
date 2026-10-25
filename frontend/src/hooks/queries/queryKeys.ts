@@ -76,6 +76,8 @@ export const queryKeys = {
   workspaceResources: (workspaceId?: string) => ['workspaces', workspaceId, 'resources'] as const,
   automations: ['automations'] as const,
   artifacts: ['artifacts'] as const,
+  chatArtifacts: (chatId: string) => ['artifacts', 'chat', chatId] as const,
+  artifactPages: (search: string) => ['artifacts', 'pages', search] as const,
   // Under the artifacts prefix so list invalidations refresh open viewers too.
   artifactView: (artifactId?: string) => ['artifacts', artifactId, 'view'] as const,
   claudeUsage: ['usage', 'claude'] as const,

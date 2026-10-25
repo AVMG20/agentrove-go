@@ -103,15 +103,19 @@ func (m *Module) listArtifacts(ctx context.Context, c *caller, args json.RawMess
 			return nil, err
 		}
 	}
-	list, err := m.artifacts.List(ctx, c.userID)
+	out := []map[string]any{}
+	if a.ThisChat && c.chatID == "" {
+		return map[string]any{"artifacts": out}, nil
+	}
+	var o artifact.ListOptions
+	if a.ThisChat {
+		o.ChatID = c.chatID
+	}
+	list, err := m.artifacts.List(ctx, c.userID, o)
 	if err != nil {
 		return nil, err
 	}
-	out := []map[string]any{}
 	for _, x := range list {
-		if a.ThisChat && (x.ChatID == nil || *x.ChatID != c.chatID) {
-			continue
-		}
 		out = append(out, m.artifactSummary(x))
 	}
 	return map[string]any{"artifacts": out}, nil

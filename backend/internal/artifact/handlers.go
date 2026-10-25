@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"agentrove/internal/app"
@@ -99,8 +100,27 @@ func (m *Module) optionalViewer(w http.ResponseWriter, r *http.Request) (*models
 	return act.user, nil
 }
 
+// MaxListLimit caps one page of GET /artifacts.
+const MaxListLimit = 100
+
 func (m *Module) list(w http.ResponseWriter, r *http.Request) error {
-	items, err := m.svc.List(r.Context(), actorFrom(r).user.ID)
+	q := r.URL.Query()
+	o := ListOptions{Query: strings.TrimSpace(q.Get("q")), ChatID: q.Get("chat_id")}
+	if v := q.Get("limit"); v != "" {
+		n, err := strconv.Atoi(v)
+		if err != nil || n < 1 {
+			return httpx.Unprocessable("limit must be a positive integer")
+		}
+		o.Limit = min(n, MaxListLimit)
+	}
+	if v := q.Get("offset"); v != "" {
+		n, err := strconv.Atoi(v)
+		if err != nil || n < 0 {
+			return httpx.Unprocessable("offset must be a non-negative integer")
+		}
+		o.Offset = n
+	}
+	items, err := m.svc.List(r.Context(), actorFrom(r).user.ID, o)
 	if err != nil {
 		return err
 	}

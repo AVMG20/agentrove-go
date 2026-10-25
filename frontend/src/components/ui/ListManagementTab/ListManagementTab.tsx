@@ -26,6 +26,8 @@ interface ListManagementTabProps<T> {
   onDelete: (index: number) => void | Promise<void>;
   renderItem: (item: T, index: number) => ReactNode;
   renderItemActions?: (item: T, index: number) => ReactNode;
+  // Between the header and the list, e.g. a search field.
+  toolbar?: ReactNode;
   footerContent?: ReactNode;
   logContext: string;
 }
@@ -46,6 +48,7 @@ export function ListManagementTab<T>({
   onDelete,
   renderItem,
   renderItemActions,
+  toolbar,
   footerContent,
   logContext,
 }: ListManagementTabProps<T>) {
@@ -93,6 +96,8 @@ export function ListManagementTab<T>({
             </Button>
           )}
         </div>
+
+        {toolbar}
 
         {items === null ? (
           // null means the list is still loading — stay invisible for 300ms so

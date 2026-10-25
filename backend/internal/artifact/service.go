@@ -6,6 +6,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"strings"
 	"unicode/utf8"
 
 	"agentrove/internal/db"
@@ -47,10 +48,36 @@ func scan(row interface{ Scan(...any) error }) (*Artifact, error) {
 
 type Service struct{ DB *db.DB }
 
+var likeEscaper = strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`)
+
 func NotFound() *httpx.Error { return httpx.NotFound("Artifact not found") }
 
-func (s *Service) List(ctx context.Context, userID string) ([]*Artifact, error) {
-	rows, err := s.DB.QueryContext(ctx, `SELECT `+columns+` FROM artifacts WHERE user_id = ? ORDER BY updated_at DESC`, userID)
+// ListOptions narrows List; zero values mean no filter and no limit.
+type ListOptions struct {
+	// Query matches the title, case-insensitively.
+	Query  string
+	ChatID string
+	Limit  int
+	Offset int
+}
+
+func (s *Service) List(ctx context.Context, userID string, o ListOptions) ([]*Artifact, error) {
+	q := `SELECT ` + columns + ` FROM artifacts WHERE user_id = ?`
+	args := []any{userID}
+	if o.Query != "" {
+		q += ` AND title LIKE ? ESCAPE '\'`
+		args = append(args, "%"+likeEscaper.Replace(o.Query)+"%")
+	}
+	if o.ChatID != "" {
+		q += ` AND chat_id = ?`
+		args = append(args, o.ChatID)
+	}
+	q += ` ORDER BY updated_at DESC`
+	if o.Limit > 0 {
+		q += ` LIMIT ? OFFSET ?`
+		args = append(args, o.Limit, max(o.Offset, 0))
+	}
+	rows, err := s.DB.QueryContext(ctx, q, args...)
 	if err != nil {
 		return nil, err
 	}

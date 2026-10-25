@@ -1,10 +1,20 @@
 import { apiClient } from '@/lib/api';
-import { ensureResponse, serviceCall } from '@/services/base/BaseService';
+import { buildQueryString, ensureResponse, serviceCall } from '@/services/base/BaseService';
 import type { Artifact, ArtifactUpdateRequest, ArtifactView } from '@/types/artifact.types';
 
-async function listArtifacts(): Promise<Artifact[]> {
+export interface ArtifactListParams {
+  q?: string;
+  chat_id?: string;
+  limit?: number;
+  offset?: number;
+}
+
+// Newest first; without limit the whole list.
+async function listArtifacts(params?: ArtifactListParams): Promise<Artifact[]> {
   return serviceCall(async () => {
-    const response = await apiClient.get<Artifact[]>('/artifacts');
+    const response = await apiClient.get<Artifact[]>(
+      `/artifacts${buildQueryString({ ...params })}`,
+    );
     return ensureResponse(response, 'Failed to load artifacts');
   });
 }
