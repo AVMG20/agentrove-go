@@ -6,6 +6,7 @@ import {
 import type { CustomEnvVar, Persona, StreamAction } from '@/types/user.types';
 import type { GeneralSecretFieldConfig } from '@/types/settings.types';
 import { validateRequired, validateUnique } from '@/utils/validation';
+import { isProfileManagedEnvVar } from '@/utils/envVarNames';
 
 export const createDefaultEnvVarForm = (): CustomEnvVar => ({
   key: '',
@@ -20,6 +21,9 @@ export const validateEnvVarForm = (
   try {
     validateRequired(form.key, 'Environment variable name');
     validateRequired(form.value, 'Environment variable value');
+    if (isProfileManagedEnvVar(form.key)) {
+      return `${form.key.trim().toUpperCase()} is set through a provider profile: add it under Settings → Providers`;
+    }
     validateUnique(
       'key',
       form.key,

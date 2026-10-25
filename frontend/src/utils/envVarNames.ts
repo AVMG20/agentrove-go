@@ -1,3 +1,19 @@
+// Variables a provider profile sets (credentials, endpoint, usage URL, config
+// dirs); the server refuses them as env vars (profiles.managedEnv).
+export const PROFILE_MANAGED_ENV_VARS = [
+  'ANTHROPIC_API_KEY',
+  'ANTHROPIC_AUTH_TOKEN',
+  'CLAUDE_CODE_OAUTH_TOKEN',
+  'ANTHROPIC_BASE_URL',
+  'CLAUDE_USAGE_URL',
+  'CLAUDE_CONFIG_DIR',
+  'CODEX_HOME',
+] as const;
+
+export function isProfileManagedEnvVar(key: string): boolean {
+  return (PROFILE_MANAGED_ENV_VARS as readonly string[]).includes(key.trim().toUpperCase());
+}
+
 // Variables Claude Code reads for auth and routing. A near-miss name (e.g.
 // ANTHROPIC_AUTHTOKEN) is silently ignored and the session fails with
 // "Not logged in", so the env var dialog suggests the real name.

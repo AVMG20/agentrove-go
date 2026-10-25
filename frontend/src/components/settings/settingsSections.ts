@@ -1,6 +1,7 @@
 import type { LucideIcon } from 'lucide-react';
 import {
   AppWindow,
+  Bot,
   Clock,
   FolderOpen,
   GitBranch,
@@ -14,6 +15,7 @@ import {
 // Each section is a route: /settings/<id>.
 export type SettingsSectionId =
   | 'general'
+  | 'providers'
   | 'projects'
   | 'skills'
   | 'personas'
@@ -31,6 +33,7 @@ export interface SettingsSection {
 
 export const SETTINGS_SECTIONS: SettingsSection[] = [
   { id: 'general', label: 'General', icon: Settings2 },
+  { id: 'providers', label: 'Providers', icon: Bot },
   { id: 'projects', label: 'Projects', icon: FolderOpen },
   { id: 'skills', label: 'Skills', icon: Zap },
   { id: 'personas', label: 'Personas', icon: UserCircle },

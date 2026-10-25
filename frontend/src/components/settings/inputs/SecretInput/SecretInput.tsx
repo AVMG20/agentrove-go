@@ -7,6 +7,7 @@ import type { HelperTextLink, HelperTextCode } from '@/types/settings.types';
 import styles from './SecretInput.module.scss';
 
 export interface SecretInputProps {
+  id?: string;
   value: string;
   placeholder: string;
   isVisible: boolean;
@@ -48,6 +49,7 @@ const renderHelperText = (helperText?: HelperTextLink | HelperTextCode) => {
 };
 
 export function SecretInput({
+  id,
   value,
   placeholder,
   isVisible,
@@ -63,6 +65,7 @@ export function SecretInput({
     <div className={containerClassName}>
       <div className={styles.field}>
         <Input
+          id={id}
           type={isVisible ? 'text' : 'password'}
           value={value}
           onChange={(e) => onChange(e.target.value)}

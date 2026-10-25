@@ -43,6 +43,10 @@ const WorkspacesSettingsTab = lazyNamed(
   () => import('@/components/settings/tabs/WorkspacesSettingsTab/WorkspacesSettingsTab'),
   'WorkspacesSettingsTab',
 );
+const ProvidersSettingsTab = lazyNamed(
+  () => import('@/components/settings/tabs/ProvidersSettingsTab/ProvidersSettingsTab'),
+  'ProvidersSettingsTab',
+);
 const EnvVarsSettingsTab = lazyNamed(
   () => import('@/components/settings/tabs/EnvVarsSettingsTab/EnvVarsSettingsTab'),
   'EnvVarsSettingsTab',
@@ -237,6 +241,7 @@ export function SettingsPage() {
         onBrowserToolsEnabledChange={handleBrowserToolsEnabledChange}
       />
     ),
+    providers: () => <ProvidersSettingsTab />,
     projects: () => <WorkspacesSettingsTab />,
     skills: () => <SkillsSettingsTab />,
     personas: () => <PersonasSettingsTab />,

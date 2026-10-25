@@ -22,6 +22,12 @@ describe('validateEnvVarForm', () => {
     expect(validateEnvVarForm(form(), null, [])).toBeNull();
   });
 
+  it('refuses variables a provider profile sets', () => {
+    expect(validateEnvVarForm(form({ key: 'claude_code_oauth_token' }), null, [])).toBe(
+      'CLAUDE_CODE_OAUTH_TOKEN is set through a provider profile: add it under Settings → Providers',
+    );
+  });
+
   it('requires a key', () => {
     expect(validateEnvVarForm(form({ key: '  ' }), null, [])).toBe(
       'Environment variable name is required',
