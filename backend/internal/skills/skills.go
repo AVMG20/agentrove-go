@@ -478,10 +478,17 @@ func (s *Service) write(sr skillRoot, source, name string, files []FileEntry, cr
 	if uid < 0 {
 		uid, gid = skillOwner(base, ".")
 	}
-	if err := base.RemoveAll(name); err != nil {
-		return CustomSkill{}, err
+	// Create never replaces anything at the name, even a folder that isn't a
+	// valid skill (no SKILL.md yet): Mkdir fails on whatever is there.
+	if !create {
+		if err := base.RemoveAll(name); err != nil {
+			return CustomSkill{}, err
+		}
 	}
 	if err := base.Mkdir(name, 0o755); err != nil {
+		if create && errors.Is(err, fs.ErrExist) {
+			return CustomSkill{}, fmt.Errorf("%w: %s already exists in the skills folder", ErrConflict, name)
+		}
 		return CustomSkill{}, err
 	}
 	for _, it := range items {

@@ -245,6 +245,20 @@ func TestCreateDeleteAndScopes(t *testing.T) {
 	if _, err := user.Create("claude", "global-one", ScopeUser, md); !errors.Is(err, ErrConflict) {
 		t.Fatalf("duplicate: %v", err)
 	}
+	// A folder that isn't a valid skill yet (no SKILL.md) is never replaced.
+	half := filepath.Join(cfg.AgentHomeDir("u1"), "claude", "skills", "half")
+	if err := os.MkdirAll(half, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(half, "run.sh"), []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := user.Create("claude", "half", ScopeUser, md); !errors.Is(err, ErrConflict) {
+		t.Fatalf("existing folder: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(half, "run.sh")); err != nil {
+		t.Fatalf("existing folder was touched: %v", err)
+	}
 	for _, bad := range []string{"Bad Name", "../x", "", strings.Repeat("a", 65)} {
 		if _, err := user.Create("claude", bad, ScopeUser, md); !errors.Is(err, ErrInvalid) {
 			t.Errorf("name %q: %v", bad, err)

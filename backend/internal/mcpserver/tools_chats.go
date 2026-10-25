@@ -170,6 +170,13 @@ func (m *Module) sendMessage(ctx context.Context, c *caller, args json.RawMessag
 	}
 	created := false
 	if chatID == "" {
+		// A chat an agent starts lands in the agent's own project by default,
+		// not whichever project was active last.
+		if (a.WorkspaceID == nil || *a.WorkspaceID == "") && c.chatID != "" {
+			if cur, err := m.a.Store.GetChat(ctx, c.userID, c.chatID); err == nil && cur.WorkspaceID != "" {
+				a.WorkspaceID = &cur.WorkspaceID
+			}
+		}
 		ws, err := m.resolveWorkspace(ctx, c.userID, a.WorkspaceID)
 		if err != nil {
 			return nil, err

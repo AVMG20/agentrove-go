@@ -105,6 +105,48 @@ describe('composer selections', () => {
   });
 });
 
+describe('openFileInEditor', () => {
+  it('records the pending open, adds the editor tab, and bumps the nonce on re-open', () => {
+    state().openFileInEditor('a.ts', 'c1', 12);
+    expect(state().pendingFileOpen).toMatchObject({
+      path: 'a.ts',
+      chatId: 'c1',
+      line: 12,
+      nonce: 1,
+    });
+    expect(state().openTabs).toContain('editor');
+
+    state().openFileInEditor('a.ts', 'c1', 12);
+    // Same path/line re-opens must still register (nonce increments) so the
+    // editor re-focuses after the user scrolled away.
+    expect(state().pendingFileOpen?.nonce).toBe(2);
+  });
+
+  it('keeps incrementing the nonce after a consumer clears pendingFileOpen', () => {
+    state().openFileInEditor('a.ts', 'c1', 12);
+    // Consumers null the pending open — a restarted nonce would repeat a
+    // path:line:nonce key and the editor would skip the jump as already applied.
+    useUIStore.setState({ pendingFileOpen: null });
+    state().openFileInEditor('a.ts', 'c1', 12);
+    expect(state().pendingFileOpen?.nonce).toBe(2);
+  });
+
+  it('omits the line field when none is given', () => {
+    state().openFileInEditor('a.ts', 'c1');
+    expect(state().pendingFileOpen).not.toHaveProperty('line');
+  });
+
+  it('opens the editor tile for the chat bound to a split slot', () => {
+    state().openChatInSplit('c2');
+    state().openChatInSplit('c3');
+
+    state().openFileInEditor('a.ts', 'c3');
+
+    expect(state().openTabs).toContain('editor:split-2');
+    expect(state().visibleLayout).toEqual([['editor:split-2']]);
+  });
+});
+
 describe('loadWorkspaceForChat', () => {
   it('defaults to a lone agent view on first visit', () => {
     state().loadWorkspaceForChat('c1');

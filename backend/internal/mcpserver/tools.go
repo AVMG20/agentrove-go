@@ -70,7 +70,7 @@ func (m *Module) buildTools() []*tool {
 		{
 			name: "list_workspaces",
 			description: "List the available Bitbox workspaces.\n\nReturns each workspace's id and name. Pass a workspace id as `workspace_id` to " +
-				"send_message to create a new chat in that workspace; otherwise the most recently active workspace is used.",
+				"send_message to create a new chat in that workspace; otherwise the current chat's workspace, or else the most recently active one, is used.",
 			schema:  object(props{}),
 			handler: m.listWorkspaces,
 		},
@@ -147,7 +147,7 @@ func (m *Module) buildTools() []*tool {
 		{
 			name: "send_message",
 			description: "Send a prompt to Bitbox and start the agent turn.\n\nOmit chat_id to create a new chat first " +
-				"(auto-resolving the workspace and a Claude model unless given, titled from `title` or the prompt) and send the " +
+				"(in the current chat's workspace, else the most recently active one, and a Claude model unless given; titled from `title` or the prompt) and send the " +
 				"prompt to it; pass chat_id to continue an existing chat.\n\nPer-turn options: thinking_mode sets reasoning effort; worktree=true runs the turn " +
 				"in an isolated git worktree (its own branch); persona selects a custom persona by name (defaults to the standard " +
 				"persona).\nbase_branch: start the worktree from this branch instead of current HEAD; only used with " +

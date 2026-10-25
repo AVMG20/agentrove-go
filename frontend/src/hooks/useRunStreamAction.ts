@@ -59,7 +59,6 @@ export function useRunStreamAction(sourceChat: Chat | undefined) {
         });
 
         toast.success(`Started "${action.label}"`);
-        // Navigation also adds the tab via loadWorkspaceForChat.
         navigate(`/chat/${newChat.id}`);
       } catch (error) {
         toast.error(error instanceof Error ? error.message : `Failed to start "${action.label}"`);
