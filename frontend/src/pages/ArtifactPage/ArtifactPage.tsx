@@ -14,8 +14,8 @@ import { authService } from '@/services/authService';
 import { useAuthStore } from '@/store/authStore';
 import type { ServiceError } from '@/services/base/ServiceError';
 import { formatRelativeTime } from '@/utils/date';
-import iconDark from '/assets/images/icon-dark.svg';
-import iconLight from '/assets/images/icon-white.svg';
+import iconDark from '/brand/icon-dark.svg';
+import iconLight from '/brand/icon-white.svg';
 import styles from './ArtifactPage.module.scss';
 import { useArtifactBridge } from './useArtifactBridge';
 

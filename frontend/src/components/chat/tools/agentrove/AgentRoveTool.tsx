@@ -12,8 +12,8 @@ import {
   summarizeResultData,
 } from './agentRoveDescriptors';
 import toolText from '../common/toolText.module.scss';
-import iconDark from '/assets/images/icon-dark.svg';
-import iconLight from '/assets/images/icon-white.svg';
+import iconDark from '/brand/icon-dark.svg';
+import iconLight from '/brand/icon-white.svg';
 import styles from './AgentRoveTool.module.scss';
 
 export const AgentRoveTool = memo(function AgentRoveTool({ tool }: { tool: ToolAggregate }) {

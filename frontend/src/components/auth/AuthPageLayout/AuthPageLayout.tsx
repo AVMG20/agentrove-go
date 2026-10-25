@@ -1,8 +1,8 @@
 import { memo, type ReactNode } from 'react';
 import clsx from 'clsx';
 import { AuthShell } from '@/components/auth/AuthShell/AuthShell';
-import iconDark from '/assets/images/icon-dark.svg';
-import iconLight from '/assets/images/icon-white.svg';
+import iconDark from '/brand/icon-dark.svg';
+import iconLight from '/brand/icon-white.svg';
 import styles from './AuthPageLayout.module.scss';
 
 interface AuthPageLayoutProps {

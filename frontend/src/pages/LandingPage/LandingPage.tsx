@@ -30,8 +30,8 @@ import { tileIdToViewType } from '@/utils/tileHelpers';
 import { useCurrentUserQuery } from '@/hooks/queries/useAuthQueries';
 import { useSidebarChatLists } from '@/hooks/queries/useSidebarChatLists';
 import { RecentChats } from './RecentChats';
-import iconDark from '/assets/images/icon-dark.svg';
-import iconLight from '/assets/images/icon-white.svg';
+import iconDark from '/brand/icon-dark.svg';
+import iconLight from '/brand/icon-white.svg';
 import styles from './LandingPage.module.scss';
 
 const Editor = lazyNamed(() => import('@/components/editor/editor-core/Editor'), 'Editor');
