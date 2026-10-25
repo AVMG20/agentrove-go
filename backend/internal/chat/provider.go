@@ -86,7 +86,7 @@ func otherProviderModel(id string) bool {
 // signInHint explains a credentials failure in terms of the chat's profile.
 func signInHint(p *profiles.Profile) string {
 	if p == nil || p.Builtin {
-		return "\n\nClaude has no credentials. Add a token to a Claude profile under Settings → Providers, set ANTHROPIC_BASE_URL + ANTHROPIC_AUTH_TOKEN (proxy), ANTHROPIC_API_KEY or CLAUDE_CODE_OAUTH_TOKEN under Settings → Environment Variables, or run `claude` in a project terminal to log in."
+		return "\n\nThe Server account has no Claude credentials. Sign it in under Settings → Providers, or add a Claude account there (a Claude token or a custom endpoint) and start a new thread on it."
 	}
 	return fmt.Sprintf("\n\nThe %s profile \"%s\" isn't signed in. Sign in or add a token under Settings → Providers.", profiles.ProviderName(p.Provider), p.Name)
 }

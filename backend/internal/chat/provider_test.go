@@ -108,6 +108,59 @@ func TestThreadProfileLocksOnceItHasMessages(t *testing.T) {
 	}
 }
 
+// A switch must not race a turn that is starting: it takes the turn slot,
+// and the UPDATE itself only lands on a thread that is still empty.
+func TestThreadProfileSwitchRacesNoTurn(t *testing.T) {
+	m, d := newTestModule(t)
+	withApp(m, d)
+	ps := withProfiles(t, m)
+	ctx := context.Background()
+	name, provider := "Gemini", models.ProviderAntigravity
+	ag, err := ps.Create(ctx, testUser, profiles.Input{Provider: &provider, Name: &name})
+	if err != nil {
+		t.Fatal(err)
+	}
+	empty, err := m.CreateChat(ctx, testUser, "t", testWS, nil, "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// A turn holds the slot (it has reserved and not yet written its rows).
+	if !m.reserve(empty.ID) {
+		t.Fatal("reserve")
+	}
+	if w := patchChat(m, empty.ID, `{"profile_id":"`+ag.ID+`"}`); w.Code != http.StatusConflict {
+		t.Fatalf("switch during a starting turn: %d %s", w.Code, w.Body)
+	}
+	m.unreserve(empty.ID)
+
+	// The turn got as far as a session: the conditional UPDATE refuses.
+	if _, err := d.Exec(`UPDATE chats SET session_id = 'sess' WHERE id = ?`, empty.ID); err != nil {
+		t.Fatal(err)
+	}
+	if w := patchChat(m, empty.ID, `{"profile_id":"`+ag.ID+`","title":"renamed"}`); w.Code != http.StatusConflict {
+		t.Fatalf("switch after a session started: %d %s", w.Code, w.Body)
+	}
+	var profileID *string
+	var title string
+	if err := d.QueryRow(`SELECT profile_id, title FROM chats WHERE id = ?`, empty.ID).Scan(&profileID, &title); err != nil {
+		t.Fatal(err)
+	}
+	if profileID != nil || title != "t" {
+		t.Fatalf("a refused switch changed the chat: %v %q", profileID, title)
+	}
+	// The slot is released again.
+	if !m.reserve(empty.ID) {
+		t.Fatal("the switch kept the turn slot")
+	}
+	m.unreserve(empty.ID)
+}
+
+func TestAgyAuthFailureGetsTheSignInHint(t *testing.T) {
+	if !looksUnauthenticated("authentication failed or timed out") {
+		t.Fatal("agy's auth failure must count as unauthenticated")
+	}
+}
+
 func TestValidateModelPerProvider(t *testing.T) {
 	high, maxEffort := "high", "max"
 	in := startInput{modelID: "gpt-6-luna", thinkingMode: &high}

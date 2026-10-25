@@ -174,6 +174,8 @@ func (m *Module) updateChat(w http.ResponseWriter, r *http.Request) error {
 		sets = append(sets, "title = ?")
 		args = append(args, *body.Title)
 	}
+	// Extra WHERE terms: a profile switch only lands on a thread still empty.
+	where := ""
 	if body.ProfileID != nil {
 		if *body.ProfileID == "" {
 			return httpx.Unprocessable("profile_id must not be empty")
@@ -183,16 +185,20 @@ func (m *Module) updateChat(w http.ResponseWriter, r *http.Request) error {
 			return err
 		}
 		if p.ID != c.ProfileID {
-			var n int
-			if err := m.a.DB.QueryRowContext(r.Context(), `SELECT COUNT(1) FROM messages WHERE chat_id = ? AND deleted_at IS NULL`, c.ID).Scan(&n); err != nil {
-				return err
+			// Hold the turn slot so no turn starts on the old profile while
+			// the switch lands; the UPDATE below re-checks emptiness itself.
+			if !m.reserve(c.ID) {
+				return errProfileFixed
 			}
-			if n > 0 || c.SessionID != nil || m.busy(c.ID) {
-				return httpx.Conflict("This thread already has messages, so its profile is fixed. Start a new thread to use another profile.")
-			}
+			defer func() {
+				m.unreserve(c.ID)
+				// A message queued meanwhile was left to the slot's holder.
+				go func() { _ = m.runQueued(c.ID, u.ID, false) }()
+			}()
 			profileCol, providerCol := storedProfile(p)
 			sets = append(sets, "profile_id = ?", "provider = ?")
 			args = append(args, profileCol, providerCol)
+			where = ` AND session_id IS NULL AND NOT EXISTS (SELECT 1 FROM messages WHERE chat_id = chats.id AND deleted_at IS NULL)`
 		}
 	}
 	if body.Pinned != nil {
@@ -209,8 +215,12 @@ func (m *Module) updateChat(w http.ResponseWriter, r *http.Request) error {
 		args = append(args, now)
 	}
 	args = append(args, c.ID)
-	if _, err := m.a.DB.ExecContext(r.Context(), `UPDATE chats SET `+strings.Join(sets, ", ")+` WHERE id = ?`, args...); err != nil {
+	res, err := m.a.DB.ExecContext(r.Context(), `UPDATE chats SET `+strings.Join(sets, ", ")+` WHERE id = ?`+where, args...)
+	if err != nil {
 		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 && where != "" {
+		return errProfileFixed
 	}
 	c, err = m.a.Store.GetChat(r.Context(), u.ID, c.ID)
 	if err != nil {
@@ -218,6 +228,10 @@ func (m *Module) updateChat(w http.ResponseWriter, r *http.Request) error {
 	}
 	return httpx.OK(w, c)
 }
+
+// errProfileFixed refuses a profile switch on a thread that has (or is
+// starting) a turn.
+var errProfileFixed = httpx.Conflict("This thread already has messages, so its profile is fixed. Start a new thread to use another profile.")
 
 func (m *Module) markViewed(w http.ResponseWriter, r *http.Request) error {
 	c, err := m.a.Store.GetChat(r.Context(), user(r).ID, r.PathValue("chat_id"))
