@@ -16,7 +16,13 @@ import { chatService } from '@/services/chatService';
 import { useMessageQueueStore } from '@/store/messageQueueStore';
 import { useComposerDraftStore } from '@/store/composerDraftStore';
 import { useUIStore, type ComposerSelection } from '@/store/uiStore';
-import type { Chat, ChatSearchResponse, ContextUsage, CreateChatRequest } from '@/types/chat.types';
+import type {
+  Chat,
+  ChatSearchResponse,
+  ContextUsage,
+  CreateChatRequest,
+  UpdateChatRequest,
+} from '@/types/chat.types';
 import type { PaginatedChats } from '@/types/api.types';
 import { logger } from '@/utils/logger';
 import { createMutation } from './createMutation';
@@ -234,7 +240,7 @@ export const useCreateChatMutation = createMutation<Chat, Error, CreateChatReque
 export const useUpdateChatMutation = createMutation<
   Chat,
   Error,
-  { chatId: string; updateData: { title?: string } }
+  { chatId: string; updateData: UpdateChatRequest }
 >(
   ({ chatId, updateData }) => chatService.updateChat(chatId, updateData),
   (queryClient, updatedChat) => {

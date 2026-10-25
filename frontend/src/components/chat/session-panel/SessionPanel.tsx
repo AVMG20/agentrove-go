@@ -4,6 +4,7 @@ import clsx from 'clsx';
 import { Button } from '@/components/ui/primitives/Button/Button';
 import { FloatingTooltip } from '@/components/ui/FloatingTooltip/FloatingTooltip';
 import { ClaudeIcon } from '@/components/ui/icons/ClaudeIcon';
+import { ProviderIcon } from '@/components/ui/icons/ProviderIcon';
 import { useChatArtifactsQuery } from '@/hooks/queries/useArtifactQueries';
 import { useModelMap } from '@/hooks/queries/useModelQueries';
 import {
@@ -70,17 +71,19 @@ function Row({ icon, children, hint }: { icon: ReactNode; children: ReactNode; h
 function ModelRow({
   chatId,
   sessionAgentKind,
+  provider,
 }: {
   chatId: string;
   sessionAgentKind: Chat['session_agent_kind'];
+  provider: Chat['provider'];
 }) {
   const { selectedModelId } = useChatSessionState();
   const modelMap = useModelMap();
-  const agentKind = useChatAgentKind(chatId, sessionAgentKind);
+  const agentKind = useChatAgentKind(chatId, sessionAgentKind, provider);
   const model = modelMap.get(selectedModelId);
   if (!selectedModelId) return null;
   return (
-    <Row icon={agentKind ? <ClaudeIcon aria-hidden className={styles.glyph} /> : null}>
+    <Row icon={agentKind ? <ProviderIcon provider={agentKind} className={styles.glyph} /> : null}>
       {model?.name ?? selectedModelId}
     </Row>
   );
@@ -352,7 +355,13 @@ export const SessionPanel = memo(function SessionPanel({
   return (
     <aside className={styles.panel} aria-label="Session details">
       <EnvironmentCard chat={chat} workspace={workspace} branch={branch}>
-        {!channel && <ModelRow chatId={chat.id} sessionAgentKind={chat.session_agent_kind} />}
+        {!channel && (
+          <ModelRow
+            chatId={chat.id}
+            sessionAgentKind={chat.session_agent_kind}
+            provider={chat.provider}
+          />
+        )}
       </EnvironmentCard>
       {channel ? (
         <MembersCard channel={channel} />

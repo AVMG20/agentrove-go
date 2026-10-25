@@ -1,5 +1,6 @@
 import type { ToolEventPayload } from './tools.types';
 import type { PermissionMode } from '@/store/chatSettingsStore';
+import type { ProviderKind } from './profile.types';
 
 export interface MessageAttachment {
   id: string;
@@ -99,6 +100,9 @@ export interface Chat {
   last_persona_name: string | null;
   // Set when an automation started this chat.
   automation_id?: string | null;
+  // The provider profile the chat runs on ('builtin' for the server's Claude).
+  profile_id: string;
+  provider: AgentKind;
 }
 
 // Work that keeps running past its tool call: a background shell, or a subagent.
@@ -167,10 +171,18 @@ export interface CreateChatRequest {
   workspace_id: string;
   // Run in that chat's worktree (post-stream actions reviewing its changes).
   worktree_chat_id?: string;
+  // The provider profile; omitted = the user's default.
+  profile_id?: string;
 }
 
-// The backend only runs Claude.
-export type AgentKind = 'claude';
+export interface UpdateChatRequest {
+  title?: string;
+  // Only while the thread has no messages: its profile is fixed after that.
+  profile_id?: string;
+}
+
+// The provider a chat's profile runs on.
+export type AgentKind = ProviderKind;
 
 export interface Model {
   model_id: string;

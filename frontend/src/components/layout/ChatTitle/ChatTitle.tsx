@@ -3,7 +3,7 @@ import { ChevronDown, Zap } from 'lucide-react';
 import clsx from 'clsx';
 import { AsciiSpinner } from '@/components/ui/AsciiSpinner/AsciiSpinner';
 import { ChatStatusDot } from '@/components/ui/ChatStatusDot/ChatStatusDot';
-import { ClaudeIcon } from '@/components/ui/icons/ClaudeIcon';
+import { ProviderIcon } from '@/components/ui/icons/ProviderIcon';
 import { Button } from '@/components/ui/primitives/Button/Button';
 import { useUIStore } from '@/store/uiStore';
 import { useStreamStore } from '@/store/streamStore';
@@ -24,7 +24,7 @@ export function ChatTitle() {
   const completedChatIds = useStreamStore((s) => s.completedChatIds);
   const blockedChatIdSet = useBlockedChatIds();
   const streamingChatIdSet = useWorkingChatIds();
-  const agentKind = useChatAgentKind(chatId ?? '', chat?.session_agent_kind);
+  const agentKind = useChatAgentKind(chatId ?? '', chat?.session_agent_kind, chat?.provider);
   const isMobile = useIsMobile();
   if (!chatId) return null;
 
@@ -42,7 +42,7 @@ export function ChatTitle() {
     ) : chat?.automation_id ? (
       <Zap aria-hidden className={clsx(styles['provider-icon'], styles['automation-icon'])} />
     ) : (
-      agentKind && <ClaudeIcon aria-hidden className={styles['provider-icon']} />
+      agentKind && <ProviderIcon provider={agentKind} className={styles['provider-icon']} />
     );
   const label = `${title}${status ? ` · ${CHAT_STATUS_LABEL[status]}` : ''}`;
 

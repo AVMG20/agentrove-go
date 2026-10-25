@@ -25,4 +25,6 @@ export const PHONE_MAX_SHORT_SIDE = 500;
 
 export const EMPTY_BUILTIN_COMMANDS: Record<AgentKind, SlashCommand[]> = {
   claude: [],
+  codex: [],
+  antigravity: [],
 };

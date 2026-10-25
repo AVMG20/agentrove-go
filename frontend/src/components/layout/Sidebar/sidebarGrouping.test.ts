@@ -21,6 +21,8 @@ function chat(id: string, updatedAt: Date, over: Partial<Chat> = {}): Chat {
     last_model_id: null,
     last_thinking_mode: null,
     last_persona_name: null,
+    profile_id: 'builtin',
+    provider: 'claude',
     ...over,
   };
 }

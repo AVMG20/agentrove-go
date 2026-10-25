@@ -87,6 +87,8 @@ export const queryKeys = {
   channelMessageActivity: (channelId: string, messageId: string) =>
     ['channel', channelId, 'activity', messageId] as const,
   models: 'models',
+  profiles: ['profiles'] as const,
+  profileLogin: (profileId: string) => ['profiles', profileId, 'login'] as const,
   github: {
     repos: (query: string) => ['github-repos', query] as const,
     pullsAll: (owner: string, repo: string) => ['github-pulls', owner, repo] as const,

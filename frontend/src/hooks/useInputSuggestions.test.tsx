@@ -27,6 +27,8 @@ function makeChat(id: string, title: string): Chat {
     last_model_id: null,
     last_thinking_mode: null,
     last_persona_name: null,
+    profile_id: 'builtin',
+    provider: 'claude',
   };
 }
 

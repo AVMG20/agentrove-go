@@ -4,7 +4,7 @@ import { AsciiSpinner } from '@/components/ui/AsciiSpinner/AsciiSpinner';
 import { ChatStatusDot } from '@/components/ui/ChatStatusDot/ChatStatusDot';
 import { chatStatusTone, CHAT_STATUS_LABEL, type ChatStatusTone } from '@/utils/message';
 import { FloatingTooltip } from '@/components/ui/FloatingTooltip/FloatingTooltip';
-import { ClaudeIcon } from '@/components/ui/icons/ClaudeIcon';
+import { ProviderIcon } from '@/components/ui/icons/ProviderIcon';
 import { useChatAgentKind } from '@/hooks/useChatAgentKind';
 import clsx from 'clsx';
 import { stripMarkdownTitle } from '@/utils/format';
@@ -50,13 +50,13 @@ export const SidebarChatItem = memo(function SidebarChatItem({
   }, [isActive]);
   // The open chat is being read — no unread signal for it
   const isUnread = !isActive && chat.unread;
-  const agentKind = useChatAgentKind(chat.id, chat.session_agent_kind);
+  const agentKind = useChatAgentKind(chat.id, chat.session_agent_kind, chat.provider);
   const isAutomationRun = !!chat.automation_id;
   // A bolt marks automation runs in the provider icon's place.
   const anchorIcon = isAutomationRun ? (
     <Zap aria-hidden className={clsx(styles['provider-icon'], styles['automation-icon'])} />
   ) : agentKind ? (
-    <ClaudeIcon aria-hidden className={styles['provider-icon']} />
+    <ProviderIcon provider={agentKind} className={styles['provider-icon']} />
   ) : null;
   // Persistent status on the leading icon (visible even on hover), mirroring the
   // sidebar precedence. Running shows the spinner; the other three show a dot.

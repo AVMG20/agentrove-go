@@ -5,6 +5,7 @@ import { useComposerDraftStore } from '@/store/composerDraftStore';
 import { useElicitationStore } from '@/store/elicitationStore';
 import { useChannelQueueStore, useMessageQueueStore } from '@/store/messageQueueStore';
 import { usePermissionStore } from '@/store/permissionStore';
+import { useProfileStore } from '@/store/profileStore';
 import { useStreamStore } from '@/store/streamStore';
 
 // Stores holding one account's live data (all in memory but composer drafts). An SPA sign-out doesn't reload, so
@@ -26,4 +27,6 @@ export function resetUserScopedStores(): void {
   useChatStore.setState(useChatStore.getInitialState(), true);
   // Persisted, so the next account on this browser doesn't see unsent text.
   useComposerDraftStore.setState(useComposerDraftStore.getInitialState(), true);
+  // Profile ids are per account.
+  useProfileStore.setState(useProfileStore.getInitialState(), true);
 }

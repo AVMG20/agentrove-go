@@ -11,6 +11,7 @@ import type {
   CreateChatRequest,
   ContextUsage,
   Message,
+  UpdateChatRequest,
 } from '@/types/chat.types';
 import type { ActiveStreamSnapshot } from '@/types/stream.types';
 import type { GitCommitResult } from '@/types/sandbox.types';
@@ -201,7 +202,7 @@ async function createChat(data: CreateChatRequest): Promise<Chat> {
   });
 }
 
-async function updateChat(chatId: string, updateData: { title?: string }): Promise<Chat> {
+async function updateChat(chatId: string, updateData: UpdateChatRequest): Promise<Chat> {
   validateId(chatId, 'Chat ID');
 
   return serviceCall(async () => {
