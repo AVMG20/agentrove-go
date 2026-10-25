@@ -13,8 +13,12 @@ import (
 // user's env vars, per provider: a "Work" Claude profile never runs on the
 // server's token, and a Codex API-key profile never on a stray OPENAI_API_KEY.
 var credentialEnv = map[string][]string{
+	// Headers and model aliases belong to the deployment's endpoint too
+	// (ANTHROPIC_CUSTOM_HEADERS is passed through by default): a gateway's
+	// headers or aliases must not reach api.anthropic.com or another endpoint.
 	models.ProviderClaude: {"ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "CLAUDE_CODE_OAUTH_TOKEN", "ANTHROPIC_BASE_URL",
-		"CLAUDE_USAGE_URL", "CLAUDE_CONFIG_DIR"},
+		"CLAUDE_USAGE_URL", "CLAUDE_CONFIG_DIR", "ANTHROPIC_CUSTOM_HEADERS", "ANTHROPIC_MODEL", "ANTHROPIC_SMALL_FAST_MODEL",
+		"ANTHROPIC_DEFAULT_OPUS_MODEL", "ANTHROPIC_DEFAULT_SONNET_MODEL", "ANTHROPIC_DEFAULT_HAIKU_MODEL"},
 	models.ProviderCodex:       {"OPENAI_API_KEY", "CODEX_API_KEY", "CODEX_ACCESS_TOKEN", "OPENAI_BASE_URL", "CODEX_HOME"},
 	models.ProviderAntigravity: {"GEMINI_API_KEY", "GOOGLE_API_KEY", "GOOGLE_APPLICATION_CREDENTIALS"},
 }
@@ -123,6 +127,11 @@ func (p *Profile) Launch() Launch {
 			link := shellQuote(dir + "/" + name)
 			b.WriteString(" && { [ -e " + link + " ] || [ -L " + link + " ] || ln -s " + shellQuote(sandbox.ContainerHome+"/"+name) + " " + link + "; }")
 		}
+		provider := ""
+		if p.AuthMode == AuthToken {
+			provider = agyKeyProvider
+		}
+		b.WriteString(" && " + agySettingsScript(dir+"/"+agySettingsFile, provider))
 		l.Setup = b.String()
 	}
 	return l
@@ -155,6 +164,27 @@ func claudeTokenEnv(p *Profile) map[string]string {
 		env["ANTHROPIC_API_KEY"] = p.Token
 	}
 	return env
+}
+
+// agy only uses GEMINI_API_KEY when its settings name the Gemini API as the
+// model provider; otherwise it wants a Google sign-in.
+const (
+	agySettingsFile = ".gemini/antigravity-cli/settings.json"
+	agyKeyProvider  = "gemini"
+)
+
+// agySettingsScript sets modelProvider in agy's settings.json (merged into
+// what is there) for an API-key profile, and removes the value it set when
+// the profile signs in with Google instead ("" provider). The file is only
+// rewritten when that changes.
+func agySettingsScript(file, provider string) string {
+	const js = `const fs=require("fs"),path=require("path");const [f,want]=process.argv.slice(1);` +
+		`let s={},had=true;try{s=JSON.parse(fs.readFileSync(f,"utf8"))}catch(e){had=false}` +
+		`if(!s||typeof s!=="object"||Array.isArray(s))s={};` +
+		`if(want){if(s.modelProvider===want)process.exit(0);s.modelProvider=want}` +
+		`else{if(!had||s.modelProvider!==` + `"` + agyKeyProvider + `"` + `)process.exit(0);delete s.modelProvider}` +
+		`fs.mkdirSync(path.dirname(f),{recursive:true});fs.writeFileSync(f,JSON.stringify(s,null,2)+"\n")`
+	return "node -e " + shellQuote(js) + " " + shellQuote(file) + " " + shellQuote(provider)
 }
 
 // ApplyEnv rewrites a full env (deployment + user vars) for the profile, for
