@@ -1,5 +1,5 @@
-# One image for the whole app: the Go API also serves the built frontend
-# (FRONTEND_DIR), so no separate web server is needed.
+# One binary for the whole app: the frontend is embedded into the Go API
+# (internal/web), so no separate web server is needed.
 FROM oven/bun:1-slim AS web
 WORKDIR /app
 COPY frontend/package.json frontend/bun.lock ./
@@ -12,6 +12,7 @@ WORKDIR /src
 COPY backend/go.mod backend/go.sum ./
 RUN go mod download
 COPY backend/ ./
+COPY --from=web /app/dist ./internal/web/dist
 RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/agentrove ./cmd/agentrove
 
 FROM debian:bookworm-slim
@@ -30,10 +31,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && claude --version
 
 COPY --from=build /out/agentrove /usr/local/bin/agentrove
-COPY --from=web /app/dist /usr/share/agentrove/web
 
 ENV STORAGE_PATH=/data/agentrove/storage \
-    FRONTEND_DIR=/usr/share/agentrove/web \
     PORT=8080
 VOLUME /data/agentrove/storage
 EXPOSE 8080

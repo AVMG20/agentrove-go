@@ -7,3 +7,4 @@ frontend/dist
 backend/agentrove
 **/*.db
 **/*.db-*
+backend/internal/web/dist

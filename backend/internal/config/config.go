@@ -19,8 +19,9 @@ type Config struct {
 	BaseURL     string
 	FrontendURL string
 	APIPrefix   string
-	// FrontendDir holds the built web app (frontend/dist), served on every
-	// path the API doesn't own. Empty: API only (e.g. behind a Vite dev server).
+	// FrontendDir overrides the frontend built into the binary (internal/web)
+	// with a directory, e.g. a fresh frontend/dist, served on every path the
+	// API doesn't own.
 	FrontendDir string
 
 	SecretKey                string

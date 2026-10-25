@@ -20,7 +20,7 @@ cp .env.example .env               # set SECRET_KEY (openssl rand -hex 32)
 docker compose up --build
 ```
 
-Open http://localhost:8080 (`APP_PORT`). The Go container serves both the API and the built frontend, so there is no separate web server. The first account you register becomes the superuser. Open a terminal in a project and run `claude` once to log in, or set `CLAUDE_CODE_OAUTH_TOKEN` in `.env`.
+Open http://localhost:8080 (`APP_PORT`). The frontend is embedded into the Go binary, so one container (and one executable) serves the whole app. The first account you register becomes the superuser. Open a terminal in a project and run `claude` once to log in, or set `CLAUDE_CODE_OAUTH_TOKEN` in `.env`.
 
 For production (e.g. Coolify), use `docker-compose-production.yml`. It builds the sandbox image and the app image (point the domain at `api`, port 8080) and keeps data in `/data/agentrove-go/storage`. Set `SECRET_KEY` and `APP_URL`.
 
@@ -43,7 +43,16 @@ SECRET_KEY=$(openssl rand -hex 32) STORAGE_PATH=$PWD/../storage go run ./cmd/age
 cd ../frontend && bun install && API_PROXY_TARGET=http://localhost:8080 bun run dev
 ```
 
-Open http://localhost:3000. To have the API serve a built frontend instead, run `bun run build` and start the API with `FRONTEND_DIR=../frontend/dist`. The Vite dev server also works against the compose stack: `API_PROXY_TARGET=http://localhost:8080 bun run dev`.
+Open http://localhost:3000. To have the API serve a built frontend instead, run `bun run build` and start the API with `FRONTEND_DIR=../frontend/dist`.
+
+To build the single executable (API with the frontend embedded):
+
+```sh
+cd frontend && bun install && bun run build && cp -r dist/. ../backend/internal/web/dist/
+cd ../backend && CGO_ENABLED=0 go build -o agentrove ./cmd/agentrove
+```
+
+It still needs Docker on the host (for the boxes), plus `git`, `rg` and the `claude` CLI on its `PATH`. The Vite dev server also works against the compose stack: `API_PROXY_TARGET=http://localhost:8080 bun run dev`.
 
 With Docker Desktop on macOS, also set `DOCKER_HOST=unix://$HOME/.docker/run/docker.sock`. Each user's HOME lives in `STORAGE_PATH/agent-homes/<user>` and their projects in `STORAGE_PATH/workspaces/<user>`.
 

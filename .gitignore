@@ -2,6 +2,8 @@
 .env
 storage/
 backend/agentrove
+backend/internal/web/dist/*
+!backend/internal/web/dist/.gitkeep
 backend/*.db
 backend/*.db-*
 frontend/node_modules/
