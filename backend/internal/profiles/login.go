@@ -179,7 +179,7 @@ func (s *Service) StartLogin(ctx context.Context, p *Profile) (LoginState, error
 	full := append([]string{"bash", "-lc", `command -v "$1" >/dev/null 2>&1 || { echo "agentrove: $1 is not installed in this box" >&2; exit 127; }; ` + script, "login"}, cmd...)
 	hadToken := s.signedIn(p)
 	runCtx, cancel := context.WithTimeout(context.Background(), loginTimeout)
-	pty, release, err := sb.StartPTY(ctx, sandbox.ExecRequest{Cmd: full, Cwd: sandbox.ContainerHome, Env: env, Unset: launch.Unset}, loginRows, loginCols)
+	pty, release, err := sb.StartPTY(ctx, sandbox.ExecRequest{Cmd: full, Cwd: sandbox.ContainerHome, Env: env, Unset: launch.Unset, UnsetGlobal: launch.UnsetGlobal}, loginRows, loginCols)
 	if err != nil {
 		cancel()
 		return LoginState{}, httpx.Errorf(503, "Could not start the sign-in in your box: %v", err)

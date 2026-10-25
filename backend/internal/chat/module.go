@@ -543,7 +543,7 @@ func (m *Module) sessionConfig(sb *sandbox.Sandbox, req *turnRequest) claude.Con
 		for k, v := range launch.Env {
 			cfg.Env[k] = v
 		}
-		cfg.Unset, cfg.Setup = launch.Unset, launch.Setup
+		cfg.Unset, cfg.UnsetGlobal, cfg.Setup = launch.Unset, launch.UnsetGlobal, launch.Setup
 	}
 	st, err := m.a.Store.GetUserSettings(context.Background(), req.userID)
 	if err == nil && st.AutoCompactWindow > 0 {
@@ -1125,15 +1125,11 @@ func (m *Module) hookStartTurn(r app.ChatTurnRequest) (app.ChatTurnResult, error
 func (m *Module) oneShot(userID string) claude.OneShot {
 	ctx := context.Background()
 	home := m.a.Cfg.AgentHomeDir(userID)
-	env := m.a.Cfg.AgentGlobalEnv()
-	for k, v := range m.a.Store.UserEnv(ctx, userID) {
-		env[k] = v
-	}
 	p := profiles.Builtin(userID)
 	if m.a.Profiles != nil {
 		p = m.a.Profiles.DefaultClaude(ctx, userID)
 	}
-	return claude.OneShot{Binary: m.a.Cfg.ClaudeBinary, Env: p.ApplyEnv(env),
+	return claude.OneShot{Binary: m.a.Cfg.ClaudeBinary, Env: p.ApplyEnv(m.a.Cfg.AgentGlobalEnv(), m.a.Store.UserEnv(ctx, userID)),
 		ConfigDir: p.HostConfigDir(home), AgentHome: home, AsUID: sandbox.ContainerUID}
 }
 

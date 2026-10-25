@@ -13,14 +13,20 @@ import (
 // user's env vars, per provider: a "Work" Claude profile never runs on the
 // server's token, and a Codex API-key profile never on a stray OPENAI_API_KEY.
 var credentialEnv = map[string][]string{
-	// Headers and model aliases belong to the deployment's endpoint too
-	// (ANTHROPIC_CUSTOM_HEADERS is passed through by default): a gateway's
-	// headers or aliases must not reach api.anthropic.com or another endpoint.
 	models.ProviderClaude: {"ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "CLAUDE_CODE_OAUTH_TOKEN", "ANTHROPIC_BASE_URL",
-		"CLAUDE_USAGE_URL", "CLAUDE_CONFIG_DIR", "ANTHROPIC_CUSTOM_HEADERS", "ANTHROPIC_MODEL", "ANTHROPIC_SMALL_FAST_MODEL",
-		"ANTHROPIC_DEFAULT_OPUS_MODEL", "ANTHROPIC_DEFAULT_SONNET_MODEL", "ANTHROPIC_DEFAULT_HAIKU_MODEL"},
+		"CLAUDE_USAGE_URL", "CLAUDE_CONFIG_DIR"},
 	models.ProviderCodex:       {"OPENAI_API_KEY", "CODEX_API_KEY", "CODEX_ACCESS_TOKEN", "OPENAI_BASE_URL", "CODEX_HOME"},
 	models.ProviderAntigravity: {"GEMINI_API_KEY", "GOOGLE_API_KEY", "GOOGLE_APPLICATION_CREDENTIALS"},
+}
+
+// deploymentEnv are vars a profile must not inherit from the deployment's
+// env only: headers and model aliases belong to the deployment's endpoint
+// (ANTHROPIC_CUSTOM_HEADERS is passed through by default) and must not reach
+// api.anthropic.com or another gateway. The user's own env vars keep them:
+// they set them for the endpoint they use (a migrated gateway profile).
+var deploymentEnv = map[string][]string{
+	models.ProviderClaude: {"ANTHROPIC_CUSTOM_HEADERS", "ANTHROPIC_MODEL", "ANTHROPIC_SMALL_FAST_MODEL",
+		"ANTHROPIC_DEFAULT_OPUS_MODEL", "ANTHROPIC_DEFAULT_SONNET_MODEL", "ANTHROPIC_DEFAULT_HAIKU_MODEL"},
 }
 
 // claudeShared are the box's ~/claude entries every Claude profile links to,
@@ -76,8 +82,11 @@ func (p *Profile) HostConfigDir(agentHome string) string {
 
 // Launch is how a profile's agent process runs in the box.
 type Launch struct {
-	Env   map[string]string
-	Unset []string
+	Env map[string]string
+	// Unset drops inherited vars (deployment and user env); UnsetGlobal drops
+	// them from the deployment's env only.
+	Unset       []string
+	UnsetGlobal []string
 	// Setup prepares the profile's dirs in the box (run as the box user before
 	// the CLI starts); "" when there is nothing to do.
 	Setup string
@@ -89,7 +98,7 @@ func (p *Profile) Launch() Launch {
 	if p.Builtin {
 		return Launch{Env: map[string]string{}}
 	}
-	l := Launch{Env: map[string]string{}, Unset: credentialEnv[p.Provider]}
+	l := Launch{Env: map[string]string{}, Unset: credentialEnv[p.Provider], UnsetGlobal: deploymentEnv[p.Provider]}
 	dir := p.ConfigDir()
 	switch p.Provider {
 	case models.ProviderClaude:
@@ -187,11 +196,20 @@ func agySettingsScript(file, provider string) string {
 	return "node -e " + shellQuote(js) + " " + shellQuote(file) + " " + shellQuote(provider)
 }
 
-// ApplyEnv rewrites a full env (deployment + user vars) for the profile, for
-// processes the API runs itself (one-shot generation, the usage meter).
-func (p *Profile) ApplyEnv(env map[string]string) map[string]string {
+// ApplyEnv merges the deployment's env and the user's env vars for the
+// profile, for processes the API runs itself (one-shot generation, the usage
+// meter), the way Launch does in the box.
+func (p *Profile) ApplyEnv(global, user map[string]string) map[string]string {
 	out := map[string]string{}
-	for k, v := range env {
+	for k, v := range global {
+		out[k] = v
+	}
+	if !p.Builtin {
+		for _, k := range deploymentEnv[p.Provider] {
+			delete(out, k)
+		}
+	}
+	for k, v := range user {
 		out[k] = v
 	}
 	if p.Builtin {

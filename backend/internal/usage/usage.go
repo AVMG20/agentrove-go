@@ -305,7 +305,7 @@ func (m *Module) get(w http.ResponseWriter, r *http.Request) error {
 		}
 	} else {
 		globalEnv = map[string]string{}
-		for k, v := range p.ApplyEnv(nil) {
+		for k, v := range p.ApplyEnv(nil, nil) {
 			custom = append(custom, models.CustomEnvVar{Key: k, Value: v})
 		}
 	}

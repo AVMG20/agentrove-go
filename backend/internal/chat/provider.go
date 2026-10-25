@@ -228,7 +228,7 @@ func (t *turn) runCLI(sb *sandbox.Sandbox, resumeID string) (*agentstream.Result
 		return nil, false, nil
 	}
 	proc, release, err := sb.Start(t.ctx, sandbox.ExecRequest{
-		Cmd: run.cmd, Cwd: sb.Resolve(db.Deref(t.req.chat.WorktreeCwd)), Env: env, Unset: launch.Unset,
+		Cmd: run.cmd, Cwd: sb.Resolve(db.Deref(t.req.chat.WorktreeCwd)), Env: env, Unset: launch.Unset, UnsetGlobal: launch.UnsetGlobal,
 	})
 	if err != nil {
 		return nil, false, fmt.Errorf("start %s: %w", profiles.Binary(t.req.profile.Provider), err)

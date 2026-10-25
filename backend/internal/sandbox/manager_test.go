@@ -140,3 +140,29 @@ func TestDockerWorkspacesShareTheUserBox(t *testing.T) {
 		t.Fatal("reached another project")
 	}
 }
+
+// UnsetGlobal drops deployment vars only: the user's own env vars and the
+// request's env keep the same keys.
+func TestMergeEnvUnsetGlobalKeepsUserVars(t *testing.T) {
+	m := &Manager{
+		cfg: &config.Config{AgentEnv: map[string]string{
+			"ANTHROPIC_CUSTOM_HEADERS": "X-Gw: 1", "ANTHROPIC_DEFAULT_SONNET_MODEL": "gw-sonnet", "ANTHROPIC_API_KEY": "server",
+		}},
+		userEnv: map[string]map[string]string{},
+		envSource: func(context.Context, string) map[string]string {
+			return map[string]string{"ANTHROPIC_DEFAULT_SONNET_MODEL": "my-sonnet", "ANTHROPIC_API_KEY": "mine"}
+		},
+	}
+	s := &Sandbox{UserID: "u", mgr: m}
+	env := m.mergeEnv(s, map[string]string{"ANTHROPIC_MODEL": "req-model"}, []string{"ANTHROPIC_API_KEY"},
+		[]string{"ANTHROPIC_CUSTOM_HEADERS", "ANTHROPIC_DEFAULT_SONNET_MODEL", "ANTHROPIC_MODEL"})
+	if _, ok := env["ANTHROPIC_CUSTOM_HEADERS"]; ok {
+		t.Error("the deployment's headers reach the process")
+	}
+	if env["ANTHROPIC_DEFAULT_SONNET_MODEL"] != "my-sonnet" || env["ANTHROPIC_MODEL"] != "req-model" {
+		t.Errorf("user vars dropped: %v", env)
+	}
+	if _, ok := env["ANTHROPIC_API_KEY"]; ok {
+		t.Error("Unset still drops user vars too")
+	}
+}

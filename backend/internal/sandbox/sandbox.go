@@ -57,9 +57,12 @@ type ExecRequest struct {
 	Env map[string]string
 	// Unset drops these keys from the merged env (deployment and user env
 	// included), e.g. credentials a provider profile must not inherit.
-	Unset   []string
-	Stdin   io.Reader
-	Timeout time.Duration
+	Unset []string
+	// UnsetGlobal drops these keys from the deployment's env only (the
+	// user's env vars and Env keep them).
+	UnsetGlobal []string
+	Stdin       io.Reader
+	Timeout     time.Duration
 	// Root runs as root in Docker sandboxes (ownership fixes).
 	Root bool
 }
@@ -223,7 +226,7 @@ func (s *Sandbox) Exec(ctx context.Context, req ExecRequest) (ExecResult, error)
 	if req.Cwd == "" {
 		req.Cwd = s.Root
 	}
-	req.Env = s.mgr.mergeEnv(s, req.Env, req.Unset)
+	req.Env = s.mgr.mergeEnv(s, req.Env, req.Unset, req.UnsetGlobal)
 	if req.Timeout == 0 {
 		req.Timeout = 2 * time.Minute
 	}
@@ -248,7 +251,7 @@ func (s *Sandbox) Start(ctx context.Context, req ExecRequest) (Process, func(), 
 	if req.Cwd == "" {
 		req.Cwd = s.Root
 	}
-	req.Env = s.mgr.mergeEnv(s, req.Env, req.Unset)
+	req.Env = s.mgr.mergeEnv(s, req.Env, req.Unset, req.UnsetGlobal)
 	// Turns hold their own lease; the process lease only keeps the box up.
 	release := s.mgr.acquire(s.ID, false)
 	p, err := s.provider.Start(ctx, s.ID, req)
@@ -267,7 +270,7 @@ func (s *Sandbox) StartPTY(ctx context.Context, req ExecRequest, rows, cols int)
 	if req.Cwd == "" {
 		req.Cwd = s.Root
 	}
-	req.Env = s.mgr.mergeEnv(s, req.Env, req.Unset)
+	req.Env = s.mgr.mergeEnv(s, req.Env, req.Unset, req.UnsetGlobal)
 	release := s.mgr.Acquire(s.ID)
 	p, err := s.provider.StartPTY(ctx, s.ID, req, rows, cols)
 	if err != nil {
@@ -287,7 +290,7 @@ func (s *Sandbox) DiskUsage(ctx context.Context) (int64, bool) {
 }
 
 // Env returns the full environment agent processes and terminals get.
-func (s *Sandbox) Env() map[string]string { return s.mgr.mergeEnv(s, nil, nil) }
+func (s *Sandbox) Env() map[string]string { return s.mgr.mergeEnv(s, nil, nil, nil) }
 
 // GitAskpassPath is the askpass helper path inside the box.
 func (s *Sandbox) GitAskpassPath() string { return ContainerAskpass }

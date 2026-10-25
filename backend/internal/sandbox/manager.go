@@ -278,10 +278,13 @@ func (m *Manager) stopIdle(ctx context.Context, p Provider, id string) {
 	}
 }
 
-func (m *Manager) mergeEnv(s *Sandbox, extra map[string]string, unset []string) map[string]string {
+func (m *Manager) mergeEnv(s *Sandbox, extra map[string]string, unset, unsetGlobal []string) map[string]string {
 	env := map[string]string{}
 	for k, v := range m.cfg.AgentGlobalEnv() {
 		env[k] = v
+	}
+	for _, k := range unsetGlobal {
+		delete(env, k)
 	}
 	if s.UserID != "" && m.envSource != nil {
 		m.mu.Lock()

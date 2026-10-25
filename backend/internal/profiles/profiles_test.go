@@ -222,7 +222,7 @@ func TestLaunchIsolatesCredentials(t *testing.T) {
 		t.Fatalf("built-in launch = %+v", l)
 	}
 	// One-shot runs on the host: the env loses foreign credentials too.
-	env := work.ApplyEnv(map[string]string{"ANTHROPIC_API_KEY": "server", "GITHUB_TOKEN": "g"})
+	env := work.ApplyEnv(map[string]string{"ANTHROPIC_API_KEY": "server", "GITHUB_TOKEN": "g"}, nil)
 	if !reflect.DeepEqual(env, map[string]string{"CLAUDE_CODE_OAUTH_TOKEN": "sk-ant-oat01-abc", "GITHUB_TOKEN": "g"}) {
 		t.Fatalf("apply env = %v", env)
 	}
@@ -387,7 +387,7 @@ func TestTokenEnvKeepsTheVariable(t *testing.T) {
 		t.Fatalf("endpoint with an api key = %v", env)
 	}
 	bearer := &Profile{ID: "p", Provider: models.ProviderClaude, AuthMode: AuthToken, Token: "t", TokenEnv: "ANTHROPIC_AUTH_TOKEN"}
-	if env := bearer.ApplyEnv(map[string]string{"ANTHROPIC_BASE_URL": "https://gw"}); env["ANTHROPIC_AUTH_TOKEN"] != "t" || env["ANTHROPIC_API_KEY"] != "" || env["ANTHROPIC_BASE_URL"] != "" {
+	if env := bearer.ApplyEnv(map[string]string{"ANTHROPIC_BASE_URL": "https://gw"}, nil); env["ANTHROPIC_AUTH_TOKEN"] != "t" || env["ANTHROPIC_API_KEY"] != "" || env["ANTHROPIC_BASE_URL"] != "" {
 		t.Fatalf("bearer token = %v", env)
 	}
 }

@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -78,26 +79,32 @@ func TestAgyLaunchSetsUpTheProvider(t *testing.T) {
 }
 
 // Gateway headers and model aliases from the deployment don't follow a
-// Claude profile to its own endpoint.
+// Claude profile to its own endpoint, but the user's own ones do (a migrated
+// gateway profile keeps the aliases its env vars set).
 func TestClaudeProfilesDropDeploymentHeadersAndAliases(t *testing.T) {
 	p := &Profile{ID: "p", Provider: models.ProviderClaude, AuthMode: AuthToken, Token: "sk-ant-oat01-x"}
-	env := p.ApplyEnv(map[string]string{"ANTHROPIC_CUSTOM_HEADERS": "X-Gw: 1", "ANTHROPIC_MODEL": "gw-opus",
-		"ANTHROPIC_DEFAULT_SONNET_MODEL": "gw-sonnet", "FOO": "bar"})
-	for _, k := range []string{"ANTHROPIC_CUSTOM_HEADERS", "ANTHROPIC_MODEL", "ANTHROPIC_DEFAULT_SONNET_MODEL"} {
+	global := map[string]string{"ANTHROPIC_CUSTOM_HEADERS": "X-Gw: 1", "ANTHROPIC_MODEL": "gw-opus",
+		"ANTHROPIC_DEFAULT_SONNET_MODEL": "gw-sonnet", "FOO": "bar"}
+	env := p.ApplyEnv(global, map[string]string{"ANTHROPIC_DEFAULT_SONNET_MODEL": "my-sonnet"})
+	for _, k := range []string{"ANTHROPIC_CUSTOM_HEADERS", "ANTHROPIC_MODEL"} {
 		if _, ok := env[k]; ok {
-			t.Errorf("%s reaches the profile", k)
+			t.Errorf("deployment %s reaches the profile", k)
 		}
 	}
-	if env["FOO"] != "bar" {
-		t.Error("unrelated vars must stay")
+	if env["ANTHROPIC_DEFAULT_SONNET_MODEL"] != "my-sonnet" || env["FOO"] != "bar" {
+		t.Errorf("user and unrelated vars must stay: %v", env)
 	}
-	unset := p.Launch().Unset
-	for _, k := range []string{"ANTHROPIC_CUSTOM_HEADERS", "ANTHROPIC_SMALL_FAST_MODEL", "ANTHROPIC_DEFAULT_HAIKU_MODEL", "ANTHROPIC_DEFAULT_OPUS_MODEL"} {
-		if !strings.Contains(strings.Join(unset, " "), k) {
-			t.Errorf("%s not unset in the box", k)
+	l := p.Launch()
+	for _, k := range []string{"ANTHROPIC_CUSTOM_HEADERS", "ANTHROPIC_MODEL", "ANTHROPIC_SMALL_FAST_MODEL",
+		"ANTHROPIC_DEFAULT_OPUS_MODEL", "ANTHROPIC_DEFAULT_SONNET_MODEL", "ANTHROPIC_DEFAULT_HAIKU_MODEL"} {
+		if !slices.Contains(l.UnsetGlobal, k) {
+			t.Errorf("%s not dropped from the deployment env", k)
+		}
+		if slices.Contains(l.Unset, k) {
+			t.Errorf("%s dropped from the user's env vars", k)
 		}
 	}
-	if env := Builtin("u").ApplyEnv(map[string]string{"ANTHROPIC_CUSTOM_HEADERS": "X-Gw: 1"}); env["ANTHROPIC_CUSTOM_HEADERS"] == "" {
+	if env := Builtin("u").ApplyEnv(global, nil); env["ANTHROPIC_CUSTOM_HEADERS"] == "" {
 		t.Error("the built-in profile keeps the deployment's headers")
 	}
 }

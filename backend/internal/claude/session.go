@@ -53,6 +53,9 @@ type Config struct {
 	Env            map[string]string
 	// Unset drops inherited env vars (a profile's foreign credentials).
 	Unset []string
+	// UnsetGlobal drops deployment env vars only (a profile's foreign
+	// endpoint headers and model aliases).
+	UnsetGlobal []string
 	// Setup runs in the box shell before the CLI (a profile's dirs).
 	Setup  string
 	Binary string
@@ -67,9 +70,9 @@ func (c Config) fingerprint() string {
 		MCP                 map[string]any
 		Settings            map[string]any
 		Env                 map[string]string
-		Unset               []string
+		Unset, UnsetGlobal  []string
 		Setup               string
-	}{c.Cwd, c.SystemPrompt, c.Effort, c.FullReplace, c.MCPServers, c.Settings, c.Env, c.Unset, c.Setup})
+	}{c.Cwd, c.SystemPrompt, c.Effort, c.FullReplace, c.MCPServers, c.Settings, c.Env, c.Unset, c.UnsetGlobal, c.Setup})
 	return string(b)
 }
 
@@ -183,7 +186,7 @@ func Start(ctx context.Context, sb *sandbox.Sandbox, chatID string, cfg Config) 
 		cmd = []string{"bash", "-lc", script, "claude"}
 		cmd = append(cmd, append([]string{bin}, cfg.args()...)...)
 	}
-	proc, release, err := sb.Start(ctx, sandbox.ExecRequest{Cmd: cmd, Cwd: cfg.Cwd, Env: cfg.Env, Unset: cfg.Unset})
+	proc, release, err := sb.Start(ctx, sandbox.ExecRequest{Cmd: cmd, Cwd: cfg.Cwd, Env: cfg.Env, Unset: cfg.Unset, UnsetGlobal: cfg.UnsetGlobal})
 	if err != nil {
 		return nil, fmt.Errorf("start claude: %w", err)
 	}
