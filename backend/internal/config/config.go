@@ -19,6 +19,10 @@ type Config struct {
 	BaseURL     string
 	FrontendURL string
 	APIPrefix   string
+	// FrontendDir overrides the frontend built into the binary (internal/web)
+	// with a directory, e.g. a fresh frontend/dist, served on every path the
+	// API doesn't own.
+	FrontendDir string
 
 	SecretKey                string
 	AccessTokenTTL           time.Duration
@@ -101,6 +105,7 @@ func Load() (*Config, error) {
 		BaseURL:                  env("BASE_URL", "http://localhost:8080"),
 		FrontendURL:              env("FRONTEND_URL", "http://localhost:3000"),
 		APIPrefix:                "/api/v1",
+		FrontendDir:              env("FRONTEND_DIR", ""),
 		SecretKey:                env("SECRET_KEY", ""),
 		AccessTokenTTL:           time.Duration(envInt("ACCESS_TOKEN_EXPIRE_MINUTES", 15)) * time.Minute,
 		RefreshTokenTTL:          time.Duration(envInt("REFRESH_TOKEN_EXPIRE_DAYS", 30)) * 24 * time.Hour,
@@ -149,8 +154,8 @@ func Load() (*Config, error) {
 	c.AgentTokensBoxOnly = envBool("AGENTROVE_AGENT_TOKENS_BOX_ONLY", true)
 	c.APIContainer = strings.TrimSpace(env("AGENTROVE_API_CONTAINER", ""))
 
-	// The API is only published through the frontend proxy (nginx, behind
-	// Coolify's Traefik), which reaches it over Docker's private networks;
+	// The API is only published through a reverse proxy (e.g. Coolify's
+	// Traefik), which reaches it over Docker's private networks;
 	// a public client connecting directly has a public address and its
 	// X-Forwarded-For is ignored. Boxes are private too, so their network
 	// subnets are excluded at runtime (auth.Service.BoxSubnets).

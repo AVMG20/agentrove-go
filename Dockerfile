@@ -1,8 +1,18 @@
+# One binary for the whole app: the frontend is embedded into the Go API
+# (internal/web), so no separate web server is needed.
+FROM oven/bun:1-slim AS web
+WORKDIR /app
+COPY frontend/package.json frontend/bun.lock ./
+RUN bun install --frozen-lockfile
+COPY frontend/ ./
+RUN bun --bun run build
+
 FROM golang:1.26-bookworm AS build
 WORKDIR /src
-COPY go.mod go.sum ./
+COPY backend/go.mod backend/go.sum ./
 RUN go mod download
-COPY . .
+COPY backend/ ./
+COPY --from=web /app/dist ./internal/web/dist
 RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/agentrove ./cmd/agentrove
 
 FROM debian:bookworm-slim

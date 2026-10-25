@@ -3,10 +3,13 @@ package server
 
 import (
 	"context"
+	"log/slog"
 	"net/http"
+	"os"
 
 	"agentrove/internal/app"
 	"agentrove/internal/httpx"
+	"agentrove/internal/web"
 )
 
 // Module is implemented by each feature package.
@@ -40,6 +43,15 @@ func Build(ctx context.Context, a *app.App) (http.Handler, func(context.Context)
 	})
 
 	a.Auth.Routes(mux, p)
+	dist := web.Dist()
+	if a.Cfg.FrontendDir != "" {
+		dist = os.DirFS(a.Cfg.FrontendDir)
+	}
+	if dist != nil {
+		mux.Handle("GET /", Frontend(dist))
+	} else {
+		slog.Info("no frontend built in and FRONTEND_DIR unset; serving the API only")
+	}
 
 	modules, err := buildModules(a)
 	if err != nil {
