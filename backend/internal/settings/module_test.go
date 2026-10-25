@@ -64,3 +64,41 @@ func TestBrowserSettings(t *testing.T) {
 		t.Fatalf("browser_available = %v with the browser off", out["browser_available"])
 	}
 }
+
+// Claude vars a provider profile didn't take over stay in the env vars as
+// they were; adding or changing one is refused.
+func TestManagedEnvVarsOnlyStayAsTheyWere(t *testing.T) {
+	d, err := db.Open(t.TempDir() + "/t.db")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { d.Close() })
+	now := db.Now()
+	if _, err := d.Exec(`INSERT INTO users (id, email, username, hashed_password, is_active, created_at, updated_at) VALUES (?, 'a@b.c', 'a', 'x', 1, ?, ?)`, userID, now, now); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := d.Exec(`INSERT INTO user_settings (id, user_id, title_model_id, custom_env_vars, created_at, updated_at) VALUES ('s', ?, 'haiku', ?, ?, ?)`,
+		userID, `[{"key":"CLAUDE_USAGE_URL","value":"https://admin.example/api/usage"}]`, now, now); err != nil {
+		t.Fatal(err)
+	}
+	keys, _ := auth.NewKeys(strings.Repeat("k", 40))
+	cfg := &config.Config{APIPrefix: "/api/v1", AccessTokenTTL: time.Hour}
+	a := &app.App{Cfg: cfg, DB: d, Keys: keys, Store: &store.Store{DB: d, Keys: keys}, Sandboxes: &sandbox.Manager{}}
+	m := New(a)
+	patch := func(body string) error {
+		req := httptest.NewRequest("PATCH", "/api/v1/settings/", strings.NewReader(body))
+		req = req.WithContext(auth.WithUser(req.Context(), &models.User{ID: userID}))
+		req.Header.Set("Content-Type", "application/json")
+		return m.patch(httptest.NewRecorder(), req)
+	}
+	kept := `{"key":"CLAUDE_USAGE_URL","value":"https://admin.example/api/usage"}`
+	if err := patch(`{"custom_env_vars":[` + kept + `,{"key":"FOO","value":"bar"}]}`); err != nil {
+		t.Fatalf("saving with a kept var: %v", err)
+	}
+	if err := patch(`{"custom_env_vars":[{"key":"CLAUDE_USAGE_URL","value":"https://other.example"}]}`); err == nil {
+		t.Fatal("changing a managed var must be refused")
+	}
+	if err := patch(`{"custom_env_vars":[` + kept + `,{"key":"ANTHROPIC_API_KEY","value":"k"}]}`); err == nil {
+		t.Fatal("adding a managed var must be refused")
+	}
+}

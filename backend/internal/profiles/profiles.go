@@ -50,6 +50,8 @@ type Profile struct {
 	BaseURL  string
 	UsageURL string
 	Token    string // plaintext; never sent to the client
+	// TokenEnv is the env var a Claude token goes in ("" = by auth mode).
+	TokenEnv string
 	// configDir overrides the CLI config dir (relative to the box home).
 	configDir string
 	Builtin   bool
@@ -59,7 +61,7 @@ type Profile struct {
 
 // Builtin returns the built-in Claude profile of a user.
 func Builtin(userID string) *Profile {
-	return &Profile{ID: BuiltinID, UserID: userID, Provider: models.ProviderClaude, Name: "Default", AuthMode: AuthLogin, Builtin: true}
+	return &Profile{ID: BuiltinID, UserID: userID, Provider: models.ProviderClaude, Name: "Server", AuthMode: AuthLogin, Builtin: true}
 }
 
 // Service stores profiles and runs their sign-in flows.
@@ -76,12 +78,14 @@ func NewService(d *db.DB, keys *auth.Keys, cfg *config.Config, sandboxes *sandbo
 	return &Service{db: d, keys: keys, cfg: cfg, sandboxes: sandboxes, logins: newLogins(), probes: newProbes()}
 }
 
-const profileColumns = `id, user_id, provider, name, auth_mode, base_url, usage_url, token, config_dir, created_at, updated_at`
+const profileColumns = `id, user_id, provider, name, auth_mode, base_url, usage_url, token, token_env, config_dir, created_at, updated_at`
+
+const profilePlaceholders = `?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?`
 
 func (s *Service) scan(row interface{ Scan(...any) error }) (*Profile, error) {
 	p := &Profile{}
 	var enc string
-	if err := row.Scan(&p.ID, &p.UserID, &p.Provider, &p.Name, &p.AuthMode, &p.BaseURL, &p.UsageURL, &enc, &p.configDir, &p.CreatedAt, &p.UpdatedAt); err != nil {
+	if err := row.Scan(&p.ID, &p.UserID, &p.Provider, &p.Name, &p.AuthMode, &p.BaseURL, &p.UsageURL, &enc, &p.TokenEnv, &p.configDir, &p.CreatedAt, &p.UpdatedAt); err != nil {
 		return nil, err
 	}
 	if enc != "" {
@@ -185,6 +189,21 @@ type Input struct {
 	// Token: nil or "" keeps the stored one; ClearToken removes it.
 	Token      *string `json:"token"`
 	ClearToken bool    `json:"clear_token"`
+	// TokenEnv: which variable a Claude token is passed in; nil keeps it
+	// (reset to "" when the auth mode changes), "" picks by auth mode.
+	TokenEnv *string `json:"token_env"`
+}
+
+// TokenEnvs are the variables a Claude token can be passed in.
+var TokenEnvs = []string{"ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_API_KEY", "CLAUDE_CODE_OAUTH_TOKEN"}
+
+func validTokenEnv(v string) bool {
+	for _, k := range TokenEnvs {
+		if k == v {
+			return true
+		}
+	}
+	return v == ""
 }
 
 const (
@@ -210,7 +229,16 @@ func (s *Service) apply(ctx context.Context, p *Profile, in Input) error {
 		p.Name = name
 	}
 	if in.AuthMode != nil {
+		if *in.AuthMode != p.AuthMode {
+			p.TokenEnv = "" // chosen for the old mode
+		}
 		p.AuthMode = *in.AuthMode
+	}
+	if in.TokenEnv != nil {
+		if !validTokenEnv(*in.TokenEnv) {
+			return httpx.Unprocessable("token_env must be one of " + strings.Join(TokenEnvs, ", "))
+		}
+		p.TokenEnv = *in.TokenEnv
 	}
 	modes := AuthModes(p.Provider)
 	if p.AuthMode == "" {
@@ -249,12 +277,20 @@ func (s *Service) apply(ctx context.Context, p *Profile, in Input) error {
 			return httpx.Unprocessable("The token must be a single line without spaces")
 		}
 		p.Token = tok
+		if in.TokenEnv == nil && p.AuthMode == AuthToken {
+			// A new plain token is passed by its kind again; only an
+			// endpoint's choice is the user's (Settings shows it there).
+			p.TokenEnv = ""
+		}
 	}
 	if p.AuthMode == AuthEndpoint && p.Token == "" {
 		return httpx.Unprocessable("A custom endpoint needs a token")
 	}
-	if p.AuthMode == AuthLogin {
-		p.Token = ""
+	if p.AuthMode == AuthLogin || p.Provider != models.ProviderClaude {
+		if p.AuthMode == AuthLogin {
+			p.Token = ""
+		}
+		p.TokenEnv = ""
 	}
 	var clash int
 	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(1) FROM agent_profiles WHERE user_id = ? AND id != ? AND provider = ? AND name = ? COLLATE NOCASE`,
@@ -313,8 +349,8 @@ func (s *Service) Create(ctx context.Context, userID string, in Input) (*Profile
 	}
 	p.ID, p.CreatedAt = uuid.NewString(), db.Now()
 	p.UpdatedAt = p.CreatedAt
-	_, err = s.db.ExecContext(ctx, `INSERT INTO agent_profiles (`+profileColumns+`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		p.ID, p.UserID, p.Provider, p.Name, p.AuthMode, p.BaseURL, p.UsageURL, enc, p.configDir, p.CreatedAt, p.UpdatedAt)
+	_, err = s.db.ExecContext(ctx, `INSERT INTO agent_profiles (`+profileColumns+`) VALUES (`+profilePlaceholders+`)`,
+		p.ID, p.UserID, p.Provider, p.Name, p.AuthMode, p.BaseURL, p.UsageURL, enc, p.TokenEnv, p.configDir, p.CreatedAt, p.UpdatedAt)
 	if err != nil {
 		return nil, err
 	}
@@ -345,14 +381,17 @@ func (s *Service) save(ctx context.Context, p *Profile) error {
 		return err
 	}
 	p.UpdatedAt = db.Now()
-	_, err = s.db.ExecContext(ctx, `UPDATE agent_profiles SET name = ?, auth_mode = ?, base_url = ?, usage_url = ?, token = ?, updated_at = ?
-		WHERE id = ? AND user_id = ?`, p.Name, p.AuthMode, p.BaseURL, p.UsageURL, enc, p.UpdatedAt, p.ID, p.UserID)
+	_, err = s.db.ExecContext(ctx, `UPDATE agent_profiles SET name = ?, auth_mode = ?, base_url = ?, usage_url = ?, token = ?, token_env = ?, updated_at = ?
+		WHERE id = ? AND user_id = ?`, p.Name, p.AuthMode, p.BaseURL, p.UsageURL, enc, p.TokenEnv, p.UpdatedAt, p.ID, p.UserID)
 	return err
 }
 
-// Delete removes a profile. Its chats keep the id and say so when used; a
-// deleted default falls back to the built-in profile. The login files in the
-// box stay (the box is the user's own), so re-adding needs a new sign-in.
+// Delete removes a profile; a deleted default falls back to the built-in
+// profile. A profile on ~/claude (one migrated from env vars) shares the
+// built-in profile's sessions, so its chats move to the built-in profile and
+// keep resuming. Other profiles' chats keep the id and say so when used: their
+// sessions live in the profile's own dir. The login files in the box stay
+// (the box is the user's own); a re-added account signs in again.
 func (s *Service) Delete(ctx context.Context, userID, id string) error {
 	p, err := s.Get(ctx, userID, id)
 	if err != nil {
@@ -361,12 +400,19 @@ func (s *Service) Delete(ctx context.Context, userID, id string) error {
 	if p.Builtin {
 		return httpx.BadRequest("The built-in profile can't be deleted")
 	}
-	s.logins.cancel(p.ID)
-	if _, err := s.db.ExecContext(ctx, `DELETE FROM agent_profiles WHERE id = ? AND user_id = ?`, p.ID, userID); err != nil {
+	s.logins.cancel(p)
+	return s.db.Tx(ctx, func(tx *sql.Tx) error {
+		if _, err := tx.ExecContext(ctx, `DELETE FROM agent_profiles WHERE id = ? AND user_id = ?`, p.ID, userID); err != nil {
+			return err
+		}
+		if p.SharesBuiltinSessions() {
+			if _, err := tx.ExecContext(ctx, `UPDATE chats SET profile_id = NULL, provider = NULL WHERE user_id = ? AND profile_id = ?`, userID, p.ID); err != nil {
+				return err
+			}
+		}
+		_, err := tx.ExecContext(ctx, `UPDATE user_settings SET default_profile_id = NULL WHERE user_id = ? AND default_profile_id = ?`, userID, p.ID)
 		return err
-	}
-	_, err = s.db.ExecContext(ctx, `UPDATE user_settings SET default_profile_id = NULL WHERE user_id = ? AND default_profile_id = ?`, userID, p.ID)
-	return err
+	})
 }
 
 // ForChat resolves the profile a chat runs on. A deleted profile is an

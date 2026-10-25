@@ -165,8 +165,16 @@ func (m *Module) patch(w http.ResponseWriter, r *http.Request) error {
 		if err != nil {
 			return err
 		}
+		// Vars the move into profiles left (a profile didn't take them) may
+		// stay as they are; new or changed ones go through a profile.
+		stored := map[models.CustomEnvVar]bool{}
+		if st, err := m.a.Store.GetUserSettings(r.Context(), u.ID); err == nil && st.CustomEnvVars.Valid {
+			for _, ev := range st.CustomEnvVars.V {
+				stored[ev] = true
+			}
+		}
 		for _, ev := range v.V {
-			if profiles.ManagedEnvKey(ev.Key) {
+			if profiles.ManagedEnvKey(ev.Key) && !stored[ev] {
 				return httpx.Unprocessable(ev.Key + " is set through a provider profile: add it under Settings → Providers")
 			}
 		}

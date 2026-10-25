@@ -58,6 +58,12 @@ func (p *Profile) ConfigDir() string {
 	return path.Join(p.Dir(), "claude")
 }
 
+// SharesBuiltinSessions reports a Claude profile on the box's ~/claude (as
+// the built-in profile is), whose chats' sessions the built-in one resumes.
+func (p *Profile) SharesBuiltinSessions() bool {
+	return p.Provider == models.ProviderClaude && p.ConfigDir() == sandbox.ContainerClaudeDir
+}
+
 // HostConfigDir is ConfigDir on the API host, under the user's agent home.
 func (p *Profile) HostConfigDir(agentHome string) string {
 	rel := strings.TrimPrefix(p.ConfigDir(), sandbox.ContainerHome+"/")
@@ -123,21 +129,26 @@ func (p *Profile) Launch() Launch {
 }
 
 // claudeTokenEnv maps a Claude profile's token onto the variables the CLI
-// reads: an OAuth token (sk-ant-oat…) as CLAUDE_CODE_OAUTH_TOKEN, an API key
-// as ANTHROPIC_API_KEY, and a custom endpoint as base URL + bearer token
-// (gateways take a bearer token, Anthropic's API an x-api-key).
+// reads: the profile's TokenEnv when set, else an OAuth token (sk-ant-oat…)
+// as CLAUDE_CODE_OAUTH_TOKEN, an API key as ANTHROPIC_API_KEY, and a custom
+// endpoint's token as a bearer token (ANTHROPIC_AUTH_TOKEN). An endpoint adds
+// its base and usage URL.
 func claudeTokenEnv(p *Profile) map[string]string {
 	env := map[string]string{}
 	if p.Token == "" {
 		return env
 	}
-	switch {
-	case p.AuthMode == AuthEndpoint:
+	if p.AuthMode == AuthEndpoint {
 		env["ANTHROPIC_BASE_URL"] = p.BaseURL
-		env["ANTHROPIC_AUTH_TOKEN"] = p.Token
 		if p.UsageURL != "" {
 			env["CLAUDE_USAGE_URL"] = p.UsageURL
 		}
+	}
+	switch {
+	case p.TokenEnv != "":
+		env[p.TokenEnv] = p.Token
+	case p.AuthMode == AuthEndpoint:
+		env["ANTHROPIC_AUTH_TOKEN"] = p.Token
 	case strings.HasPrefix(p.Token, "sk-ant-oat"):
 		env["CLAUDE_CODE_OAUTH_TOKEN"] = p.Token
 	default:

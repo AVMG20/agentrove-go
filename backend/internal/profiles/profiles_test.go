@@ -82,7 +82,7 @@ func TestCreateValidatesAndStoresTokenEncrypted(t *testing.T) {
 		"creds in url":       {Provider: ptr("claude"), Name: ptr("a"), AuthMode: ptr(AuthEndpoint), BaseURL: ptr("https://u:p@gw"), Token: ptr("t")},
 		"token with space":   {Provider: ptr("claude"), Name: ptr("a"), Token: ptr("a b")},
 		"duplicate name":     {Provider: ptr("claude"), Name: ptr("work")},
-		"built-in name":      {Provider: ptr("claude"), Name: ptr("Default")},
+		"built-in name":      {Provider: ptr("claude"), Name: ptr("server")},
 	} {
 		if _, err := s.Create(ctx, testUser, in); err == nil {
 			t.Errorf("%s: created, want an error", name)
@@ -228,56 +228,258 @@ func TestLaunchIsolatesCredentials(t *testing.T) {
 	}
 }
 
-func TestMigrateEnvVars(t *testing.T) {
-	s, d := newTestService(t)
-	ctx := context.Background()
+func envVars(kv ...string) []models.CustomEnvVar {
+	var out []models.CustomEnvVar
+	for i := 0; i < len(kv); i += 2 {
+		out = append(out, models.CustomEnvVar{Key: kv[i], Value: kv[i+1]})
+	}
+	return out
+}
+
+func seedMigration(t *testing.T, d *db.DB, vars string) {
+	t.Helper()
 	now := db.Now()
-	if _, err := d.Exec(`INSERT INTO user_settings (id, user_id, title_model_id, custom_env_vars, created_at, updated_at) VALUES ('s', ?, 'haiku', ?, ?, ?)`, testUser,
-		`[{"key":"ANTHROPIC_BASE_URL","value":"https://gw.example"},{"key":"ANTHROPIC_AUTH_TOKEN","value":"gw-token"},{"key":"CLAUDE_USAGE_URL","value":"https://admin.example/api/usage"},{"key":"DATABASE_URL","value":"pg://"}]`, now, now); err != nil {
+	if _, err := d.Exec(`INSERT INTO user_settings (id, user_id, title_model_id, custom_env_vars, created_at, updated_at) VALUES ('s', ?, 'haiku', ?, ?, ?)`, testUser, vars, now, now); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := d.Exec(`INSERT INTO workspaces (id, name, user_id, sandbox_id, workspace_path, created_at, updated_at) VALUES ('w', 'w', ?, 'sb', '/tmp', ?, ?)`, testUser, now, now); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := d.Exec(`INSERT INTO chats (id, title, user_id, workspace_id, created_at, updated_at) VALUES ('c', 'c', ?, 'w', ?, ?)`, testUser, now, now); err != nil {
+	if _, err := d.Exec(`INSERT INTO channels (id, user_id, workspace_id, name, created_at, updated_at) VALUES ('ch', ?, 'w', 'team', ?, ?)`, testUser, now, now); err != nil {
 		t.Fatal(err)
 	}
+	for _, c := range [][2]any{{"c", nil}, {"member", "ch"}} {
+		if _, err := d.Exec(`INSERT INTO chats (id, title, user_id, workspace_id, channel_id, created_at, updated_at) VALUES (?, 'c', ?, 'w', ?, ?, ?)`, c[0], testUser, c[1], now, now); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+func storedVars(t *testing.T, d *db.DB) string {
+	t.Helper()
+	var vars string
+	if err := d.QueryRow(`SELECT custom_env_vars FROM user_settings WHERE user_id = ?`, testUser).Scan(&vars); err != nil {
+		t.Fatal(err)
+	}
+	return vars
+}
+
+func TestMigrateEnvVars(t *testing.T) {
+	s, d := newTestService(t)
+	ctx := context.Background()
+	seedMigration(t, d, `[{"key":"ANTHROPIC_BASE_URL","value":"https://gw.example"},{"key":"ANTHROPIC_AUTH_TOKEN","value":"gw-token"},{"key":"CLAUDE_USAGE_URL","value":"https://admin.example/api/usage"},{"key":"DATABASE_URL","value":"pg://"}]`)
 	s.MigrateEnvVars(ctx)
-	s.MigrateEnvVars(ctx) // idempotent
+	s.MigrateEnvVars(ctx) // once per user
 
 	list, err := s.List(ctx, testUser)
 	if err != nil || len(list) != 2 {
 		t.Fatalf("profiles = %v %v", list, err)
 	}
 	p := list[1]
-	if p.AuthMode != AuthEndpoint || p.BaseURL != "https://gw.example" || p.Token != "gw-token" || p.UsageURL != "https://admin.example/api/usage" {
+	if p.AuthMode != AuthEndpoint || p.BaseURL != "https://gw.example" || p.Token != "gw-token" || p.UsageURL != "https://admin.example/api/usage" || p.TokenEnv != "ANTHROPIC_AUTH_TOKEN" {
 		t.Fatalf("migrated profile = %+v", p)
 	}
-	if p.ConfigDir() != "/home/user/claude" {
+	if p.ConfigDir() != "/home/user/claude" || !p.SharesBuiltinSessions() {
 		t.Fatalf("migrated profile must keep ~/claude for its chats' sessions, got %s", p.ConfigDir())
 	}
 	if s.DefaultID(ctx, testUser) != p.ID {
 		t.Fatal("migrated profile is not the default")
 	}
-	var vars, chatProfile string
-	if err := d.QueryRow(`SELECT custom_env_vars FROM user_settings WHERE user_id = ?`, testUser).Scan(&vars); err != nil {
-		t.Fatal(err)
-	}
-	if vars != `[{"key":"DATABASE_URL","value":"pg://"}]` {
+	if vars := storedVars(t, d); vars != `[{"key":"DATABASE_URL","value":"pg://"}]` {
 		t.Fatalf("env vars left = %s", vars)
 	}
-	if err := d.QueryRow(`SELECT profile_id FROM chats WHERE id = 'c'`).Scan(&chatProfile); err != nil || chatProfile != p.ID {
-		t.Fatalf("chat profile = %q %v", chatProfile, err)
+	// Every chat ran on these vars, channel members too.
+	for _, id := range []string{"c", "member"} {
+		var chatProfile string
+		if err := d.QueryRow(`SELECT profile_id FROM chats WHERE id = ?`, id).Scan(&chatProfile); err != nil || chatProfile != p.ID {
+			t.Fatalf("chat %s profile = %q %v", id, chatProfile, err)
+		}
 	}
 }
 
-func TestProfileFromEnvPrefersOAuthToken(t *testing.T) {
-	p := profileFromEnv(testUser, []models.CustomEnvVar{{Key: "ANTHROPIC_API_KEY", Value: "key"}, {Key: "CLAUDE_CODE_OAUTH_TOKEN", Value: "sk-ant-oat01-x"}})
-	if p == nil || p.AuthMode != AuthToken || p.Token != "sk-ant-oat01-x" {
-		t.Fatalf("profile = %+v", p)
+// A setup the profile can't express keeps every var and the built-in
+// profile, and isn't looked at again.
+func TestMigrateEnvVarsKeepsWhatNoProfileTakes(t *testing.T) {
+	s, d := newTestService(t)
+	s.cfg.AgentEnv = map[string]string{"ANTHROPIC_BASE_URL": "https://gw.example", "ANTHROPIC_AUTH_TOKEN": "server-token"}
+	ctx := context.Background()
+	vars := `[{"key":"CLAUDE_USAGE_URL","value":"https://admin.example/api/usage"}]`
+	seedMigration(t, d, vars)
+	s.MigrateEnvVars(ctx)
+	if list, _ := s.List(ctx, testUser); len(list) != 1 {
+		t.Fatalf("no profile expected, got %v", list)
 	}
-	if profileFromEnv(testUser, []models.CustomEnvVar{{Key: "CLAUDE_USAGE_URL", Value: "https://x"}}) != nil {
-		t.Fatal("no credentials must make no profile")
+	if got := storedVars(t, d); got != vars {
+		t.Fatalf("env vars = %s, want them kept", got)
+	}
+	var migrated int
+	if err := d.QueryRow(`SELECT profiles_env_migrated FROM user_settings WHERE user_id = ?`, testUser).Scan(&migrated); err != nil || migrated != 1 {
+		t.Fatalf("migrated flag = %d %v", migrated, err)
+	}
+}
+
+func TestPlanEnvMigration(t *testing.T) {
+	prod := map[string]string{"ANTHROPIC_BASE_URL": "https://gw.example", "ANTHROPIC_AUTH_TOKEN": "server-token", "CLAUDE_CODE_OAUTH_TOKEN": "sk-ant-oat01-server"}
+	type want struct {
+		mode, base, usage, token, tokenEnv string
+		taken                              []string
+	}
+	for name, tc := range map[string]struct {
+		global map[string]string
+		vars   []models.CustomEnvVar
+		want   *want
+	}{
+		// The server's gateway with the user's own bearer token.
+		"server base, user bearer": {prod, envVars("ANTHROPIC_AUTH_TOKEN", "mine"),
+			&want{AuthEndpoint, "https://gw.example", "", "mine", "ANTHROPIC_AUTH_TOKEN", []string{"ANTHROPIC_AUTH_TOKEN"}}},
+		// Only URLs of the user's: the server's credential still ran.
+		"user base only":  {prod, envVars("ANTHROPIC_BASE_URL", "https://other.example"), nil},
+		"user usage only": {prod, envVars("CLAUDE_USAGE_URL", "https://u.example"), nil},
+		// Shadowed by the server's bearer token: nothing changed for the CLI.
+		"user oauth under server bearer": {prod, envVars("CLAUDE_CODE_OAUTH_TOKEN", "sk-ant-oat01-mine"), nil},
+		// x-api-key stays x-api-key at a gateway.
+		"base and api key": {nil, envVars("ANTHROPIC_BASE_URL", "https://gw.example/", "ANTHROPIC_API_KEY", "key"),
+			&want{AuthEndpoint, "https://gw.example", "", "key", "ANTHROPIC_API_KEY", []string{"ANTHROPIC_API_KEY", "ANTHROPIC_BASE_URL"}}},
+		"oauth token": {nil, envVars("CLAUDE_CODE_OAUTH_TOKEN", "sk-ant-oat01-x"),
+			&want{AuthToken, "", "", "sk-ant-oat01-x", "CLAUDE_CODE_OAUTH_TOKEN", []string{"CLAUDE_CODE_OAUTH_TOKEN"}}},
+		// The CLI's precedence picks the API key; the OAuth token stays.
+		"api key over oauth": {nil, envVars("ANTHROPIC_API_KEY", "key", "CLAUDE_CODE_OAUTH_TOKEN", "sk-ant-oat01-x"),
+			&want{AuthToken, "", "", "key", "ANTHROPIC_API_KEY", []string{"ANTHROPIC_API_KEY"}}},
+		"official base": {nil, envVars("ANTHROPIC_BASE_URL", "https://api.anthropic.com", "ANTHROPIC_API_KEY", "key"),
+			&want{AuthToken, "", "", "key", "ANTHROPIC_API_KEY", []string{"ANTHROPIC_API_KEY"}}},
+		"user gateway and usage": {nil, envVars("ANTHROPIC_BASE_URL", "https://gw.example", "ANTHROPIC_AUTH_TOKEN", "t", "CLAUDE_USAGE_URL", "https://u.example/api/usage"),
+			&want{AuthEndpoint, "https://gw.example", "https://u.example/api/usage", "t", "ANTHROPIC_AUTH_TOKEN", []string{"ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_BASE_URL", "CLAUDE_USAGE_URL"}}},
+		"bedrock":     {map[string]string{"CLAUDE_CODE_USE_BEDROCK": "1"}, envVars("ANTHROPIC_API_KEY", "key"), nil},
+		"invalid url": {nil, envVars("ANTHROPIC_BASE_URL", "gw.example", "ANTHROPIC_API_KEY", "key"), nil},
+	} {
+		t.Run(name, func(t *testing.T) {
+			plan := planEnvMigration(testUser, tc.global, tc.vars)
+			if tc.want == nil {
+				if plan.profile != nil || len(plan.taken) != 0 {
+					t.Fatalf("expected no profile, got %+v (taken %v)", plan.profile, plan.taken)
+				}
+				return
+			}
+			p := plan.profile
+			if p == nil {
+				t.Fatal("expected a profile")
+			}
+			if p.AuthMode != tc.want.mode || p.BaseURL != tc.want.base || p.UsageURL != tc.want.usage || p.Token != tc.want.token || p.TokenEnv != tc.want.tokenEnv {
+				t.Fatalf("profile = %+v", p)
+			}
+			var taken []string
+			for k := range plan.taken {
+				taken = append(taken, k)
+			}
+			slices.Sort(taken)
+			if !reflect.DeepEqual(taken, tc.want.taken) {
+				t.Fatalf("taken = %v, want %v", taken, tc.want.taken)
+			}
+		})
+	}
+}
+
+// The migrated profile passes its token the way the env vars did.
+func TestTokenEnvKeepsTheVariable(t *testing.T) {
+	gw := &Profile{ID: "p", Provider: models.ProviderClaude, AuthMode: AuthEndpoint, BaseURL: "https://gw", Token: "key", TokenEnv: "ANTHROPIC_API_KEY"}
+	env := gw.Launch().Env
+	if env["ANTHROPIC_API_KEY"] != "key" || env["ANTHROPIC_AUTH_TOKEN"] != "" || env["ANTHROPIC_BASE_URL"] != "https://gw" {
+		t.Fatalf("endpoint with an api key = %v", env)
+	}
+	bearer := &Profile{ID: "p", Provider: models.ProviderClaude, AuthMode: AuthToken, Token: "t", TokenEnv: "ANTHROPIC_AUTH_TOKEN"}
+	if env := bearer.ApplyEnv(map[string]string{"ANTHROPIC_BASE_URL": "https://gw"}); env["ANTHROPIC_AUTH_TOKEN"] != "t" || env["ANTHROPIC_API_KEY"] != "" || env["ANTHROPIC_BASE_URL"] != "" {
+		t.Fatalf("bearer token = %v", env)
+	}
+}
+
+func TestUpdateTokenEnv(t *testing.T) {
+	s, _ := newTestService(t)
+	ctx := context.Background()
+	p, err := s.Create(ctx, testUser, Input{Provider: ptr("claude"), Name: ptr("GW"), AuthMode: ptr(AuthEndpoint), BaseURL: ptr("https://gw"), Token: ptr("t"), TokenEnv: ptr("ANTHROPIC_API_KEY")})
+	if err != nil || p.TokenEnv != "ANTHROPIC_API_KEY" {
+		t.Fatalf("create = %+v %v", p, err)
+	}
+	if _, err := s.Update(ctx, testUser, p.ID, Input{TokenEnv: ptr("PATH")}); status(err) != 422 {
+		t.Fatalf("unknown token env: %v", err)
+	}
+	// Switching mode drops the old mode's choice.
+	p, err = s.Update(ctx, testUser, p.ID, Input{AuthMode: ptr(AuthToken)})
+	if err != nil || p.TokenEnv != "" {
+		t.Fatalf("after mode switch = %+v %v", p, err)
+	}
+}
+
+// Deleting a profile on ~/claude (the migrated one) hands its chats back to
+// the built-in profile, which resumes the same sessions; others' chats keep
+// their (now deleted) profile.
+func TestDeleteMovesSharedSessionChatsToBuiltin(t *testing.T) {
+	s, d := newTestService(t)
+	ctx := context.Background()
+	seedMigration(t, d, `[{"key":"CLAUDE_CODE_OAUTH_TOKEN","value":"sk-ant-oat01-mine"}]`)
+	s.MigrateEnvVars(ctx)
+	list, _ := s.List(ctx, testUser)
+	if len(list) != 2 {
+		t.Fatalf("profiles = %v", list)
+	}
+	migrated := list[1]
+	if err := s.Delete(ctx, testUser, migrated.ID); err != nil {
+		t.Fatal(err)
+	}
+	for _, id := range []string{"c", "member"} {
+		var profileID, provider *string
+		if err := d.QueryRow(`SELECT profile_id, provider FROM chats WHERE id = ?`, id).Scan(&profileID, &provider); err != nil {
+			t.Fatal(err)
+		}
+		if profileID != nil || provider != nil {
+			t.Fatalf("chat %s still on the deleted profile: %v", id, *profileID)
+		}
+	}
+
+	own, err := s.Create(ctx, testUser, Input{Provider: ptr("claude"), Name: ptr("Work"), Token: ptr("sk-ant-oat01-w")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if own.SharesBuiltinSessions() {
+		t.Fatal("a new profile has its own config dir")
+	}
+	if _, err := d.Exec(`UPDATE chats SET profile_id = ?, provider = 'claude' WHERE id = 'c'`, own.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Delete(ctx, testUser, own.ID); err != nil {
+		t.Fatal(err)
+	}
+	var profileID string
+	if err := d.QueryRow(`SELECT profile_id FROM chats WHERE id = 'c'`).Scan(&profileID); err != nil || profileID != own.ID {
+		t.Fatalf("own-dir profile chat = %q %v", profileID, err)
+	}
+}
+
+// The built-in profile's id is the same for everyone: one user's sign-in
+// must not replace, cancel or show another's.
+func TestLoginsAreKeyedByUser(t *testing.T) {
+	ls := newLogins()
+	a, b := Builtin("ua"), Builtin("ub")
+	cancelled := map[string]bool{}
+	session := func(p *Profile) *loginSession {
+		return &loginSession{userID: p.UserID, cancel: func() { cancelled[p.UserID] = true }, state: LoginState{ProfileID: p.ID, Status: LoginRunning}}
+	}
+	ls.put(a, session(a))
+	ls.put(b, session(b))
+	ls.cancel(a)
+	if !cancelled["ua"] || cancelled["ub"] {
+		t.Fatalf("cancelled = %v", cancelled)
+	}
+	if l := ls.get(b); l == nil || l.snapshot().Status != LoginRunning {
+		t.Fatal("user b's sign-in was touched by user a")
+	}
+	if l := ls.get(a); l == nil || l.snapshot().Status != LoginCancelled {
+		t.Fatal("user a's sign-in should be cancelled")
+	}
+	// A profile row is only ever looked up for its owner.
+	other := &Profile{ID: "p1", UserID: "ua"}
+	ls.put(other, session(other))
+	if ls.get(&Profile{ID: "p1", UserID: "ub"}) != nil {
+		t.Fatal("another user's sign-in is visible")
 	}
 }
 

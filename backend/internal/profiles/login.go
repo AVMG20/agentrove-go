@@ -65,6 +65,12 @@ func (l *loginSession) snapshot() LoginState {
 	return l.state
 }
 
+func (l *loginSession) finishedAt() time.Time {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.finished
+}
+
 // finish settles the session once; later calls are ignored.
 func (l *loginSession) finish(status, errText string) bool {
 	l.mu.Lock()
@@ -76,26 +82,42 @@ func (l *loginSession) finish(status, errText string) bool {
 	return true
 }
 
+// logins holds sign-ins by loginKey: the built-in profile's id is the same
+// for every user, so the id alone would let one user's sign-in replace (and
+// cancel) another's.
 type logins struct {
 	mu   sync.Mutex
 	byID map[string]*loginSession
 }
 
+func loginKey(p *Profile) string { return p.UserID + ":" + p.ID }
+
 func newLogins() *logins { return &logins{byID: map[string]*loginSession{}} }
 
-func (ls *logins) get(id string) *loginSession {
+// get returns p's sign-in, checking it belongs to p's user.
+func (ls *logins) get(p *Profile) *loginSession {
 	ls.mu.Lock()
 	defer ls.mu.Unlock()
 	for k, l := range ls.byID {
-		if l.state.Status != LoginRunning && time.Since(l.finished) > loginKeep {
+		if l.snapshot().Status != LoginRunning && time.Since(l.finishedAt()) > loginKeep {
 			delete(ls.byID, k)
 		}
 	}
-	return ls.byID[id]
+	l := ls.byID[loginKey(p)]
+	if l == nil || l.userID != p.UserID {
+		return nil
+	}
+	return l
 }
 
-func (ls *logins) cancel(id string) {
-	if l := ls.get(id); l != nil {
+func (ls *logins) put(p *Profile, l *loginSession) {
+	ls.mu.Lock()
+	defer ls.mu.Unlock()
+	ls.byID[loginKey(p)] = l
+}
+
+func (ls *logins) cancel(p *Profile) {
+	if l := ls.get(p); l != nil {
 		l.finish(LoginCancelled, "")
 		l.cancel()
 	}
@@ -132,7 +154,7 @@ func (s *Service) StartLogin(ctx context.Context, p *Profile) (LoginState, error
 	if err != nil {
 		return LoginState{}, err
 	}
-	s.logins.cancel(p.ID)
+	s.logins.cancel(p)
 	sb, err := s.sandboxes.ForUser(p.UserID)
 	if err != nil {
 		return LoginState{}, httpx.Errorf(503, "%v", err)
@@ -158,9 +180,7 @@ func (s *Service) StartLogin(ctx context.Context, p *Profile) (LoginState, error
 		return LoginState{}, httpx.Errorf(503, "Could not start the sign-in in your box: %v", err)
 	}
 	l := &loginSession{userID: p.UserID, pty: pty, cancel: cancel, state: LoginState{ProfileID: p.ID, Status: LoginRunning}}
-	s.logins.mu.Lock()
-	s.logins.byID[p.ID] = l
-	s.logins.mu.Unlock()
+	s.logins.put(p, l)
 
 	go func() {
 		<-runCtx.Done()
@@ -260,6 +280,7 @@ func (s *Service) saveLoginToken(p *Profile, token string) error {
 	}
 	cur.Token = token
 	cur.AuthMode = AuthToken
+	cur.TokenEnv = "" // an OAuth token: CLAUDE_CODE_OAUTH_TOKEN
 	return s.save(ctx, cur)
 }
 
@@ -282,8 +303,8 @@ func (s *Service) loginExited(p *Profile, l *loginSession, bin string, err error
 
 // LoginState returns the current or last sign-in of a profile.
 func (s *Service) LoginState(p *Profile) (LoginState, bool) {
-	l := s.logins.get(p.ID)
-	if l == nil || l.userID != p.UserID {
+	l := s.logins.get(p)
+	if l == nil {
 		return LoginState{}, false
 	}
 	return l.snapshot(), true
@@ -291,8 +312,8 @@ func (s *Service) LoginState(p *Profile) (LoginState, bool) {
 
 // LoginInput types text (a pasted code, a menu choice) into the sign-in.
 func (s *Service) LoginInput(p *Profile, text string) error {
-	l := s.logins.get(p.ID)
-	if l == nil || l.userID != p.UserID || l.snapshot().Status != LoginRunning {
+	l := s.logins.get(p)
+	if l == nil || l.snapshot().Status != LoginRunning {
 		return httpx.NotFound("No sign-in is running for this profile")
 	}
 	if len(text) > 4096 || strings.ContainsAny(text, "\x03\x04\x1a") {
@@ -304,9 +325,7 @@ func (s *Service) LoginInput(p *Profile, text string) error {
 
 // CancelLogin stops a running sign-in.
 func (s *Service) CancelLogin(p *Profile) {
-	if l := s.logins.get(p.ID); l != nil && l.userID == p.UserID {
-		s.logins.cancel(p.ID)
-	}
+	s.logins.cancel(p)
 }
 
 // cleanTerminal turns raw PTY output into plain text lines.

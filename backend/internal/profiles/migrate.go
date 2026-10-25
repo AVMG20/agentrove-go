@@ -25,12 +25,16 @@ var managedEnv = map[string]bool{
 // rather than an env var.
 func ManagedEnvKey(key string) bool { return managedEnv[strings.ToUpper(strings.TrimSpace(key))] }
 
-// MigrateEnvVars turns each user's Claude env vars (from before profiles)
-// into a Claude profile, made the default if the user had none, and drops
-// them from the env vars. It runs at startup and is a no-op once done:
-// nobody can add those vars any more.
+// MigrateEnvVars moves each user's Claude env vars (from before profiles)
+// into a Claude profile, made the default if the user had none, with all the
+// user's chats moved onto it. The profile reproduces what the CLI ran with:
+// the deployment's env (AGENT_ENV) overlaid with the user's vars. A user
+// whose own vars don't decide the credential keeps the built-in profile and
+// every var as it was; vars the profile didn't take are kept too. It runs at
+// startup, once per user (user_settings.profiles_env_migrated).
 func (s *Service) MigrateEnvVars(ctx context.Context) {
-	rows, err := s.db.QueryContext(ctx, `SELECT user_id, custom_env_vars, default_profile_id FROM user_settings WHERE custom_env_vars IS NOT NULL AND custom_env_vars != ''`)
+	rows, err := s.db.QueryContext(ctx, `SELECT user_id, custom_env_vars, default_profile_id FROM user_settings
+		WHERE profiles_env_migrated = 0 AND custom_env_vars IS NOT NULL AND custom_env_vars != ''`)
 	if err != nil {
 		slog.Warn("profiles: list env vars to migrate", "err", err)
 		return
@@ -60,55 +64,105 @@ func (s *Service) MigrateEnvVars(ctx context.Context) {
 		}
 	}
 	rows.Close()
+	global := map[string]string{}
+	if s.cfg != nil {
+		global = s.cfg.AgentGlobalEnv()
+	}
 	for _, p := range todo {
-		if err := s.migrateUser(ctx, p.userID, p.vars, p.hasDefault); err != nil {
+		if err := s.migrateUser(ctx, p.userID, global, p.vars, p.hasDefault); err != nil {
 			slog.Warn("profiles: migrate Claude env vars", "user", p.userID, "err", err)
 		}
 	}
 }
 
-// profileFromEnv builds the Claude profile an env-var setup described, or
-// nil when it holds no credentials.
-func profileFromEnv(userID string, vars []models.CustomEnvVar) *Profile {
-	env := map[string]string{}
-	for _, v := range vars {
-		env[strings.ToUpper(strings.TrimSpace(v.Key))] = strings.TrimSpace(v.Value)
-	}
-	first := func(keys ...string) string {
-		for _, k := range keys {
-			if env[k] != "" {
-				return env[k]
-			}
-		}
-		return ""
-	}
-	// ~/claude, like the built-in profile: chats moved onto this profile keep
-	// resuming the sessions stored there.
-	p := &Profile{UserID: userID, Provider: models.ProviderClaude, Name: "Claude (from env vars)", configDir: "claude"}
-	if base := strings.TrimRight(env["ANTHROPIC_BASE_URL"], "/"); base != "" && validURL(base, "", true) == nil {
-		p.AuthMode, p.BaseURL = AuthEndpoint, base
-		p.Token = first("ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_API_KEY", "CLAUDE_CODE_OAUTH_TOKEN")
-		if u := env["CLAUDE_USAGE_URL"]; validURL(u, "", false) == nil {
-			p.UsageURL = u
-		}
-	} else {
-		p.AuthMode = AuthToken
-		p.Token = first("CLAUDE_CODE_OAUTH_TOKEN", "ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN")
-	}
-	if p.Token == "" {
-		return nil
-	}
-	return p
+// claudeCredentialPrecedence is the order Claude Code picks a credential from
+// its env in: a bearer token, then an API key, then an OAuth token.
+var claudeCredentialPrecedence = []string{"ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_API_KEY", "CLAUDE_CODE_OAUTH_TOKEN"}
+
+const officialAPI = "https://api.anthropic.com"
+
+// envMigration is what a user's env vars become: a profile (nil: none) and
+// the user vars it took over, which leave the env vars.
+type envMigration struct {
+	profile *Profile
+	taken   map[string]bool
 }
 
-func (s *Service) migrateUser(ctx context.Context, userID string, vars []models.CustomEnvVar, hasDefault bool) error {
+// planEnvMigration works out the profile the user's env setup amounted to,
+// from the env the CLI saw (global overlaid with the user's vars). There is
+// one only when the credential the CLI used is the user's own and a profile
+// can hold the rest (an http(s) base URL, no Bedrock/Vertex): otherwise the
+// built-in profile, which runs on that same env, stays the right one.
+func planEnvMigration(userID string, global map[string]string, vars []models.CustomEnvVar) envMigration {
+	user := map[string]string{}
+	for _, v := range vars {
+		if k := strings.TrimSpace(v.Key); k != "" {
+			user[k] = strings.TrimSpace(v.Value)
+		}
+	}
+	eff := map[string]string{}
+	for k, v := range global {
+		eff[k] = strings.TrimSpace(v)
+	}
+	for k, v := range user {
+		eff[k] = v
+	}
+	none := envMigration{}
+	for _, k := range []string{"CLAUDE_CODE_USE_BEDROCK", "CLAUDE_CODE_USE_VERTEX"} {
+		if v := eff[k]; v != "" && v != "0" && !strings.EqualFold(v, "false") {
+			return none
+		}
+	}
+	tokenEnv := ""
+	for _, k := range claudeCredentialPrecedence {
+		if eff[k] != "" {
+			tokenEnv = k
+			break
+		}
+	}
+	if tokenEnv == "" || user[tokenEnv] == "" {
+		// No credential, or the deployment's wins: the user's vars didn't
+		// choose the account.
+		return none
+	}
+	_, userBase := user["ANTHROPIC_BASE_URL"]
+	_, userUsage := user["CLAUDE_USAGE_URL"]
+	// ~/claude, like the built-in profile: chats moved onto this profile keep
+	// resuming the sessions stored there.
+	p := &Profile{UserID: userID, Provider: models.ProviderClaude, Name: "Claude (from env vars)", configDir: "claude",
+		AuthMode: AuthToken, Token: eff[tokenEnv], TokenEnv: tokenEnv}
+	if len(p.Token) > maxTokenLen || strings.ContainsAny(p.Token, " \t\r\n") {
+		return none
+	}
+	taken := map[string]bool{tokenEnv: true}
+	base := strings.TrimRight(eff["ANTHROPIC_BASE_URL"], "/")
+	if base != "" && base != officialAPI {
+		if validURL(base, "", true) != nil {
+			return none // a profile can't hold it; keep running as before
+		}
+		p.AuthMode, p.BaseURL = AuthEndpoint, base
+		if userBase {
+			taken["ANTHROPIC_BASE_URL"] = true
+		}
+		if u := eff["CLAUDE_USAGE_URL"]; u != "" && validURL(u, "", false) == nil {
+			p.UsageURL = u
+			if userUsage {
+				taken["CLAUDE_USAGE_URL"] = true
+			}
+		}
+	}
+	return envMigration{profile: p, taken: taken}
+}
+
+func (s *Service) migrateUser(ctx context.Context, userID string, global map[string]string, vars []models.CustomEnvVar, hasDefault bool) error {
+	plan := planEnvMigration(userID, global, vars)
 	kept := make([]models.CustomEnvVar, 0, len(vars))
 	for _, v := range vars {
-		if !ManagedEnvKey(v.Key) {
+		if !plan.taken[strings.TrimSpace(v.Key)] {
 			kept = append(kept, v)
 		}
 	}
-	p := profileFromEnv(userID, vars)
+	p := plan.profile
 	return s.db.Tx(ctx, func(tx *sql.Tx) error {
 		now := db.Now()
 		if p != nil {
@@ -117,12 +171,13 @@ func (s *Service) migrateUser(ctx context.Context, userID string, vars []models.
 				return err
 			}
 			p.ID = uuid.NewString()
-			if _, err := tx.ExecContext(ctx, `INSERT INTO agent_profiles (`+profileColumns+`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-				p.ID, userID, p.Provider, p.Name, p.AuthMode, p.BaseURL, p.UsageURL, enc, p.configDir, now, now); err != nil {
+			if _, err := tx.ExecContext(ctx, `INSERT INTO agent_profiles (`+profileColumns+`) VALUES (`+profilePlaceholders+`)`,
+				p.ID, userID, p.Provider, p.Name, p.AuthMode, p.BaseURL, p.UsageURL, enc, p.TokenEnv, p.configDir, now, now); err != nil {
 				return err
 			}
-			// The user's chats ran on these vars: keep them on the same account.
-			if _, err := tx.ExecContext(ctx, `UPDATE chats SET profile_id = ?, provider = ? WHERE user_id = ? AND profile_id IS NULL AND channel_id IS NULL`,
+			// The user's chats ran on these vars, channel members included:
+			// keep them all on the same account.
+			if _, err := tx.ExecContext(ctx, `UPDATE chats SET profile_id = ?, provider = ? WHERE user_id = ? AND profile_id IS NULL`,
 				p.ID, p.Provider, userID); err != nil {
 				return err
 			}
@@ -133,9 +188,9 @@ func (s *Service) migrateUser(ctx context.Context, userID string, vars []models.
 			}
 		}
 		b, _ := json.Marshal(kept)
-		_, err := tx.ExecContext(ctx, `UPDATE user_settings SET custom_env_vars = ?, updated_at = ? WHERE user_id = ?`, string(b), now, userID)
+		_, err := tx.ExecContext(ctx, `UPDATE user_settings SET custom_env_vars = ?, profiles_env_migrated = 1, updated_at = ? WHERE user_id = ?`, string(b), now, userID)
 		if err == nil {
-			slog.Info("profiles: moved Claude env vars into a profile", "user", userID, "profile", p != nil)
+			slog.Info("profiles: looked at Claude env vars", "user", userID, "profile", p != nil, "moved_vars", len(plan.taken))
 		}
 		return err
 	})

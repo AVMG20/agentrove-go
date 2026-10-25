@@ -36,18 +36,23 @@ func (m *Module) Routes(mux *http.ServeMux) {
 // View is a profile as the client sees it: the token is never sent, only
 // whether one is set and its last characters.
 type View struct {
-	ID        string               `json:"id"`
-	Provider  string               `json:"provider"`
-	Name      string               `json:"name"`
-	AuthMode  string               `json:"auth_mode"`
-	BaseURL   string               `json:"base_url"`
-	UsageURL  string               `json:"usage_url"`
-	HasToken  bool                 `json:"has_token"`
-	TokenHint string               `json:"token_hint"`
-	IsDefault bool                 `json:"is_default"`
-	Builtin   bool                 `json:"builtin"`
-	Login     *profiles.LoginState `json:"login"`
-	CreatedAt *db.Time             `json:"created_at"`
+	ID        string `json:"id"`
+	Provider  string `json:"provider"`
+	Name      string `json:"name"`
+	AuthMode  string `json:"auth_mode"`
+	BaseURL   string `json:"base_url"`
+	UsageURL  string `json:"usage_url"`
+	HasToken  bool   `json:"has_token"`
+	TokenHint string `json:"token_hint"`
+	// TokenEnv is the variable a Claude token is passed in ("" = by mode).
+	TokenEnv string `json:"token_env"`
+	// SharesServerSessions: a Claude profile on ~/claude (migrated from env
+	// vars); deleting it moves its threads to the built-in profile.
+	SharesServerSessions bool                 `json:"shares_server_sessions"`
+	IsDefault            bool                 `json:"is_default"`
+	Builtin              bool                 `json:"builtin"`
+	Login                *profiles.LoginState `json:"login"`
+	CreatedAt            *db.Time             `json:"created_at"`
 	profiles.Status
 }
 
@@ -60,7 +65,8 @@ func tokenHint(tok string) string {
 
 func (m *Module) view(ctx context.Context, p *profiles.Profile, defaultID string, env map[string]string) View {
 	v := View{ID: p.ID, Provider: p.Provider, Name: p.Name, AuthMode: p.AuthMode, BaseURL: p.BaseURL, UsageURL: p.UsageURL,
-		HasToken: p.Token != "", TokenHint: tokenHint(p.Token), IsDefault: p.ID == defaultID, Builtin: p.Builtin,
+		HasToken: p.Token != "", TokenHint: tokenHint(p.Token), TokenEnv: p.TokenEnv, SharesServerSessions: !p.Builtin && p.SharesBuiltinSessions(),
+		IsDefault: p.ID == defaultID, Builtin: p.Builtin,
 		Status: m.a.Profiles.Status(ctx, p, env)}
 	if !p.Builtin {
 		v.CreatedAt = &p.CreatedAt
