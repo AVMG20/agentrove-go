@@ -21,7 +21,7 @@ cp .env.example .env               # set SECRET_KEY (openssl rand -hex 32)
 docker compose up --build
 ```
 
-Open http://localhost:8080 (`APP_PORT`). The frontend is embedded into the Go binary, so one container (and one executable) serves the whole app. The first account you register becomes the superuser. Sign the built-in "Default" Claude account in under Settings → Providers (or run `claude` once in a terminal), set `CLAUDE_CODE_OAUTH_TOKEN` in `.env` for every user, or add your own accounts there. The sandbox image ships `claude` and `codex`; Antigravity's `agy` is installed only when you pass `--build-arg AGY_URL=<download URL of the agy linux binary or archive>` to `build.sh` (or set `AGY_URL` for the production compose file), or install it yourself into the box's `~/.local/bin` (until then its accounts show "CLI not found").
+Open http://localhost:8080 (`APP_PORT`). The frontend is embedded into the Go binary, so one container (and one executable) serves the whole app. The first account you register becomes the superuser. Sign the built-in "Server" Claude account in under Settings → Providers (or run `claude` once in a terminal), set `CLAUDE_CODE_OAUTH_TOKEN` in `.env` for every user, or add your own accounts there. The sandbox image ships `claude` and `codex`; Antigravity's `agy` is installed only when you pass `--build-arg AGY_URL=<download URL of the agy linux binary or archive>` to `build.sh` (or set `AGY_URL` for the production compose file), or install it yourself into the box's `~/.local/bin` (until then its accounts show "CLI not found").
 
 For production (e.g. Coolify), use `docker-compose-production.yml`. It builds the sandbox image and the app image (point the domain at `api`, port 8080) and keeps data in `/data/agentrove-go/storage`. Set `SECRET_KEY` and `APP_URL`.
 
@@ -33,7 +33,7 @@ Box networking: each user's box gets its own bridge network. The API firewalls b
 
 The chat input of a Claude thread shows the 5-hour and weekly usage of the thread's Claude account. For a Claude token (or the built-in account without a base URL), it reads Anthropic's OAuth usage endpoint with the OAuth `sk-ant-oat…` token; plain API keys have no usage meter. For a custom endpoint (e.g. `https://claude.bitsec.dev`), it reads `<base URL>/api/usage` with the endpoint's token, or the account's usage URL if set (e.g. `https://claude-admin.bitsec.dev/api/usage` for bitsec). The built-in account follows `ANTHROPIC_BASE_URL` / `CLAUDE_USAGE_URL` in `AGENT_ENV`. URLs set in your own accounts must resolve to a public address.
 
-Claude credentials, base URL and usage URL are no longer environment variables in Settings: on upgrade, existing ones (`CLAUDE_CODE_OAUTH_TOKEN`, `ANTHROPIC_API_KEY`, `ANTHROPIC_BASE_URL`, `ANTHROPIC_AUTH_TOKEN`, `CLAUDE_USAGE_URL`) become a "Claude (from env vars)" account, made the default if you had none.
+Claude credentials, base URL and usage URL are no longer environment variables in Settings: on upgrade, existing ones (`CLAUDE_CODE_OAUTH_TOKEN`, `ANTHROPIC_API_KEY`, `ANTHROPIC_BASE_URL`, `ANTHROPIC_AUTH_TOKEN`, `CLAUDE_USAGE_URL`) become a "Claude (from env vars)" account (made the default if you had none, with your threads moved onto it) when the credential Claude used was your own; the account sends the token in the same variable. Vars it didn't take, and setups where the server's credential was the one in use, stay as they were on the built-in account.
 
 ## Run locally without Compose
 

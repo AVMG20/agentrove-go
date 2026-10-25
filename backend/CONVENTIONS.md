@@ -178,14 +178,16 @@ A profile is one agent account (`agent_profiles`): a provider (`claude`,
 `codex`, `antigravity`), a name, an auth mode and an optional token, base URL
 and usage URL. Tokens are encrypted with `auth.Keys` and never leave the
 server (the API returns `has_token` and a 4-char `token_hint`). Every user
-also has the virtual `builtin` profile: Claude on the server's env
-credentials (`AGENT_ENV`/`.env`) or the `claude` login in `~/claude`, as
-before profiles. `user_settings.default_profile_id` is the default (NULL =
+also has the virtual `builtin` profile ("Server"): Claude on the server's
+env credentials (`AGENT_ENV`/`.env`) plus the user's env vars, or the
+`claude` login in `~/claude`, as before profiles. `user_settings.default_profile_id` is the default (NULL =
 builtin).
 
 - **Auth modes.** Claude: `token` (an OAuth `sk-ant-oat…` token, else an API
   key; "Sign in" runs `claude setup-token` in the box and stores the token it
-  prints) or `endpoint` (base URL + auth token + optional usage URL). Codex
+  prints) or `endpoint` (base URL + token + optional usage URL). `token_env`
+  names the variable the token goes in (`""` = by mode: bearer
+  `ANTHROPIC_AUTH_TOKEN` for an endpoint). Codex
   and Antigravity: `login` (the CLI's own sign-in, run in a PTY in the box and
   surfaced in Settings → Providers: `codex login --device-auth`, `agy`) or
   `token` (`CODEX_API_KEY` / `GEMINI_API_KEY`).
@@ -196,24 +198,34 @@ builtin).
   server's or another provider's credentials never leak in) and a setup
   script that links the shared bits in: `~/claude/{skills,agents,commands,
   CLAUDE.md}` for Claude, `.gitconfig`/`.ssh`/`.config/gh` for agy's HOME.
-  Host-side reads of those dirs (status) go through `os.Root` +
-  `sandbox.ReadRegular`: the box can write them.
+  Host-side reads of those dirs (status, one-shot login staging) go through
+  an `os.Root` opened at the agent home (`root.OpenRoot` for the profile dir)
+  + `sandbox.ReadRegular`: the box can replace anything below its home with a
+  symlink. Sign-ins are keyed by user + profile id (`builtin` is everyone's).
 - **Chats.** `chats.profile_id`/`provider` (NULL = builtin/claude) are set at
   creation (the request's profile, else the default) and fixed once the chat
   has messages, a session or a running turn (`PATCH` → 409); the composer
-  then opens a new thread instead. A deleted profile's chats fail with a
+  then opens a new thread instead. The switch holds the chat's turn slot and
+  its UPDATE re-checks emptiness. Deleting a profile on `~/claude` moves its
+  chats to builtin (same sessions); other deleted profiles' chats fail with a
   message to start a new thread. Claude turns keep the long-lived driver;
   Codex (`codex exec --json`, `exec resume <thread>`) and agy (`agy -p …
   --output-format stream-json --conversation <id>`) run one process per turn,
   translated by `internal/codex` / `internal/antigravity` into the same
   events, with the thread/conversation id stored as the session id. A
   missing CLI exits 127 → "CLI not found".
-- **Env vars.** `profiles.ManagedEnvKey` names (Claude credentials, base and
-  usage URL, config dirs) are refused in Settings → Environment Variables.
-  `MigrateEnvVars` (startup, idempotent) turned pre-profile ones into a
-  "Claude (from env vars)" profile on `~/claude` (so sessions still resume),
-  made it the default if none was set, and moved the user's existing
-  (non-channel) chats onto it.
+- **Env vars.** New or changed `profiles.ManagedEnvKey` names (Claude
+  credentials, base and usage URL, config dirs) are refused in Settings →
+  Environment Variables. `MigrateEnvVars` (startup, once per user via
+  `user_settings.profiles_env_migrated`) reads the env the CLI saw
+  (`AgentGlobalEnv` overlaid with the user's vars). When the credential the
+  CLI used (precedence `ANTHROPIC_AUTH_TOKEN` > `ANTHROPIC_API_KEY` >
+  `CLAUDE_CODE_OAUTH_TOKEN`) is the user's own, it becomes a "Claude (from env
+  vars)" profile on `~/claude` (so sessions still resume) with that variable
+  as `token_env` and the effective base/usage URL, made the default if none
+  was set, and every chat of the user (channel members too) moves onto it.
+  Only the vars the profile took leave the env vars; a user whose own vars
+  didn't pick the credential keeps builtin and all vars unchanged.
 
 ## Layout
 - `cmd/agentrove` — entrypoint.
