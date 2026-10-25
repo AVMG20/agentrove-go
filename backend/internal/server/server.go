@@ -4,6 +4,7 @@ package server
 import (
 	"context"
 	"net/http"
+	"os"
 
 	"agentrove/internal/app"
 	"agentrove/internal/httpx"
@@ -40,6 +41,9 @@ func Build(ctx context.Context, a *app.App) (http.Handler, func(context.Context)
 	})
 
 	a.Auth.Routes(mux, p)
+	if a.Cfg.FrontendDir != "" {
+		mux.Handle("GET /", Frontend(os.DirFS(a.Cfg.FrontendDir)))
+	}
 
 	modules, err := buildModules(a)
 	if err != nil {

@@ -1,0 +1,9 @@
+# Build context is the repo root (Dockerfile, sandbox/docker/Dockerfile).
+.git
+.env
+storage/
+**/node_modules
+frontend/dist
+backend/agentrove
+**/*.db
+**/*.db-*
