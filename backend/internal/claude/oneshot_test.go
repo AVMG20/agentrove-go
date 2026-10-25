@@ -147,6 +147,38 @@ func TestOneShotRefusesSymlinkedLogin(t *testing.T) {
 	})
 }
 
+// A profile's config dir is <home>/.agentrove/profiles/<id>/claude; the box
+// can replace the profile dir with a symlink to another user's home, which
+// must neither be read nor written.
+func TestOneShotRefusesSymlinkedProfileDir(t *testing.T) {
+	user, victim := homes(t)
+	profiles := filepath.Join(user, ".agentrove", "profiles")
+	if err := os.MkdirAll(profiles, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	// The victim's home stands in for the profile dir: its claude/ holds the
+	// victim's login.
+	if err := os.Symlink(victim, filepath.Join(profiles, "p1")); err != nil {
+		t.Fatal(err)
+	}
+	cfg := filepath.Join(profiles, "p1", "claude")
+	_, err := OneShot{Binary: writeFakeCLI(t), ConfigDir: cfg, AgentHome: user,
+		Env: map[string]string{"ANTHROPIC_TEST_ROTATE": "1"}}.Run(context.Background(), "haiku", "", "hi")
+	if err == nil {
+		t.Error("a profile dir symlinked out of the home should be refused")
+	}
+	if b, _ := os.ReadFile(filepath.Join(victim, "claude", credentialsFile)); !strings.Contains(string(b), "VICTIM") {
+		t.Errorf("victim login was overwritten: %q", b)
+	}
+
+	// A real profile dir in the home works and uses its own login.
+	own := filepath.Join(profiles, "p2", "claude")
+	mustWrite(t, filepath.Join(own, credentialsFile), `{"claudeAiOauth":{"accessToken":"SECRET-A"}}`)
+	if got := runOneShot(t, OneShot{Binary: writeFakeCLI(t), ConfigDir: own, AgentHome: user}); got[0] != "A" {
+		t.Fatalf("profile login not used: %q", got)
+	}
+}
+
 // A refresh the box did while the one-shot ran must not be clobbered.
 func TestWriteBackKeepsConcurrentBoxRefresh(t *testing.T) {
 	user, _ := homes(t)
@@ -154,7 +186,7 @@ func TestWriteBackKeepsConcurrentBoxRefresh(t *testing.T) {
 	credPath := filepath.Join(cfg, credentialsFile)
 	mustWrite(t, credPath, `{"claudeAiOauth":{"accessToken":"SECRET-A"}}`)
 	priv := t.TempDir()
-	login, err := stageLogin(cfg, priv)
+	login, err := stageLogin("", cfg, priv)
 	if err != nil || login == nil {
 		t.Fatal(err)
 	}

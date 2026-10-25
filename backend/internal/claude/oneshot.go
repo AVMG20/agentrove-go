@@ -28,6 +28,11 @@ type OneShot struct {
 	// CLI reads and writes many files there following symlinks. Run copies the
 	// login into a private dir instead (see stageLogin).
 	ConfigDir string
+	// AgentHome is the user's box home on the host, which ConfigDir lies in.
+	// The box can't replace it (it is the mount), but it can replace anything
+	// below it, so ConfigDir is resolved inside it; unset, ConfigDir's parent
+	// stands in (right for ~/claude, whose parent is the home).
+	AgentHome string
 	// HomeDir overrides HOME; unset, HOME is the run's temp dir (never the
 	// box's home, whose dotfiles the agent controls).
 	HomeDir string
@@ -67,7 +72,7 @@ func (o OneShot) Run(ctx context.Context, model, systemPrompt, prompt string) (s
 	}
 	var login *stagedLogin
 	if o.ConfigDir != "" && !envHasCredentials(o.Env) {
-		if login, err = stageLogin(o.ConfigDir, cfgDir); err != nil {
+		if login, err = stageLogin(o.AgentHome, o.ConfigDir, cfgDir); err != nil {
 			return "", fmt.Errorf("claude: %w", err)
 		}
 	}
@@ -166,19 +171,39 @@ func envHasCredentials(env map[string]string) bool {
 // stagedLogin remembers what was copied from the user's config dir, for the
 // write-back after the run.
 type stagedLogin struct {
+	agentHome string
 	configDir string
 	creds     []byte // .credentials.json as read; nil when there was none
 	uid       int    // its owner (default: the sandbox user), kept on write-back
 }
 
-// openConfigParent opens the parent of configDir (the user's HOME mount, which
-// the box cannot replace) and checks configDir's own entry is a real directory.
-// The agent can swap ~/claude or files in it for symlinks; os.Root refuses any
-// that lead out of HOME, and the Lstat checks refuse symlinks outright.
-func openConfigParent(configDir string) (*os.Root, string, error) {
-	root, err := os.OpenRoot(filepath.Dir(configDir))
+// openConfigParent opens the parent of configDir inside agentHome (the
+// user's HOME mount, which the box cannot replace) and checks configDir's own
+// entry is a real directory. The agent can swap ~/claude, a profile dir or
+// files in them for symlinks; os.Root refuses any that lead out of the home
+// (another user's home among them), and the Lstat checks refuse a symlinked
+// config dir outright.
+func openConfigParent(agentHome, configDir string) (*os.Root, string, error) {
+	parent := filepath.Dir(configDir)
+	if agentHome == "" {
+		agentHome = parent
+	}
+	home, err := os.OpenRoot(agentHome)
 	if err != nil {
 		return nil, "", err
+	}
+	rel, err := filepath.Rel(agentHome, parent)
+	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		home.Close()
+		return nil, "", fmt.Errorf("the Claude config dir is outside the user's home")
+	}
+	root := home
+	if rel != "." {
+		root, err = home.OpenRoot(rel)
+		home.Close()
+		if err != nil {
+			return nil, "", err
+		}
 	}
 	base := filepath.Base(configDir)
 	fi, err := root.Lstat(base)
@@ -197,8 +222,8 @@ func openConfigParent(configDir string) (*os.Root, string, error) {
 // private dir dst: .credentials.json verbatim and a .claude.json reduced to
 // globalConfigKeys. A missing config dir or file is not an error (the CLI then
 // reports it isn't logged in); a symlinked one is skipped.
-func stageLogin(configDir, dst string) (*stagedLogin, error) {
-	root, base, err := openConfigParent(configDir)
+func stageLogin(agentHome, configDir, dst string) (*stagedLogin, error) {
+	root, base, err := openConfigParent(agentHome, configDir)
 	if errors.Is(err, fs.ErrNotExist) {
 		return nil, nil
 	}
@@ -206,7 +231,7 @@ func stageLogin(configDir, dst string) (*stagedLogin, error) {
 		return nil, err
 	}
 	defer root.Close()
-	login := &stagedLogin{configDir: configDir, uid: sandbox.ContainerUID}
+	login := &stagedLogin{agentHome: agentHome, configDir: configDir, uid: sandbox.ContainerUID}
 	credPath := path.Join(base, credentialsFile)
 	if creds, err := sandbox.ReadRegular(root, credPath, maxCredentials); err == nil {
 		if err := os.WriteFile(filepath.Join(dst, credentialsFile), creds, 0o600); err != nil {
@@ -255,7 +280,7 @@ func (l *stagedLogin) writeBack(cfgDir string) error {
 	if err != nil || bytes.Equal(updated, l.creds) || !json.Valid(updated) {
 		return nil
 	}
-	root, base, err := openConfigParent(l.configDir)
+	root, base, err := openConfigParent(l.agentHome, l.configDir)
 	if err != nil {
 		return err
 	}

@@ -1134,7 +1134,7 @@ func (m *Module) oneShot(userID string) claude.OneShot {
 		p = m.a.Profiles.DefaultClaude(ctx, userID)
 	}
 	return claude.OneShot{Binary: m.a.Cfg.ClaudeBinary, Env: p.ApplyEnv(env),
-		ConfigDir: p.HostConfigDir(home), AsUID: sandbox.ContainerUID}
+		ConfigDir: p.HostConfigDir(home), AgentHome: home, AsUID: sandbox.ContainerUID}
 }
 
 // generateText runs a one-shot Claude prompt (prompt enhancing, titles). A
