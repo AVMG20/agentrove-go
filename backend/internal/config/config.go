@@ -114,7 +114,7 @@ func Load() (*Config, error) {
 		MailUsername:             env("MAIL_USERNAME", "apikey"),
 		MailPassword:             env("MAIL_PASSWORD", ""),
 		MailFrom:                 env("MAIL_FROM", "noreply@agentrove.local"),
-		MailFromName:             env("MAIL_FROM_NAME", "Agentrove"),
+		MailFromName:             env("MAIL_FROM_NAME", "Bitbox"),
 		MailServer:               env("MAIL_SERVER", "smtp.sendgrid.net"),
 		MailPort:                 envInt("MAIL_PORT", 587),
 		GitAuthorName:            env("GIT_AUTHOR_NAME", ""),

@@ -54,7 +54,7 @@ func (m *Module) resolveWorkspace(ctx context.Context, userID string, id *string
 		return "", err
 	}
 	if len(ws) == 0 {
-		return "", errorf("No workspaces found — create one in AgentRove first.")
+		return "", errorf("No workspaces found — create one in Bitbox first.")
 	}
 	return ws[0]["id"].(string), nil
 }

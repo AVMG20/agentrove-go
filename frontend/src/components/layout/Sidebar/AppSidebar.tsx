@@ -55,11 +55,11 @@ export function AppSidebar() {
             navigate('/');
             closeOnMobile();
           }}
-          aria-label="Agentrove home"
+          aria-label="Bitbox home"
         >
           <img src={iconDark} alt="" className={clsx(styles.logo, styles['logo--on-light'])} />
           <img src={iconLight} alt="" className={clsx(styles.logo, styles['logo--on-dark'])} />
-          <span className={styles['brand-name']}>Agentrove</span>
+          <span className={styles['brand-name']}>Bitbox</span>
         </button>
         <ToggleButton
           isOpen

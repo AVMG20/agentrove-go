@@ -26,12 +26,12 @@ export const AuthPageLayout = memo(function AuthPageLayout({
                   matching the landing greeting and message avatars. */}
               <img
                 src={iconDark}
-                alt="Agentrove"
+                alt="Bitbox"
                 className={clsx(styles.logo, styles['logo--on-light'])}
               />
               <img
                 src={iconLight}
-                alt="Agentrove"
+                alt="Bitbox"
                 className={clsx(styles.logo, styles['logo--on-dark'])}
               />
               <h2 className={styles.title}>{title}</h2>

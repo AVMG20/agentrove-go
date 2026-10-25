@@ -73,7 +73,7 @@ export const McpAppFrame = memo(function McpAppFrame({ html, title, onMessage }:
             id,
             result: {
               protocolVersion: PROTOCOL_VERSION,
-              hostInfo: { name: 'agentrove', version: '1.0.0' },
+              hostInfo: { name: 'bitbox', version: '1.0.0' },
               hostCapabilities: {},
               hostContext,
             },

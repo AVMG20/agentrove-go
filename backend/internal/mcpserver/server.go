@@ -1,4 +1,4 @@
-// Package mcpserver is the AgentRove MCP server over Streamable HTTP
+// Package mcpserver is the Bitbox MCP server over Streamable HTTP
 // (stateless JSON-RPC 2.0 on POST /api/v1/mcp). It replaces the Python stdio
 // orchestration server and the artifacts MCP: a token for audience
 // auth.AudienceMCP gets every tool, an auth.AudienceArtifactAgent token only

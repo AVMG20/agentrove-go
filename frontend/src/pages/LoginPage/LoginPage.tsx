@@ -125,7 +125,7 @@ export function LoginPage() {
     [loginMutation, navigate, setErrors, values],
   );
 
-  const title = 'Welcome to Agentrove';
+  const title = 'Welcome to Bitbox';
   const subtitle = 'Sign in to continue to your account';
 
   const isSubmitting = loginMutation.isPending;

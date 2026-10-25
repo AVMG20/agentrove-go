@@ -69,7 +69,7 @@ func (m *Module) buildTools() []*tool {
 	return []*tool{
 		{
 			name: "list_workspaces",
-			description: "List the available AgentRove workspaces.\n\nReturns each workspace's id and name. Pass a workspace id as `workspace_id` to " +
+			description: "List the available Bitbox workspaces.\n\nReturns each workspace's id and name. Pass a workspace id as `workspace_id` to " +
 				"send_message to create a new chat in that workspace; otherwise the most recently active workspace is used.",
 			schema:  object(props{}),
 			handler: m.listWorkspaces,
@@ -147,7 +147,7 @@ func (m *Module) buildTools() []*tool {
 		},
 		{
 			name: "send_message",
-			description: "Send a prompt to AgentRove and start the agent turn.\n\nOmit chat_id to create a new chat first " +
+			description: "Send a prompt to Bitbox and start the agent turn.\n\nOmit chat_id to create a new chat first " +
 				"(auto-resolving the workspace and a Claude model unless given, titled from `title` or the prompt) and send the " +
 				"prompt to it; pass chat_id to continue an existing chat. Set parent_chat_id (when creating) to make the new chat a " +
 				"sub-thread of that parent — it inherits the parent's workspace, and the parent must be a top-level chat " +
@@ -194,7 +194,7 @@ func (m *Module) buildTools() []*tool {
 				"small widget that belongs inline in the chat, use render_ui when available.\n\n`html` is a complete single-file " +
 				"document (<!doctype html>...) with inline <style> and <script>. Scripts, stylesheets and fonts from public CDNs " +
 				"(cdn.jsdelivr.net, unpkg.com, cdnjs.cloudflare.com, Google Fonts) and fetch() to public CORS APIs work. The page " +
-				"runs sandboxed with an opaque origin: cookies, localStorage, sessionStorage and AgentRove's API are unavailable, " +
+				"runs sandboxed with an opaque origin: cookies, localStorage, sessionStorage and Bitbox's API are unavailable, " +
 				"so keep state that must survive a reload in Kit.store (see the artifacts skill). Make it responsive and readable on " +
 				"its own; it is shown full-screen.\n\nArtifacts start " +
 				"private: only the user, signed in, can open the link; they can make it public from the page. Returns the " +
@@ -281,7 +281,7 @@ func (m *Module) buildTools() []*tool {
 		},
 		{
 			name: "get_messages",
-			description: "Read messages from an AgentRove chat; cursor pagination reaches the full history.\n\nEach call returns " +
+			description: "Read messages from an Bitbox chat; cursor pagination reaches the full history.\n\nEach call returns " +
 				"up to `limit` messages (1-100) with role, content_text and stream_status, ordered oldest-to-newest within the " +
 				"page. The first call (no cursor) returns the MOST RECENT messages; pass the returned next_cursor to fetch the " +
 				"preceding, older page. Repeat while has_more is true to read the entire chat — no part of the history is " +
@@ -360,7 +360,7 @@ func (m *Module) buildTools() []*tool {
 		{
 			name: "create_automation",
 			description: "Create a scheduled automation that runs a prompt on a cron schedule.\n\nEach time the schedule fires, " +
-				"AgentRove starts a new unattended chat and sends the prompt with bypassPermissions. cron_expression is a " +
+				"Bitbox starts a new unattended chat and sends the prompt with bypassPermissions. cron_expression is a " +
 				"standard 5-field cron string evaluated in `timezone` (an IANA name like \"America/New_York\"). Omit model_id to " +
 				"use the default Claude model and workspace_id to use the most recently active workspace. Per-run options " +
 				"(thinking_mode, worktree, persona) match send_message. Set enabled=false to create it paused.\n\nReturns the " +

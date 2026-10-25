@@ -210,7 +210,7 @@ func (s *Service) forgotPassword(w http.ResponseWriter, r *http.Request) error {
 			HashToken(token), db.T(time.Now().Add(time.Hour)), now, u.ID)
 		if err == nil {
 			link := fmt.Sprintf("%s/reset-password?token=%s", strings.TrimRight(s.Cfg.FrontendURL, "/"), token)
-			s.sendMail(u.Email, "Reset your Agentrove password", "Reset your password: "+link+"\n\nThis link expires in one hour.")
+			s.sendMail(u.Email, "Reset your Bitbox password", "Reset your password: "+link+"\n\nThis link expires in one hour.")
 		}
 	}
 	return httpx.JSON(w, http.StatusAccepted, nil)
@@ -262,7 +262,7 @@ func (s *Service) sendVerification(ctx context.Context, u *models.User) {
 		return
 	}
 	link := fmt.Sprintf("%s/verify-email?token=%s", strings.TrimRight(s.Cfg.FrontendURL, "/"), token)
-	s.sendMail(u.Email, "Verify your Agentrove account", "Verify your email: "+link)
+	s.sendMail(u.Email, "Verify your Bitbox account", "Verify your email: "+link)
 }
 
 func (s *Service) verify(w http.ResponseWriter, r *http.Request) error {

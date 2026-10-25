@@ -1,4 +1,4 @@
-/* AgentRove artifact kit: themed charts (Chart.js), sortable tables, mermaid
+/* Bitbox artifact kit: themed charts (Chart.js), sortable tables, mermaid
    diagrams and coloured diffs. Load kit.css alongside it. */
 (function () {
   'use strict';
@@ -291,7 +291,7 @@
 
   /* Kit.store: JSON state that survives reloads. Saved for the artifact's
      owner (the agent reads it with get_artifact_state); other viewers and
-     pages opened outside AgentRove keep it in memory only.
+     pages opened outside Bitbox keep it in memory only.
        await Kit.store.ready;  Kit.store.get(key, fallback);  Kit.store.set(key, value);
        Kit.store.remove(key);  Kit.store.all();  Kit.store.persistent */
   var framed = window.parent !== window;

@@ -59,7 +59,7 @@ export function SignupPage() {
   const { data: authConfig, isError } = useAuthConfigQuery();
 
   // If the config can't be read, show the form; the server still enforces it.
-  if (!authConfig && !isError) return <AuthPageLayout title="Join Agentrove" subtitle="" />;
+  if (!authConfig && !isError) return <AuthPageLayout title="Join Bitbox" subtitle="" />;
 
   if (authConfig && !authConfig.registration_enabled) {
     return (
@@ -128,8 +128,8 @@ function SignupForm() {
     [setErrors, signupMutation, values],
   );
 
-  const title = 'Join Agentrove';
-  const subtitle = 'Create your agentrove account';
+  const title = 'Join Bitbox';
+  const subtitle = 'Create your Bitbox account';
 
   const isSubmitting = signupMutation.isPending;
   const error = signupMutation.error?.message;

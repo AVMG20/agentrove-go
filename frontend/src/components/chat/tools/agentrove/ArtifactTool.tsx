@@ -6,7 +6,7 @@ import { extractArtifact } from './artifactResult';
 import styles from './ArtifactTool.module.scss';
 
 // create/update/edit/restore_artifact: a card linking to the published page once
-// the call succeeded; the generic AgentRove line while running or on failure.
+// the call succeeded; the generic Bitbox line while running or on failure.
 export const ArtifactTool = memo(function ArtifactTool({ tool }: { tool: ToolAggregate }) {
   const artifact = tool.status === 'completed' ? extractArtifact(tool.result) : null;
   if (!artifact) return <AgentRoveTool tool={tool} />;

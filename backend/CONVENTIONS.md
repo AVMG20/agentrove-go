@@ -1,4 +1,4 @@
-# Agentrove Go backend — conventions
+# Bitbox Go backend — conventions
 
 Rewrite of the Python/FastAPI Agentrove backend in Go. The
 frontend in `../frontend` is unchanged, so **every endpoint must keep the

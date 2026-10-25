@@ -252,12 +252,12 @@ export function LandingPage() {
                 <div className={styles.greeting}>
                   <img
                     src={iconDark}
-                    alt="Agentrove"
+                    alt="Bitbox"
                     className={clsx(styles['greeting-logo'], styles['greeting-logo--on-light'])}
                   />
                   <img
                     src={iconLight}
-                    alt="Agentrove"
+                    alt="Bitbox"
                     className={clsx(styles['greeting-logo'], styles['greeting-logo--on-dark'])}
                   />
                   <h1 className={styles['greeting-title']}>
@@ -281,7 +281,7 @@ export function LandingPage() {
                   onModelChange={selectModel}
                   showTip={false}
                   showBranch={false}
-                  placeholder="Message Agentrove... (@ to mention, / for commands)"
+                  placeholder="Message Bitbox... (@ to mention, / for commands)"
                 />
 
                 <div className={styles['panel-below']}>

@@ -1,6 +1,6 @@
 ---
 name: artifacts
-description: Publish HTML pages as AgentRove artifacts, shareable links the user can open and make public. Use when the user mentions an artifact, or wants a page, report, dashboard, chart, diagram, prototype or visual summary (for example of code changes) to view or share.
+description: Publish HTML pages as Bitbox artifacts, shareable links the user can open and make public. Use when the user mentions an artifact, or wants a page, report, dashboard, chart, diagram, prototype or visual summary (for example of code changes) to view or share.
 ---
 
 # Artifacts
@@ -17,7 +17,7 @@ An artifact is a single self-contained HTML page published with the `create_arti
 
 ## Kit
 
-Start reports, dashboards, explainers and tools with the kit. It styles plain HTML in light and dark mode and adds layout, data and chart helpers. Skip it when the page should have its own look — a website or landing page design, a mockup, a brand, or whenever the user asks for a custom style — and write your own CSS instead: the page is its own document, so nothing from Agentrove styles it. (Kit.store also works with only kit.js loaded; the chart helpers take their colors from kit.css.)
+Start reports, dashboards, explainers and tools with the kit. It styles plain HTML in light and dark mode and adds layout, data and chart helpers. Skip it when the page should have its own look — a website or landing page design, a mockup, a brand, or whenever the user asks for a custom style — and write your own CSS instead: the page is its own document, so nothing from Bitbox styles it. (Kit.store also works with only kit.js loaded; the chart helpers take their colors from kit.css.)
 
 ```html
 <!doctype html>

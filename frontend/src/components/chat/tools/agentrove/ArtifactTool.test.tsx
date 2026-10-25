@@ -57,10 +57,10 @@ describe('ArtifactTool', () => {
     expect(screen.getByText('Updated artifact · v3')).toBeTruthy();
   });
 
-  it('falls back to the generic AgentRove line while running', () => {
+  it('falls back to the generic Bitbox line while running', () => {
     renderTool(makeTool({ status: 'started', result: undefined }));
 
     expect(screen.queryByRole('link', { name: /open/i })).toBeNull();
-    expect(screen.getByText('AgentRove · Create Artifact')).toBeTruthy();
+    expect(screen.getByText('Bitbox · Create Artifact')).toBeTruthy();
   });
 });

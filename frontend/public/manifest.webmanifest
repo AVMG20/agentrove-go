@@ -1,6 +1,6 @@
 {
-  "name": "Agentrove",
-  "short_name": "Agentrove",
+  "name": "Bitbox",
+  "short_name": "Bitbox",
   "description": "Claude agents in your own box",
   "start_url": "/",
   "scope": "/",

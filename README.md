@@ -1,6 +1,6 @@
-# Agentrove (Go)
+# Bitbox
 
-A Go rewrite of the Agentrove backend, as a web app only. It is Claude-only, needs no Redis and stores everything in SQLite. The React frontend in `frontend/` is the upstream app with the desktop/mobile shells removed; the API keeps its paths and JSON shapes.
+Bitbox (formerly Agentrove) is a Go rewrite of the Agentrove backend, as a web app only. Internal names (Docker images and containers, env vars, storage paths, the Go module and the `agentrove` MCP server id) keep the old name. It is Claude-only, needs no Redis and stores everything in SQLite. The React frontend in `frontend/` is the upstream app with the desktop/mobile shells removed; the API keeps its paths and JSON shapes.
 
 ## What changed vs. the Python backend
 

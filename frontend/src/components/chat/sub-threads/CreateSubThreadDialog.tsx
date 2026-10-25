@@ -245,7 +245,7 @@ export function CreateSubThreadDialog({ parentChat, onClose }: CreateSubThreadDi
                 onKeyUp={handleCursorChange}
                 onClick={handleCursorChange}
                 onSelect={handleCursorChange}
-                placeholder="Message Agentrove... (/ for commands)"
+                placeholder="Message Bitbox... (/ for commands)"
                 rows={3}
                 className={styles['message-textarea']}
               />

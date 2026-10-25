@@ -69,7 +69,7 @@ export function InputProvider({
   const isMobile = useIsMobile();
   const placeholder =
     placeholderProp ??
-    (isMobile ? 'Message Agentrove...' : 'Message Agentrove... (@ to mention, / for commands)');
+    (isMobile ? 'Message Bitbox...' : 'Message Bitbox... (@ to mention, / for commands)');
 
   const hasMessage = message.trim().length > 0;
   // A selection chip is prompt content on its own — it can be sent without text.

@@ -1,16 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 60 60">
-  <g stroke="#FFFFFF" stroke-width="3.6" stroke-linecap="round">
-    <line x1="30" y1="30" x2="10" y2="10"/>
-    <line x1="30" y1="30" x2="49" y2="8"/>
-    <line x1="30" y1="30" x2="52" y2="48"/>
-    <line x1="30" y1="30" x2="8" y2="42"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="15 15 170 170">
+  <g fill="none" stroke="#FFFFFF" stroke-width="11">
+    <polygon points="100,22 167.55,61 167.55,139 100,178 32.45,139 32.45,61"/>
+    <path d="M66 80 L90 100 L66 120" stroke-linecap="square"/>
   </g>
-  <g fill="#FFFFFF">
-    <circle cx="30" cy="30" r="5"/>
-    <circle cx="10" cy="10" r="3"/>
-    <circle cx="49" cy="8" r="2.6"/>
-    <circle cx="52" cy="48" r="3.2"/>
-    <circle cx="8" cy="42" r="2.4"/>
-  </g>
+  <rect x="100" y="114" width="34" height="11" fill="#FFFFFF"/>
 </svg>

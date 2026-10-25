@@ -100,7 +100,7 @@ export function ArtifactPage() {
             </Button>
           ) : (
             <Button size="sm" variant="outline" onClick={() => navigate('/')}>
-              Go to Agentrove
+              Go to Bitbox
             </Button>
           )}
         </div>
@@ -111,7 +111,7 @@ export function ArtifactPage() {
   return (
     <div className={styles.page}>
       <header className={styles.bar}>
-        <Link to="/" className={styles.home} aria-label="Go to Agentrove" title="Agentrove">
+        <Link to="/" className={styles.home} aria-label="Go to Bitbox" title="Bitbox">
           <img src={iconDark} alt="" className={clsx(styles.logo, styles['logo--on-light'])} />
           <img src={iconLight} alt="" className={clsx(styles.logo, styles['logo--on-dark'])} />
         </Link>
