@@ -20,10 +20,13 @@ import {
 } from './InputContext';
 import type { InputProps } from './Input';
 import type { Chat } from '@/types/chat.types';
+import type { CustomSkill } from '@/types/user.types';
+import { EMPTY_BUILTIN_COMMANDS } from '@/config/constants';
 
 // Stable fallback so chat-less composers (landing page) don't churn the selector.
 const NO_SELECTIONS: ComposerSelection[] = [];
 const NO_CHATS: Chat[] = [];
+const NO_SKILLS: CustomSkill[] = [];
 
 export function InputProvider({
   message,
@@ -37,6 +40,10 @@ export function InputProvider({
   placeholder: placeholderProp,
   selectedModelId,
   onModelChange,
+  selectedProfileId,
+  onProfileChange,
+  profileLocked = false,
+  agentKind = 'claude',
   dropdownPosition = 'top',
   showAttachedFilesPreview = true,
   contextUsage,
@@ -48,7 +55,12 @@ export function InputProvider({
   disabled = false,
   children,
 }: InputProps & { children: ReactNode }) {
-  const { fileStructure, customSkills, builtinSlashCommands, personas } = useChatContext();
+  const chatContext = useChatContext();
+  const { fileStructure, personas } = chatContext;
+  // Slash commands and skills are Claude Code's; other CLIs get none.
+  const isClaude = agentKind === 'claude';
+  const customSkills = isClaude ? chatContext.customSkills : NO_SKILLS;
+  const builtinSlashCommands = isClaude ? chatContext.builtinSlashCommands : EMPTY_BUILTIN_COMMANDS;
   // `/models/` is auth-protected; gate so the public landing composer doesn't 401.
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
   const modelMap = useModelMap(isAuthenticated);
@@ -190,6 +202,9 @@ export function InputProvider({
       compact,
       placeholder: dynamicPlaceholder,
       selectedModelId,
+      selectedProfileId,
+      profileLocked,
+      agentKind,
       dropdownPosition,
       attachedFiles,
       attachedSelections,
@@ -225,6 +240,9 @@ export function InputProvider({
       compact,
       dynamicPlaceholder,
       selectedModelId,
+      selectedProfileId,
+      profileLocked,
+      agentKind,
       dropdownPosition,
       attachedFiles,
       attachedSelections,
@@ -247,6 +265,7 @@ export function InputProvider({
       setCursorPosition,
       setShowFileUpload,
       onModelChange,
+      onProfileChange,
       handleSubmit,
       submitOrQueue,
       handleKeyDown,
@@ -266,6 +285,7 @@ export function InputProvider({
       selectMention,
     }),
     [
+      onProfileChange,
       setMessage,
       setCursorPosition,
       setShowFileUpload,

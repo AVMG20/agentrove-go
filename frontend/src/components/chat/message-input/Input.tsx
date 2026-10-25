@@ -14,6 +14,7 @@ import { PlanUsageIndicator } from './PlanUsageIndicator';
 import { InputProvider } from './InputProvider';
 import { useInputContext } from '@/hooks/useInputContext';
 import type { ContextUsageInfo } from '@/utils/contextUsage';
+import type { AgentKind } from '@/types/chat.types';
 import styles from './Input.module.scss';
 
 export interface InputProps {
@@ -28,6 +29,13 @@ export interface InputProps {
   placeholder?: string;
   selectedModelId: string;
   onModelChange: (modelId: string) => void;
+  // The provider profile picker; hidden without onProfileChange.
+  selectedProfileId?: string;
+  onProfileChange?: (profileId: string) => void;
+  // The thread has messages, so picking another profile starts a new thread.
+  profileLocked?: boolean;
+  // The selected profile's provider: its models, and Claude-only controls.
+  agentKind?: AgentKind;
   dropdownPosition?: 'top' | 'bottom';
   showAttachedFilesPreview?: boolean;
   contextUsage?: ContextUsageInfo;
@@ -142,7 +150,8 @@ function InputLayout() {
       }
     >
       <div className={styles['footer-row']}>
-        <PlanUsageIndicator />
+        {/* Plan usage is Claude's (subscription windows). */}
+        {state.agentKind === 'claude' && <PlanUsageIndicator profileId={state.selectedProfileId} />}
         <InputControls />
       </div>
 

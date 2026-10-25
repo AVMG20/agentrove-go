@@ -47,8 +47,8 @@ function UsageWindow({
 
 // The plan windows (5-hour and weekly), one row each, with reset times and a
 // refresh button: the body of the plan-usage popover under the composer.
-export function ClaudeUsageMeter() {
-  const { usage, isRefreshing, refresh } = useClaudeUsage();
+export function ClaudeUsageMeter({ profileId }: { profileId?: string }) {
+  const { usage, isRefreshing, refresh } = useClaudeUsage(profileId);
   const now = useNow(30_000);
 
   if (!usage || usage.status === 'unavailable') return null;

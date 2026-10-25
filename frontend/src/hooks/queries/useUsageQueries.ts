@@ -12,27 +12,34 @@ import {
   usagePollInterval,
 } from '@/utils/claudeUsage';
 
-// Shared across every mounted meter so split panes trigger one fetch.
-let freshInFlight: Promise<void> | null = null;
+// Per profile, shared across every mounted meter so split panes trigger one fetch.
+const freshInFlight = new Map<string, Promise<void>>();
+
+const usageKey = (profileId: string) => [...queryKeys.claudeUsage, profileId] as const;
 
 // Bypasses the server's short cache: used right after a turn or a reset, when
 // the cached numbers are known to be behind.
-function fetchFreshUsage(queryClient: QueryClient): Promise<void> {
-  freshInFlight ??= usageService
-    .getClaudeUsage(true)
-    .then((fresh) => {
-      queryClient.setQueryData(queryKeys.claudeUsage, fresh);
-    })
-    .catch(() => {
-      // Keep the last numbers; the next poll retries.
-    })
-    .finally(() => {
-      freshInFlight = null;
-    });
-  return freshInFlight;
+function fetchFreshUsage(queryClient: QueryClient, profileId: string): Promise<void> {
+  let pending = freshInFlight.get(profileId);
+  if (!pending) {
+    pending = usageService
+      .getClaudeUsage(true, profileId || undefined)
+      .then((fresh) => {
+        queryClient.setQueryData(usageKey(profileId), fresh);
+      })
+      .catch(() => {
+        // Keep the last numbers; the next poll retries.
+      })
+      .finally(() => {
+        freshInFlight.delete(profileId);
+      });
+    freshInFlight.set(profileId, pending);
+  }
+  return pending;
 }
 
-export function useClaudeUsage() {
+// Plan usage of a Claude profile ('' or omitted: the default Claude profile).
+export function useClaudeUsage(profileId = '') {
   const queryClient = useQueryClient();
   // Any running turn — this tab's, another tab's, or an automation's (the chat
   // events feed registers those too).
@@ -40,10 +47,10 @@ export function useClaudeUsage() {
   const interval = usagePollInterval(working);
 
   const query = useQuery<ClaudeUsage>({
-    queryKey: queryKeys.claudeUsage,
-    queryFn: () => usageService.getClaudeUsage(),
-    // No usage endpoint for this proxy: stop polling until settings change
-    // (saving settings invalidates this query).
+    queryKey: usageKey(profileId),
+    queryFn: () => usageService.getClaudeUsage(false, profileId || undefined),
+    // No usage endpoint for this proxy: stop polling until settings or the
+    // profile change (saving either invalidates this query).
     refetchInterval: (q) => (q.state.data?.status === 'unavailable' ? false : interval),
     // Catch up after the window was hidden, when interval ticks are skipped.
     staleTime: USAGE_POLL_ACTIVE_MS,
@@ -58,9 +65,12 @@ export function useClaudeUsage() {
     const finished = wasWorking.current && !working;
     wasWorking.current = working;
     if (!finished) return;
-    const timer = setTimeout(() => void fetchFreshUsage(queryClient), USAGE_AFTER_TURN_DELAY_MS);
+    const timer = setTimeout(
+      () => void fetchFreshUsage(queryClient, profileId),
+      USAGE_AFTER_TURN_DELAY_MS,
+    );
     return () => clearTimeout(timer);
-  }, [working, queryClient]);
+  }, [working, queryClient, profileId]);
 
   const data = query.data;
   const nextReset = data?.status === 'ok' ? nextResetMs([data.session, data.weekly]) : null;
@@ -69,19 +79,22 @@ export function useClaudeUsage() {
     const delay = nextReset - Date.now() + USAGE_RESET_GRACE_MS;
     // setTimeout overflows past ~24.8 days; the poll covers anything that far out.
     if (delay > 2 ** 31 - 1) return;
-    const timer = setTimeout(() => void fetchFreshUsage(queryClient), Math.max(0, delay));
+    const timer = setTimeout(
+      () => void fetchFreshUsage(queryClient, profileId),
+      Math.max(0, delay),
+    );
     return () => clearTimeout(timer);
-  }, [nextReset, queryClient]);
+  }, [nextReset, queryClient, profileId]);
 
   const [isRefreshing, setIsRefreshing] = useState(false);
   const refresh = useCallback(async () => {
     setIsRefreshing(true);
     try {
-      await fetchFreshUsage(queryClient);
+      await fetchFreshUsage(queryClient, profileId);
     } finally {
       setIsRefreshing(false);
     }
-  }, [queryClient]);
+  }, [queryClient, profileId]);
 
   return { usage: data, isRefreshing: isRefreshing || query.isFetching, refresh };
 }

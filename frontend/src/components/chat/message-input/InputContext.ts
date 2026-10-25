@@ -2,6 +2,7 @@ import { createContext, type RefObject } from 'react';
 import type { MentionItem, SlashCommand } from '@/types/ui.types';
 import type { ComposerSelection } from '@/store/uiStore';
 import type { ContextUsageInfo } from '@/utils/contextUsage';
+import type { AgentKind } from '@/types/chat.types';
 
 export interface InputState {
   message: string;
@@ -25,6 +26,9 @@ export interface InputState {
   compact: boolean;
   placeholder: string;
   selectedModelId: string;
+  selectedProfileId?: string;
+  profileLocked: boolean;
+  agentKind: AgentKind;
   dropdownPosition: 'top' | 'bottom';
   attachedFiles: File[] | null;
   attachedSelections: ComposerSelection[];
@@ -45,6 +49,7 @@ export interface InputActions {
   setCursorPosition: (pos: number) => void;
   setShowFileUpload: (v: boolean) => void;
   onModelChange: (modelId: string) => void;
+  onProfileChange?: (profileId: string) => void;
   handleSubmit: (e: React.FormEvent) => void;
   submitOrQueue: () => void;
   handleKeyDown: (e: React.KeyboardEvent<Element>) => void;

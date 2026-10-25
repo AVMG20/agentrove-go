@@ -19,6 +19,7 @@ import { useInitialPrompt } from '@/hooks/useInitialPrompt';
 import { useContextUsageState } from '@/hooks/useContextUsageState';
 import { useMessageInitialization } from '@/hooks/useMessageInitialization';
 import { useModelSelection } from '@/hooks/queries/useModelQueries';
+import { useThreadProfile } from '@/hooks/useThreadProfile';
 import type { Chat, Message } from '@/types/chat.types';
 import type { useInfiniteMessagesQuery } from '@/hooks/queries/useChatQueries';
 
@@ -85,9 +86,12 @@ export function ChatSessionOrchestrator({
     return undefined;
   }, [fetchedMessages, messagesQuery.isLoading]);
 
+  // Only the chat's provider's models apply; wait for the chat before
+  // defaulting so a non-Claude thread isn't first handed a Claude model.
   const { selectedModelId, selectedModel, selectModel } = useModelSelection({
     chatId,
-    initialModelId: lastAssistantModelId,
+    initialModelId: currentChat ? lastAssistantModelId : null,
+    agentKind: currentChat?.provider ?? 'claude',
   });
 
   const {
@@ -147,6 +151,13 @@ export function ChatSessionOrchestrator({
   });
 
   const { messages, sendMessage, isLoading, isStreaming, wasAborted, setMessages } = streamingState;
+
+  const threadProfile = useThreadProfile({
+    chat: currentChat,
+    hasMessages: messages.length > 0 || isStreaming || !!currentChat?.session_agent_kind,
+    draft: streamingState.inputMessage,
+    setDraft: streamingState.setInputMessage,
+  });
 
   useMessageInitialization({
     fetchedMessages,
@@ -224,6 +235,9 @@ export function ChatSessionOrchestrator({
       pendingUserMessageId: streamingState.pendingUserMessageId,
       attachedFiles: streamingState.inputFiles,
       selectedModelId,
+      selectedProfileId: threadProfile.profileId,
+      agentKind: threadProfile.agentKind,
+      profileLocked: threadProfile.profileLocked,
       contextUsage,
       hasNextPage: messagesQuery.hasNextPage,
       isFetchingNextPage: messagesQuery.isFetchingNextPage,
@@ -245,6 +259,9 @@ export function ChatSessionOrchestrator({
       messagesQuery.hasNextPage,
       messagesQuery.isFetchingNextPage,
       selectedModelId,
+      threadProfile.profileId,
+      threadProfile.agentKind,
+      threadProfile.profileLocked,
       contextUsage,
       pendingRequest,
       isPermissionLoading,
@@ -262,6 +279,7 @@ export function ChatSessionOrchestrator({
       onSendPrompt: streamingState.sendPrompt,
       onAttach: streamingState.setInputFiles,
       onModelChange: selectModel,
+      onProfileChange: threadProfile.onProfileChange,
       fetchNextPage: messagesQuery.fetchNextPage,
       onPermissionApprove: handleApprove,
       onPermissionReject: handleReject,
@@ -275,6 +293,7 @@ export function ChatSessionOrchestrator({
       streamingState.sendPrompt,
       streamingState.setInputFiles,
       selectModel,
+      threadProfile.onProfileChange,
       messagesQuery.fetchNextPage,
       handleApprove,
       handleReject,

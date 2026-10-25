@@ -18,8 +18,8 @@ function windowText(window: ClaudeUsageWindow | null, now: number): string | nul
 // Always-visible plan usage under the composer: the Claude spark, a thin bar
 // for the 5-hour window, then "39% 4h 18m · 6% 6d 19h" (5-hour, then weekly,
 // each with time to reset). Click for the per-window bars and a refresh.
-export function PlanUsageIndicator() {
-  const { usage } = useClaudeUsage();
+export function PlanUsageIndicator({ profileId }: { profileId?: string }) {
+  const { usage } = useClaudeUsage(profileId);
   const now = useNow(30_000);
   const { isOpen, setIsOpen, dropdownRef } = useDropdown();
   const panelId = useId();
@@ -58,7 +58,7 @@ export function PlanUsageIndicator() {
       {isOpen && (
         <div id={panelId} className={styles.panel} role="dialog" aria-label="Plan usage">
           <div className={styles.heading}>Plan usage</div>
-          <ClaudeUsageMeter />
+          <ClaudeUsageMeter profileId={profileId} />
         </div>
       )}
     </div>

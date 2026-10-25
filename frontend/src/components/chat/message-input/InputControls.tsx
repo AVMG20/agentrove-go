@@ -1,5 +1,6 @@
 import { PermissionModeSelector } from '@/components/chat/permission-mode-selector/PermissionModeSelector';
 import { ModelSelector } from '@/components/chat/model-selector/ModelSelector';
+import { ProfileSelector } from '@/components/chat/profile-selector/ProfileSelector';
 import { ThinkingModeSelector } from '@/components/chat/thinking-mode-selector/ThinkingModeSelector';
 import { getThinkingModes } from '@/components/chat/thinking-mode-selector/thinkingModes';
 import { PersonaSelector } from '@/components/chat/persona-selector/PersonaSelector';
@@ -23,7 +24,9 @@ export function InputControls() {
   const { sandboxId, worktreeCwd, personas } = useChatContext();
   const { data: branchesData } = useGitBranchesQuery(sandboxId, !!sandboxId, worktreeCwd);
 
-  const showPersona = personas.length > 0;
+  // Permission modes and personas are Claude Code features.
+  const isClaude = state.agentKind === 'claude';
+  const showPersona = isClaude && personas.length > 0;
   const showBranch =
     state.showBranch &&
     !!sandboxId &&
@@ -35,9 +38,26 @@ export function InputControls() {
 
   return (
     <div className={styles['input-controls']} onMouseDown={(e) => e.preventDefault()}>
+      {actions.onProfileChange && state.selectedProfileId && (
+        <>
+          <ProfileSelector
+            selectedProfileId={state.selectedProfileId}
+            onProfileChange={actions.onProfileChange}
+            locked={state.profileLocked}
+            fallbackProvider={state.agentKind}
+            dropdownPosition={state.dropdownPosition}
+            dropdownAlign="right"
+            disabled={state.isLoading && !state.profileLocked}
+            variant="text"
+          />
+          <SelectorDot />
+        </>
+      )}
+
       <ModelSelector
         selectedModelId={state.selectedModelId}
         onModelChange={actions.onModelChange}
+        agentKind={state.agentKind}
         dropdownPosition={state.dropdownPosition}
         dropdownAlign="right"
         disabled={state.isLoading}
@@ -59,15 +79,19 @@ export function InputControls() {
         </>
       )}
 
-      <SelectorDot />
+      {isClaude && (
+        <>
+          <SelectorDot />
 
-      <PermissionModeSelector
-        chatId={state.chatId}
-        dropdownPosition={state.dropdownPosition}
-        dropdownAlign="right"
-        disabled={state.isLoading}
-        variant="text"
-      />
+          <PermissionModeSelector
+            chatId={state.chatId}
+            dropdownPosition={state.dropdownPosition}
+            dropdownAlign="right"
+            disabled={state.isLoading}
+            variant="text"
+          />
+        </>
+      )}
 
       {showPersona && (
         <>

@@ -9,14 +9,17 @@ import { useAuthStore } from '@/store/authStore';
 import { useModelStore } from '@/store/modelStore';
 import { useModelsQuery } from '@/hooks/queries/useModelQueries';
 import { useIsSplitMode } from '@/hooks/useIsSplitMode';
-import { ClaudeIcon } from '@/components/ui/icons/ClaudeIcon';
+import { ProviderIcon } from '@/components/ui/icons/ProviderIcon';
+import { providerIconComponent } from '@/components/ui/icons/providerIcons';
 import { formatNumberCompact } from '@/utils/format';
-import type { Model } from '@/types/chat.types';
+import type { AgentKind, Model } from '@/types/chat.types';
 import styles from './ModelSelector.module.scss';
 
 export interface ModelSelectorProps {
   selectedModelId: string;
   onModelChange: (modelId: string) => void;
+  // Whose models to offer (the thread's provider).
+  agentKind?: AgentKind;
   dropdownPosition?: DropdownPosition;
   disabled?: boolean;
   compact?: boolean;
@@ -27,6 +30,7 @@ export interface ModelSelectorProps {
 export const ModelSelector = memo(function ModelSelector({
   selectedModelId,
   onModelChange,
+  agentKind = 'claude',
   dropdownPosition = 'bottom',
   dropdownAlign,
   disabled = false,
@@ -37,7 +41,8 @@ export const ModelSelector = memo(function ModelSelector({
   const isSplitMode = useIsSplitMode();
   // Read-only models query — useModelSelection would run the per-chat defaulting
   // effect and persist models[0] before the owner derives the model from history.
-  const { data: models = [], isLoading } = useModelsQuery({ enabled: isAuthenticated });
+  const { data: models = [], isLoading } = useModelsQuery({ enabled: isAuthenticated }, agentKind);
+  const ProviderGlyph = providerIconComponent(agentKind);
   const favoriteModelIds = useModelStore((state) => state.favoriteModelIds);
 
   const filteredModels = useMemo(
@@ -94,7 +99,7 @@ export const ModelSelector = memo(function ModelSelector({
       getItemKey={(model) => model.model_id}
       getItemLabel={(model) => model.name}
       onSelect={(model) => onModelChange(model.model_id)}
-      leftIcon={ClaudeIcon}
+      leftIcon={ProviderGlyph}
       width="16rem"
       dropdownPosition={dropdownPosition}
       disabled={disabled}
@@ -110,7 +115,7 @@ export const ModelSelector = memo(function ModelSelector({
         const isFavorite = favoriteIdSet.has(model.model_id);
         return (
           <div className={styles.item}>
-            <ClaudeIcon aria-hidden className={styles['item-icon']} />
+            <ProviderIcon provider={agentKind} className={styles['item-icon']} />
             <FloatingTooltip content={model.name} className={styles['item-tooltip']}>
               <span
                 className={clsx(styles['item-label'], isSelected && styles['item-label--selected'])}

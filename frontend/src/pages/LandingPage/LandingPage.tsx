@@ -16,6 +16,9 @@ import { useCreateChatMutation } from '@/hooks/queries/useChatQueries';
 import { useWorkspacesList, useWorkspaceResourcesQuery } from '@/hooks/queries/useWorkspaceQueries';
 import { useFilesMetadataQuery } from '@/hooks/queries/useSandboxQueries';
 import { useModelSelection } from '@/hooks/queries/useModelQueries';
+import { useProfileMap } from '@/hooks/queries/useProfileQueries';
+import { useProfileStore } from '@/store/profileStore';
+import { useAuthStore } from '@/store/authStore';
 import { useSettingsQuery } from '@/hooks/queries/useSettingsQueries';
 import { ChatProvider } from '@/contexts/ChatContext';
 import { Button } from '@/components/ui/primitives/Button/Button';
@@ -69,7 +72,21 @@ export function LandingPage() {
   const attachedFiles = useChatStore(
     (state) => state.attachedFilesByChat[PENDING_NEW_CHAT_KEY] ?? null,
   );
-  const { selectedModelId, selectModel } = useModelSelection();
+  // New threads start on the last-picked profile, else the default.
+  const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
+  const { byId: profilesById, defaultProfile } = useProfileMap(isAuthenticated);
+  const lastProfileId = useProfileStore((s) => s.lastProfileId);
+  const landingProfile = (lastProfileId && profilesById.get(lastProfileId)) || defaultProfile;
+  const agentKind = landingProfile?.provider ?? 'claude';
+  const handleProfileChange = useCallback(
+    (profileId: string) => useProfileStore.getState().setLastProfileId(profileId),
+    [],
+  );
+  // Each provider keeps its own new-thread model.
+  const { selectedModelId, selectModel } = useModelSelection({
+    agentKind,
+    chatId: agentKind === 'claude' ? undefined : `__default__:${agentKind}`,
+  });
 
   const workspaces = useWorkspacesList();
 
@@ -207,6 +224,8 @@ export function LandingPage() {
           title,
           model_id: selectedModelId,
           workspace_id: selectedWorkspaceId,
+          // Unset while the list loads: the server picks the default.
+          profile_id: landingProfile?.id,
         });
         useModelStore.getState().selectModel(newChat.id, selectedModelId);
         useChatSettingsStore.getState().initChatFromDefaults(newChat.id);
@@ -219,7 +238,16 @@ export function LandingPage() {
         setIsLoading(false);
       }
     },
-    [createChat, isLoading, message, navigate, selectedModelId, selectedWorkspaceId, setMessage],
+    [
+      createChat,
+      isLoading,
+      message,
+      navigate,
+      selectedModelId,
+      selectedWorkspaceId,
+      setMessage,
+      landingProfile?.id,
+    ],
   );
 
   const handleChatSelect = useCallback(
@@ -279,6 +307,9 @@ export function LandingPage() {
                   showLoadingSpinner={true}
                   selectedModelId={selectedModelId}
                   onModelChange={selectModel}
+                  selectedProfileId={landingProfile?.id}
+                  onProfileChange={handleProfileChange}
+                  agentKind={agentKind}
                   showTip={false}
                   showBranch={false}
                   placeholder="Message Bitbox... (@ to mention, / for commands)"
@@ -365,6 +396,9 @@ export function LandingPage() {
       message,
       selectModel,
       selectedModelId,
+      landingProfile?.id,
+      handleProfileChange,
+      agentKind,
       setMessage,
       composerSelectors,
       showRecents,

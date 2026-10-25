@@ -1,5 +1,6 @@
 import { createContext } from 'react';
 import type {
+  AgentKind,
   ElicitationContent,
   ElicitationRequest,
   Message,
@@ -15,6 +16,10 @@ export interface ChatSessionState {
   pendingUserMessageId: string | null;
   attachedFiles: File[] | null;
   selectedModelId: string;
+  // The thread's provider profile and its provider.
+  selectedProfileId: string | undefined;
+  agentKind: AgentKind;
+  profileLocked: boolean;
   contextUsage?: ContextUsageInfo;
   hasNextPage: boolean;
   isFetchingNextPage: boolean;
@@ -33,6 +38,7 @@ export interface ChatSessionActions {
   onSendPrompt: (prompt: string) => void;
   onAttach: (files: File[]) => void;
   onModelChange: (modelId: string) => void;
+  onProfileChange: (profileId: string) => void;
   fetchNextPage: () => void;
   onPermissionApprove: (optionId: string) => void;
   onPermissionReject: (optionId: string) => void;

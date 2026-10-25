@@ -68,6 +68,9 @@ export const Chat = memo(function Chat() {
     isInitialLoading,
     attachedFiles,
     selectedModelId,
+    selectedProfileId,
+    agentKind,
+    profileLocked,
     contextUsage,
     hasNextPage,
     isFetchingNextPage,
@@ -75,7 +78,15 @@ export const Chat = memo(function Chat() {
     pendingElicitationRequest,
   } = state;
 
-  const { onSubmit, onStopStream, onSendPrompt, onAttach, onModelChange, fetchNextPage } = actions;
+  const {
+    onSubmit,
+    onStopStream,
+    onSendPrompt,
+    onAttach,
+    onModelChange,
+    onProfileChange,
+    fetchNextPage,
+  } = actions;
 
   const { inputMessage, setInputMessage } = useChatInputMessageContext();
 
@@ -454,6 +465,10 @@ export const Chat = memo(function Chat() {
           onStopStream={onStopStream}
           selectedModelId={selectedModelId}
           onModelChange={onModelChange}
+          selectedProfileId={selectedProfileId}
+          onProfileChange={onProfileChange}
+          profileLocked={profileLocked}
+          agentKind={agentKind}
           dropdownPosition="top"
           showAttachedFilesPreview={true}
           contextUsage={contextUsage}
