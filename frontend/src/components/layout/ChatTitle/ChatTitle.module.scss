@@ -29,6 +29,19 @@
   color: var(--theme-text-primary);
 }
 
+.title-input {
+  @include type.type-body(500);
+  min-width: 0;
+  width: min(40ch, 100%);
+  margin: calc(-1 * var(--space-0-5)) 0;
+  padding: var(--space-0-5) var(--space-1);
+  border: 1px solid var(--theme-border-hover);
+  border-radius: var(--radius-sm);
+  background-color: var(--theme-surface-secondary);
+  color: var(--theme-text-primary);
+  outline: none;
+}
+
 .spinner {
   @include type.type-body;
   width: var(--space-3);
