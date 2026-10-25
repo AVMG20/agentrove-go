@@ -3,6 +3,8 @@ package antigravity
 import (
 	"encoding/json"
 	"fmt"
+	"regexp"
+	"strconv"
 	"strings"
 
 	"agentrove/internal/agentstream"
@@ -182,6 +184,20 @@ func (t *Translator) tool(s step, failed bool) []agentstream.Event {
 	case "DONE":
 		delete(t.tools, s.StepIndex)
 		tool.Result = output
+		if tool.Name == "Bash" {
+			// run_command reports "Command exited with code N." ahead of the
+			// output; a non-zero exit fails the card, like Claude's Bash.
+			if text, ok := output.(string); ok {
+				if code, rest, ok := commandOutput(text); ok {
+					tool.Result = rest
+					if code != 0 {
+						tool.Error = fmt.Sprintf("Exit code %d", code)
+						out = append(out, tool.Failed())
+						break
+					}
+				}
+			}
+		}
 		out = append(out, tool.Completed())
 	case "ERROR", "FAILED", "CANCELED", "CANCELLED", "INTERRUPTED":
 		delete(t.tools, s.StepIndex)
@@ -251,6 +267,22 @@ func param(params map[string]any, keys ...string) string {
 		}
 	}
 	return ""
+}
+
+var commandExitRE = regexp.MustCompile(`^Command exited with code (-?\d+)\.\s*(?:Command output:\n)?`)
+
+// commandOutput splits run_command's output into its exit code and the
+// command's own output (CRLF from the PTY turned into newlines).
+func commandOutput(text string) (int, string, bool) {
+	m := commandExitRE.FindStringSubmatch(text)
+	if m == nil {
+		return 0, text, false
+	}
+	code, err := strconv.Atoi(m[1])
+	if err != nil {
+		return 0, text, false
+	}
+	return code, strings.ReplaceAll(text[len(m[0]):], "\r\n", "\n"), true
 }
 
 func outputText(v any) string {
