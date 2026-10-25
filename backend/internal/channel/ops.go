@@ -132,6 +132,13 @@ func (s *Service) Create(ctx context.Context, userID string, in CreateInput) (*C
 		}
 	}
 	now := db.Now()
+	// Members run Claude models: on the default Claude profile.
+	var profileID, provider any
+	if s.a.Profiles != nil {
+		if p := s.a.Profiles.DefaultClaude(ctx, userID); !p.Builtin {
+			profileID, provider = p.ID, p.Provider
+		}
+	}
 	ch := &Channel{ID: uuid.NewString(), UserID: userID, WorkspaceID: ws.ID, Name: in.Name, Worktree: in.Worktree, Branch: branch, CreatedAt: now, UpdatedAt: now}
 	err = s.a.DB.Tx(ctx, func(tx *sql.Tx) error {
 		if _, err := tx.ExecContext(ctx, `INSERT INTO channels (`+channelCols+`) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
@@ -140,8 +147,8 @@ func (s *Service) Create(ctx context.Context, userID string, in CreateInput) (*C
 		}
 		for i, item := range in.Members {
 			chatID := uuid.NewString()
-			if _, err := tx.ExecContext(ctx, `INSERT INTO chats (id, title, user_id, workspace_id, channel_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)`,
-				chatID, in.Name, userID, ws.ID, ch.ID, now, now); err != nil {
+			if _, err := tx.ExecContext(ctx, `INSERT INTO chats (id, title, user_id, workspace_id, channel_id, profile_id, provider, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+				chatID, in.Name, userID, ws.ID, ch.ID, profileID, provider, now, now); err != nil {
 				return err
 			}
 			mode := models.FullAccessPermissionMode

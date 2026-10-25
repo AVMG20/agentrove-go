@@ -15,6 +15,12 @@ RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/agentrove-browser-
 FROM ubuntu:24.04
 
 ARG CLAUDE_VERSION=2.1.308
+ARG CODEX_VERSION=0.163.0
+# Antigravity's CLI (agy) has no public package to pin: set AGY_URL to a
+# Linux build of it (the binary, or a .tar.gz/.zip holding `agy`) to bake
+# it in. Without it, Antigravity profiles show "CLI not found"; installing
+# agy into the box's ~/.local/bin (on PATH, persistent) also works.
+ARG AGY_URL=
 ARG NODE_MAJOR=22
 ARG PLAYWRIGHT_MCP_VERSION=0.0.83
 
@@ -66,6 +72,22 @@ RUN curl -fsSL https://claude.ai/install.sh | bash -s ${CLAUDE_VERSION} \
     && curl -LsSf https://astral.sh/uv/install.sh | env UV_INSTALL_DIR=/usr/local/bin UV_NO_MODIFY_PATH=1 sh \
     && printf '#!/bin/sh\nexec echo "$GITHUB_TOKEN"\n' > /usr/local/bin/git-askpass \
     && chmod 755 /usr/local/bin/git-askpass
+
+# The other providers' CLIs (provider profiles): OpenAI Codex, and
+# Antigravity when AGY_URL names a build.
+RUN npm install -g --no-fund --no-audit @openai/codex@${CODEX_VERSION} \
+    && codex --version \
+    && npm cache clean --force && rm -rf /root/.npm \
+    && if [ -n "$AGY_URL" ]; then \
+        tmp=$(mktemp -d) && curl -fsSL "$AGY_URL" -o "$tmp/agy.dl" \
+        && case "$AGY_URL" in \
+            *.zip) unzip -q "$tmp/agy.dl" -d "$tmp/x" ;; \
+            *.tar.gz|*.tgz) mkdir -p "$tmp/x" && tar -xzf "$tmp/agy.dl" -C "$tmp/x" ;; \
+            *) mkdir -p "$tmp/x" && mv "$tmp/agy.dl" "$tmp/x/agy" ;; \
+        esac \
+        && install -m 755 "$(find "$tmp/x" -type f -name agy | head -n 1)" /usr/local/bin/agy \
+        && agy --version && rm -rf "$tmp"; \
+    fi
 
 # ubuntu:24.04 ships an "ubuntu" user at uid 1000; the sandbox user must own
 # that uid.

@@ -114,31 +114,45 @@ type Chat struct {
 	LastThinkingMode  *string     `json:"last_thinking_mode"`
 	LastPersonaName   *string     `json:"last_persona_name"`
 	AutomationID      *string     `json:"automation_id"` // set on automation runs
-	CreatedAt         db.Time     `json:"created_at"`
-	UpdatedAt         db.Time     `json:"updated_at"`
+	// StoredProfileID and StoredProvider are NULL for the built-in Claude profile.
+	StoredProfileID *string `json:"-"`
+	StoredProvider  *string `json:"-"`
+	CreatedAt       db.Time `json:"created_at"`
+	UpdatedAt       db.Time `json:"updated_at"`
 
 	// Joined/computed.
 	SandboxID        string  `json:"sandbox_id"`
 	SessionAgentKind *string `json:"session_agent_kind"`
 	Unread           bool    `json:"unread"`
+	// ProfileID is the profile the chat runs on ("builtin" for the built-in
+	// Claude profile) and Provider that profile's provider.
+	ProfileID string `json:"profile_id"`
+	Provider  string `json:"provider"`
 }
 
 // ChatColumns selects chat columns joined with workspaces as w (for sandbox_id).
 const ChatColumns = `c.id, c.title, c.user_id, c.workspace_id, c.channel_id, c.session_id, c.worktree_cwd,
 	c.context_token_usage, c.context_window, c.last_event_seq, c.deleted_at, c.pinned_at, c.last_viewed_at,
-	c.last_model_id, c.last_thinking_mode, c.last_persona_name, c.automation_id, c.created_at, c.updated_at, w.sandbox_id`
+	c.last_model_id, c.last_thinking_mode, c.last_persona_name, c.automation_id, c.profile_id, c.provider, c.created_at, c.updated_at, w.sandbox_id`
 
 func (c *Chat) ScanFields() []any {
 	return []any{&c.ID, &c.Title, &c.UserID, &c.WorkspaceID, &c.ChannelID, &c.SessionID, &c.WorktreeCwd,
 		&c.ContextTokenUsage, &c.ContextWindow, &c.LastEventSeq, &c.DeletedAt, &c.PinnedAt, &c.LastViewedAt,
-		&c.LastModelID, &c.LastThinkingMode, &c.LastPersonaName, &c.AutomationID, &c.CreatedAt, &c.UpdatedAt, &c.SandboxID}
+		&c.LastModelID, &c.LastThinkingMode, &c.LastPersonaName, &c.AutomationID, &c.StoredProfileID, &c.StoredProvider, &c.CreatedAt, &c.UpdatedAt, &c.SandboxID}
 }
 
 // Finish fills computed fields after a scan.
 func (c *Chat) Finish() {
 	c.Unread = !c.LastViewedAt.Valid || c.UpdatedAt.After(c.LastViewedAt.Time.Time)
+	c.ProfileID, c.Provider = "builtin", ProviderClaude
+	if c.StoredProfileID != nil && *c.StoredProfileID != "" {
+		c.ProfileID = *c.StoredProfileID
+	}
+	if c.StoredProvider != nil && *c.StoredProvider != "" {
+		c.Provider = *c.StoredProvider
+	}
 	if c.SessionID != nil {
-		kind := "claude"
+		kind := c.Provider
 		c.SessionAgentKind = &kind
 	}
 }

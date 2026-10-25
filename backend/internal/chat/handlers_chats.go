@@ -7,7 +7,6 @@ import (
 	"strings"
 	"time"
 
-	"agentrove/internal/claude"
 	"agentrove/internal/db"
 	"agentrove/internal/gitops"
 	"agentrove/internal/httpx"
@@ -25,6 +24,8 @@ func (m *Module) createChat(w http.ResponseWriter, r *http.Request) error {
 		ModelID        string  `json:"model_id"`
 		WorkspaceID    string  `json:"workspace_id"`
 		WorktreeChatID *string `json:"worktree_chat_id"`
+		// ProfileID picks the provider profile; "" = the user's default.
+		ProfileID string `json:"profile_id"`
 	}
 	if err := httpx.Decode(r, &body); err != nil {
 		return err
@@ -32,7 +33,7 @@ func (m *Module) createChat(w http.ResponseWriter, r *http.Request) error {
 	if body.Title == "" || len(body.Title) > 255 {
 		return httpx.Unprocessable("title must be 1-255 characters")
 	}
-	c, err := m.CreateChat(r.Context(), u.ID, body.Title, body.WorkspaceID, body.WorktreeChatID)
+	c, err := m.CreateChat(r.Context(), u.ID, body.Title, body.WorkspaceID, body.WorktreeChatID, body.ProfileID, body.ModelID)
 	if err != nil {
 		return err
 	}
@@ -41,7 +42,12 @@ func (m *Module) createChat(w http.ResponseWriter, r *http.Request) error {
 
 // CreateChat inserts a chat and announces it. With worktreeChatID the new chat
 // joins that chat's workspace and runs in its worktree, so it sees its changes.
-func (m *Module) CreateChat(ctx context.Context, userID, title, workspaceID string, worktreeChatID *string) (*models.Chat, error) {
+// The chat runs on profileID ("" = the default profile, see newChatProfile).
+func (m *Module) CreateChat(ctx context.Context, userID, title, workspaceID string, worktreeChatID *string, profileID, modelID string) (*models.Chat, error) {
+	profile, err := m.newChatProfile(ctx, userID, profileID, modelID)
+	if err != nil {
+		return nil, err
+	}
 	var worktree *string
 	if worktreeChatID != nil && *worktreeChatID != "" {
 		src, err := m.a.Store.GetChat(ctx, userID, *worktreeChatID)
@@ -57,8 +63,9 @@ func (m *Module) CreateChat(ctx context.Context, userID, title, workspaceID stri
 	}
 	id := uuid.NewString()
 	now := db.Now()
-	_, err = m.a.DB.ExecContext(ctx, `INSERT INTO chats (id, title, user_id, workspace_id, worktree_cwd, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?)`, id, title, userID, ws.ID, worktree, now, now)
+	profileCol, providerCol := storedProfile(profile)
+	_, err = m.a.DB.ExecContext(ctx, `INSERT INTO chats (id, title, user_id, workspace_id, worktree_cwd, profile_id, provider, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`, id, title, userID, ws.ID, worktree, profileCol, providerCol, now, now)
 	if err != nil {
 		return nil, err
 	}
@@ -129,7 +136,7 @@ func (m *Module) contextUsage(w http.ResponseWriter, r *http.Request) error {
 	}
 	window := c.ContextWindow
 	if window == 0 {
-		window = claude.ContextWindow(db.Deref(c.LastModelID))
+		window = models.ModelContextWindow(c.Provider, db.Deref(c.LastModelID))
 	}
 	pct := 0.0
 	if window > 0 {
@@ -150,6 +157,9 @@ func (m *Module) updateChat(w http.ResponseWriter, r *http.Request) error {
 	var body struct {
 		Title  *string `json:"title"`
 		Pinned *bool   `json:"pinned"`
+		// ProfileID switches an empty thread's profile; once it has messages
+		// the profile is fixed (the client opens a new thread instead).
+		ProfileID *string `json:"profile_id"`
 	}
 	if err := httpx.Decode(r, &body); err != nil {
 		return err
@@ -163,6 +173,27 @@ func (m *Module) updateChat(w http.ResponseWriter, r *http.Request) error {
 		}
 		sets = append(sets, "title = ?")
 		args = append(args, *body.Title)
+	}
+	if body.ProfileID != nil {
+		if *body.ProfileID == "" {
+			return httpx.Unprocessable("profile_id must not be empty")
+		}
+		p, err := m.newChatProfile(r.Context(), u.ID, *body.ProfileID, "")
+		if err != nil {
+			return err
+		}
+		if p.ID != c.ProfileID {
+			var n int
+			if err := m.a.DB.QueryRowContext(r.Context(), `SELECT COUNT(1) FROM messages WHERE chat_id = ? AND deleted_at IS NULL`, c.ID).Scan(&n); err != nil {
+				return err
+			}
+			if n > 0 || c.SessionID != nil || m.busy(c.ID) {
+				return httpx.Conflict("This thread already has messages, so its profile is fixed. Start a new thread to use another profile.")
+			}
+			profileCol, providerCol := storedProfile(p)
+			sets = append(sets, "profile_id = ?", "provider = ?")
+			args = append(args, profileCol, providerCol)
+		}
 	}
 	if body.Pinned != nil {
 		sets = append(sets, "pinned_at = ?")

@@ -16,6 +16,7 @@ import (
 	"agentrove/internal/db"
 	"agentrove/internal/events"
 	"agentrove/internal/models"
+	"agentrove/internal/profiles"
 
 	"github.com/google/uuid"
 )
@@ -69,6 +70,8 @@ type turnRequest struct {
 	member         func(kind string, payload map[string]any)
 	onDone         func(status, content string)
 	unattended     bool
+	// profile is the provider account the turn runs on (nil = built-in Claude).
+	profile *profiles.Profile
 }
 
 type pendingPerm struct {
@@ -145,7 +148,7 @@ func newTurn(m *Module, req *turnRequest) *turn {
 	if req.member == nil {
 		t.publish = req.userID
 	}
-	t.tr.SetContextWindow(claude.ContextWindow(req.modelID))
+	t.tr.SetContextWindow(models.ModelContextWindow(reqProvider(req), req.modelID))
 	return t
 }
 
@@ -368,6 +371,9 @@ func (t *turn) execute() (*claude.Result, error) {
 	}
 	release := sb.Acquire()
 	defer release()
+	if reqProvider(t.req) != models.ProviderClaude {
+		return t.executeCLI(sb)
+	}
 
 	var sess *claude.Session
 	if t.req.followup {
@@ -567,7 +573,7 @@ func (t *turn) process(e claude.Event) {
 
 func (t *turn) contextUsage(tokens, window int) {
 	if window <= 0 {
-		window = claude.ContextWindow(t.req.modelID)
+		window = models.ModelContextWindow(reqProvider(t.req), t.req.modelID)
 	}
 	if tokens <= 0 || (tokens == t.lastTokens && window == t.lastWindow) {
 		return
@@ -767,8 +773,8 @@ func (t *turn) dismissControl(controlID string) {
 // finish persists the terminal snapshot and emits the terminal event, unless
 // a queued message takes over the stream.
 func (t *turn) finish(status, errText string) {
-	if strings.Contains(errText, "Not logged in") {
-		errText += "\n\nClaude has no credentials. Add ANTHROPIC_BASE_URL + ANTHROPIC_AUTH_TOKEN (proxy), ANTHROPIC_API_KEY or CLAUDE_CODE_OAUTH_TOKEN under Settings → Environment Variables, or run `claude` in a project terminal to log in."
+	if strings.Contains(errText, "Not logged in") || (reqProvider(t.req) != models.ProviderClaude && looksUnauthenticated(errText)) {
+		errText += signInHint(t.req.profile)
 	}
 	t.denyPending("The turn ended.")
 	t.mu.Lock()

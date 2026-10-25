@@ -20,9 +20,16 @@ var ErrWorkspaceNotFound = httpx.NotFound("Workspace not found")
 
 // CreateChat inserts a visible chat the way POST /chat/chats does (used by
 // automations and the MCP server). automationID marks a run of that automation.
+// They run Claude models, so they use the default Claude profile.
 func CreateChat(ctx context.Context, a *app.App, userID, workspaceID, title string, automationID *string) (*models.Chat, error) {
 	now := db.Now()
 	id := uuid.NewString()
+	var profileID, provider any
+	if a.Profiles != nil {
+		if p := a.Profiles.DefaultClaude(ctx, userID); !p.Builtin {
+			profileID, provider = p.ID, p.Provider
+		}
+	}
 	err := a.DB.Tx(ctx, func(tx *sql.Tx) error {
 		var n int
 		if err := tx.QueryRowContext(ctx, `SELECT COUNT(1) FROM workspaces WHERE id = ? AND user_id = ? AND deleted_at IS NULL`, workspaceID, userID).Scan(&n); err != nil {
@@ -31,8 +38,8 @@ func CreateChat(ctx context.Context, a *app.App, userID, workspaceID, title stri
 		if n == 0 {
 			return ErrWorkspaceNotFound
 		}
-		_, err := tx.ExecContext(ctx, `INSERT INTO chats (id, title, user_id, workspace_id, automation_id, created_at, updated_at)
-			VALUES (?, ?, ?, ?, ?, ?, ?)`, id, title, userID, workspaceID, automationID, now, now)
+		_, err := tx.ExecContext(ctx, `INSERT INTO chats (id, title, user_id, workspace_id, automation_id, profile_id, provider, created_at, updated_at)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`, id, title, userID, workspaceID, automationID, profileID, provider, now, now)
 		return err
 	})
 	if err != nil {

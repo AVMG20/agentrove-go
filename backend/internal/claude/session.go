@@ -51,7 +51,11 @@ type Config struct {
 	MCPServers     map[string]any
 	Settings       map[string]any
 	Env            map[string]string
-	Binary         string
+	// Unset drops inherited env vars (a profile's foreign credentials).
+	Unset []string
+	// Setup runs in the box shell before the CLI (a profile's dirs).
+	Setup  string
+	Binary string
 }
 
 // fingerprint covers the launch-only fields (model and permission mode are
@@ -63,7 +67,9 @@ func (c Config) fingerprint() string {
 		MCP                 map[string]any
 		Settings            map[string]any
 		Env                 map[string]string
-	}{c.Cwd, c.SystemPrompt, c.Effort, c.FullReplace, c.MCPServers, c.Settings, c.Env})
+		Unset               []string
+		Setup               string
+	}{c.Cwd, c.SystemPrompt, c.Effort, c.FullReplace, c.MCPServers, c.Settings, c.Env, c.Unset, c.Setup})
 	return string(b)
 }
 
@@ -170,10 +176,14 @@ func Start(ctx context.Context, sb *sandbox.Sandbox, chatID string, cfg Config) 
 	cmd := append([]string{bin}, cfg.args()...)
 	if sb.Kind == sandbox.KindDocker {
 		// Login shell so ~/.bashrc PATH (npm/nvm/native install) resolves claude.
-		cmd = []string{"bash", "-lc", `exec "$@"`, "claude"}
+		script := `exec "$@"`
+		if cfg.Setup != "" {
+			script = cfg.Setup + ` && exec "$@"`
+		}
+		cmd = []string{"bash", "-lc", script, "claude"}
 		cmd = append(cmd, append([]string{bin}, cfg.args()...)...)
 	}
-	proc, release, err := sb.Start(ctx, sandbox.ExecRequest{Cmd: cmd, Cwd: cfg.Cwd, Env: cfg.Env})
+	proc, release, err := sb.Start(ctx, sandbox.ExecRequest{Cmd: cmd, Cwd: cfg.Cwd, Env: cfg.Env, Unset: cfg.Unset})
 	if err != nil {
 		return nil, fmt.Errorf("start claude: %w", err)
 	}

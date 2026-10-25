@@ -57,7 +57,7 @@ func TestCreateChatInAnotherChatsWorktree(t *testing.T) {
 		t.Fatal(err)
 	}
 	src := testChat
-	c, err := m.CreateChat(ctx, testUser, "Review", "", &src)
+	c, err := m.CreateChat(ctx, testUser, "Review", "", &src, "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -76,7 +76,7 @@ func TestCreateChatInAnotherChatsWorktree(t *testing.T) {
 	}
 
 	missing := "44444444-0000-0000-0000-000000000000"
-	if _, err := m.CreateChat(ctx, testUser, "x", "", &missing); err == nil || !strings.Contains(err.Error(), "Chat not found") {
+	if _, err := m.CreateChat(ctx, testUser, "x", "", &missing, "", ""); err == nil || !strings.Contains(err.Error(), "Chat not found") {
 		t.Fatalf("unknown worktree_chat_id: err = %v", err)
 	}
 }

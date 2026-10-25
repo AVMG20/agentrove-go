@@ -26,6 +26,7 @@ import (
 	"agentrove/internal/gitops"
 	"agentrove/internal/httpx"
 	"agentrove/internal/models"
+	"agentrove/internal/profiles"
 	"agentrove/internal/prompts"
 	"agentrove/internal/sandbox"
 
@@ -534,6 +535,16 @@ func (m *Module) sessionConfig(sb *sandbox.Sandbox, req *turnRequest) claude.Con
 		Env:            m.sessionEnv(req),
 		Binary:         m.a.Cfg.ClaudeBinary,
 	}
+	if p := req.profile; p != nil && !p.Builtin {
+		launch := p.Launch()
+		for _, k := range launch.Unset {
+			delete(cfg.Env, k)
+		}
+		for k, v := range launch.Env {
+			cfg.Env[k] = v
+		}
+		cfg.Unset, cfg.Setup = launch.Unset, launch.Setup
+	}
 	st, err := m.a.Store.GetUserSettings(context.Background(), req.userID)
 	if err == nil && st.AutoCompactWindow > 0 {
 		cfg.Settings["autoCompactWindow"] = st.AutoCompactWindow
@@ -735,6 +746,9 @@ type startInput struct {
 	onDone         func(string, string)
 	unattended     bool
 	includeChannel bool
+	// coerceModel replaces a model of another provider with the chat
+	// provider's default (automations and MCP send Claude model ids).
+	coerceModel bool
 	// reserved: the caller already holds the chat's reservation and releases
 	// it itself if the turn does not launch.
 	reserved bool
@@ -743,41 +757,66 @@ type startInput struct {
 	beforeLaunch func(user, assistant *Message, checkpointID *string)
 }
 
-func validateTurn(in *startInput) (string, error) {
+func validateTurn(in *startInput) error {
 	if strings.TrimSpace(in.prompt) == "" {
-		return "", httpx.Unprocessable("prompt must not be empty")
+		return httpx.Unprocessable("prompt must not be empty")
 	}
 	if len(in.prompt) > 100000 {
-		return "", httpx.Unprocessable("prompt is too long")
-	}
-	if !models.ValidModelID(in.modelID) {
-		return "", httpx.BadRequest("Unknown model: " + in.modelID)
+		return httpx.Unprocessable("prompt is too long")
 	}
 	if in.permissionMode == "" {
 		in.permissionMode = "bypassPermissions"
 	}
 	if !models.ValidPermissionMode(in.permissionMode) {
-		return "", httpx.Unprocessable("Invalid permission mode: " + in.permissionMode)
-	}
-	effort, ok := claude.Effort(in.thinkingMode)
-	if !ok {
-		return "", httpx.BadRequest(fmt.Sprintf("Effort `%s` isn't supported by this model. Supported: low, medium, high, xhigh, max.", db.Deref(in.thinkingMode)))
+		return httpx.Unprocessable("Invalid permission mode: " + in.permissionMode)
 	}
 	if in.baseBranch != nil && *in.baseBranch != "" && !gitops.ValidBaseRef(*in.baseBranch) {
-		return "", httpx.BadRequest("Invalid base branch name")
+		return httpx.BadRequest("Invalid base branch name")
 	}
 	if in.persona == "" {
 		in.persona = DefaultPersona
 	}
-	return effort, nil
+	return nil
+}
+
+// validateModel checks the model and effort against the chat's provider and
+// returns the effort to launch with.
+func validateModel(in *startInput, provider string) (string, error) {
+	known := models.ValidModelFor(provider, in.modelID)
+	if in.coerceModel && provider != models.ProviderClaude {
+		// Antigravity accepts claude-* ids of its own; an automation's Claude
+		// model only stays if the provider lists it.
+		_, known = models.LookupProviderModel(provider, in.modelID)
+	}
+	if !known {
+		if !in.coerceModel || models.DefaultModel(provider) == "" {
+			return "", httpx.BadRequest("Unknown model: " + in.modelID)
+		}
+		in.modelID = models.DefaultModel(provider)
+	}
+	switch provider {
+	case models.ProviderClaude:
+		effort, ok := claude.Effort(in.thinkingMode)
+		if !ok {
+			return "", httpx.BadRequest(fmt.Sprintf("Effort `%s` isn't supported by this model. Supported: low, medium, high, xhigh, max.", db.Deref(in.thinkingMode)))
+		}
+		return effort, nil
+	case models.ProviderCodex:
+		// A level Codex lacks (max) falls back to the CLI's default.
+		for _, e := range models.CodexEffortLevels {
+			if e == db.Deref(in.thinkingMode) {
+				return e, nil
+			}
+		}
+	}
+	return "", nil
 }
 
 // startTurn creates the turn's rows and launches it. The chat must not have
 // a running turn.
 func (m *Module) startTurn(ctx context.Context, in startInput) (app.ChatTurnResult, error) {
 	var res app.ChatTurnResult
-	effort, err := validateTurn(&in)
-	if err != nil {
+	if err := validateTurn(&in); err != nil {
 		return res, err
 	}
 	if !in.reserved && !m.reserve(in.chatID) {
@@ -795,6 +834,7 @@ func (m *Module) startTurn(ctx context.Context, in startInput) (app.ChatTurnResu
 	}()
 
 	var chat *models.Chat
+	var err error
 	if in.includeChannel {
 		chat, err = m.a.Store.GetMemberChat(ctx, in.userID, in.chatID)
 	} else {
@@ -804,6 +844,14 @@ func (m *Module) startTurn(ctx context.Context, in startInput) (app.ChatTurnResu
 		return res, err
 	}
 	ws, err := m.a.Store.GetWorkspaceByID(ctx, chat.WorkspaceID)
+	if err != nil {
+		return res, err
+	}
+	profile, err := m.chatProfile(ctx, in.userID, chat)
+	if err != nil {
+		return res, err
+	}
+	effort, err := validateModel(&in, profile.Provider)
 	if err != nil {
 		return res, err
 	}
@@ -855,6 +903,7 @@ func (m *Module) startTurn(ctx context.Context, in startInput) (app.ChatTurnResu
 		modelID: in.modelID, permissionMode: in.permissionMode, effort: effort, personaName: in.persona,
 		systemPrompt: system, fullReplace: full, attachments: in.attachments, messageID: asstMsg.ID,
 		isNewChat: chat.SessionID == nil, rawPrompt: in.prompt, member: in.member, onDone: in.onDone, unattended: in.unattended,
+		profile: profile,
 	}
 	if in.beforeLaunch != nil {
 		in.beforeLaunch(userMsg, asstMsg, checkpointID)
@@ -1067,19 +1116,25 @@ func (m *Module) hookStartTurn(r app.ChatTurnRequest) (app.ChatTurnResult, error
 		userID: r.UserID, chatID: r.ChatID, prompt: r.Prompt, modelID: r.ModelID, permissionMode: r.PermissionMode,
 		thinkingMode: r.ThinkingMode, worktree: r.Worktree, baseBranch: r.BaseBranch, persona: r.SelectedPersonaName,
 		attachments: atts, member: r.MemberSink, onDone: r.OnDone, unattended: r.Unattended, includeChannel: r.MemberSink != nil,
+		coerceModel: true,
 	})
 }
 
-// oneShot returns a text-generation runner using the user's Claude login.
+// oneShot returns a text-generation runner on the user's default Claude
+// profile (the built-in one when the default is another provider).
 func (m *Module) oneShot(userID string) claude.OneShot {
+	ctx := context.Background()
 	home := m.a.Cfg.AgentHomeDir(userID)
-	// Profile env vars (e.g. ANTHROPIC_BASE_URL/AUTH_TOKEN) override the global env.
 	env := m.a.Cfg.AgentGlobalEnv()
-	for k, v := range m.a.Store.UserEnv(context.Background(), userID) {
+	for k, v := range m.a.Store.UserEnv(ctx, userID) {
 		env[k] = v
 	}
-	return claude.OneShot{Binary: m.a.Cfg.ClaudeBinary, Env: env,
-		ConfigDir: claude.ConfigDirFor(home), AsUID: sandbox.ContainerUID}
+	p := profiles.Builtin(userID)
+	if m.a.Profiles != nil {
+		p = m.a.Profiles.DefaultClaude(ctx, userID)
+	}
+	return claude.OneShot{Binary: m.a.Cfg.ClaudeBinary, Env: p.ApplyEnv(env),
+		ConfigDir: p.HostConfigDir(home), AsUID: sandbox.ContainerUID}
 }
 
 func (m *Module) generateText(ctx context.Context, userID, modelID, systemPrompt, prompt string) (string, error) {

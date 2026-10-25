@@ -57,8 +57,15 @@ func (m *Module) Routes(mux *http.ServeMux) {
 func user(r *http.Request) *models.User { return auth.UserFrom(r.Context()) }
 
 func (m *Module) listModels(w http.ResponseWriter, r *http.Request) error {
-	if k := r.URL.Query().Get("agent_kind"); k != "" && k != "claude" {
+	switch k := r.URL.Query().Get("agent_kind"); k {
+	case "", models.ProviderClaude:
+		return httpx.OK(w, models.ClaudeModels)
+	case "all":
+		return httpx.OK(w, models.AllModels())
+	default:
+		if ms := models.ModelsFor(k); ms != nil {
+			return httpx.OK(w, ms)
+		}
 		return httpx.OK(w, []models.ModelInfo{})
 	}
-	return httpx.OK(w, models.ClaudeModels)
 }

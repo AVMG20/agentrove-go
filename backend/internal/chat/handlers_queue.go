@@ -26,7 +26,7 @@ func (m *Module) queueMessage(w http.ResponseWriter, r *http.Request) error {
 		return httpx.Unprocessable("content must be 1-100000 characters")
 	}
 	modelID := r.FormValue("model_id")
-	if !models.ValidModelID(modelID) {
+	if !models.ValidModelFor(c.Provider, modelID) {
 		return httpx.BadRequest("Unknown model: " + modelID)
 	}
 	atts, err := m.saveUploads(r, u.ID)
