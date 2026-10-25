@@ -88,7 +88,7 @@ export const ProfileSelector = memo(function ProfileSelector({
       getItemLabel={(option) => option.name}
       onSelect={(option) => onProfileChange(option.id)}
       leftIcon={providerIconComponent(value.provider)}
-      alwaysShowIcon
+      keepIcon
       width="17rem"
       dropdownPosition={dropdownPosition}
       dropdownAlign={dropdownAlign}

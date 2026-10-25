@@ -4,6 +4,8 @@ export interface Artifact {
   title: string;
   is_public: boolean;
   version: number;
+  // Pinned artifacts lead the list, most recently pinned first.
+  pinned_at: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -17,4 +19,5 @@ export interface ArtifactView extends Artifact {
 export interface ArtifactUpdateRequest {
   title?: string;
   is_public?: boolean;
+  pinned?: boolean;
 }

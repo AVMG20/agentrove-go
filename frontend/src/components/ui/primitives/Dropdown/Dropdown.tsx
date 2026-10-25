@@ -38,9 +38,9 @@ export interface DropdownProps<T> {
   onSelect: (item: T) => void;
   renderItem?: (item: T, isSelected: boolean) => ReactNode;
   leftIcon?: ComponentType<SVGProps<SVGSVGElement>>;
-  // Keep leftIcon beside the label in the 'text' trigger (by default it only
-  // stands in for the label when compact).
-  alwaysShowIcon?: boolean;
+  // Keep the icon next to the label on wider screens too, instead of using it
+  // only as the compact stand-in for the label.
+  keepIcon?: boolean;
   // CSS width for the panel (e.g. '10rem'), not a class name
   width?: string;
   itemClassName?: string;
@@ -137,7 +137,7 @@ const Dropdown = memo(function Dropdown<T>({
   onSelect,
   renderItem,
   leftIcon: LeftIcon,
-  alwaysShowIcon = false,
+  keepIcon = false,
   width = '10rem',
   itemClassName,
   itemsClassName,
@@ -260,12 +260,12 @@ const Dropdown = memo(function Dropdown<T>({
           triggerClassName,
         )}
       >
-        {LeftIcon && (triggerVariant === 'text' ? showIconOnly || alwaysShowIcon : true) && (
+        {LeftIcon && (triggerVariant === 'text' ? showIconOnly : true) && (
           <LeftIcon
             className={clsx(
               styles['trigger-icon'],
               !forceCompact &&
-                !alwaysShowIcon &&
+                !keepIcon &&
                 triggerVariant !== 'toolbar' &&
                 styles['trigger-icon--responsive'],
             )}

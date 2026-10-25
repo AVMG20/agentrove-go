@@ -72,6 +72,7 @@ func TestArtifactLifecycle(t *testing.T) {
 		want                            int
 	}{
 		{"agent cannot publish", "PATCH", "/api/v1/artifacts/" + id, agent, `{"is_public":true}`, 403},
+		{"agent cannot pin", "PATCH", "/api/v1/artifacts/" + id, agent, `{"pinned":true}`, 403},
 		{"agent cannot delete", "DELETE", "/api/v1/artifacts/" + id, agent, ``, 403},
 		{"null rejected", "PATCH", "/api/v1/artifacts/" + id, session, `{"title":null}`, 422},
 		{"other user 404", "GET", "/api/v1/artifacts/" + id, other, ``, 404},
@@ -280,7 +281,20 @@ func TestListSearchAndPages(t *testing.T) {
 		t.Fatalf("pages: %v %v", first, second)
 	}
 
+	// A pinned artifact leads the list and keeps its version and updated_at.
 	session, _ := m.a.Keys.IssueToken(owner, auth.AudienceSession, time.Hour)
+	all, _ := m.svc.List(ctx, owner, ListOptions{})
+	last := all[len(all)-1]
+	if rec := do(mux, "PATCH", "/api/v1/artifacts/"+last.ID, session, `{"pinned":true}`); rec.Code != 200 || !strings.Contains(rec.Body.String(), `"pinned_at":"`) {
+		t.Fatalf("pin: %d %s", rec.Code, rec.Body)
+	}
+	pinned, _ := m.svc.Get(ctx, last.ID, owner)
+	if got := titles(ListOptions{}); got[0] != last.Title || pinned.Version != last.Version || pinned.UpdatedAt != last.UpdatedAt {
+		t.Fatalf("pinned order: %v %+v", got, pinned)
+	}
+	if rec := do(mux, "PATCH", "/api/v1/artifacts/"+last.ID, session, `{"pinned":false}`); rec.Code != 200 || !strings.Contains(rec.Body.String(), `"pinned_at":null`) {
+		t.Fatalf("unpin: %d %s", rec.Code, rec.Body)
+	}
 	if rec := do(mux, "GET", "/api/v1/artifacts?q=road&limit=20", session, ``); rec.Code != 200 || !strings.Contains(rec.Body.String(), "Roadmap") || strings.Contains(rec.Body.String(), "Sales") {
 		t.Fatalf("http search: %d %s", rec.Code, rec.Body)
 	}
