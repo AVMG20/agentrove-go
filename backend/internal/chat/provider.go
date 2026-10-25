@@ -66,6 +66,23 @@ func reqProvider(req *turnRequest) string {
 	return req.profile.Provider
 }
 
+// otherProviderModel reports whether id is a Codex or Antigravity model and
+// not a Claude one.
+func otherProviderModel(id string) bool {
+	if _, ok := models.LookupProviderModel(models.ProviderClaude, id); ok {
+		return false
+	}
+	for _, p := range models.Providers {
+		if p == models.ProviderClaude {
+			continue
+		}
+		if _, ok := models.LookupProviderModel(p, id); ok {
+			return true
+		}
+	}
+	return false
+}
+
 // signInHint explains a credentials failure in terms of the chat's profile.
 func signInHint(p *profiles.Profile) string {
 	if p == nil || p.Builtin {

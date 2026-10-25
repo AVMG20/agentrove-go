@@ -132,6 +132,19 @@ func TestValidateModelPerProvider(t *testing.T) {
 	}
 }
 
+func TestOtherProviderModel(t *testing.T) {
+	for id, want := range map[string]bool{
+		"gpt-6-luna":            true,
+		"gemini-3.8-flash-high": true,
+		"haiku":                 false,
+		"":                      false,
+	} {
+		if got := otherProviderModel(id); got != want {
+			t.Errorf("otherProviderModel(%q) = %v, want %v", id, got, want)
+		}
+	}
+}
+
 func TestProfileShell(t *testing.T) {
 	cmd := profileShell("mkdir -p x", "codex", []string{"exec", "-"})
 	if cmd[0] != "bash" || cmd[3] != "agent" || cmd[4] != "codex" || cmd[5] != "exec" ||

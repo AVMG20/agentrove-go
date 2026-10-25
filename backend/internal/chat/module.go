@@ -1137,8 +1137,10 @@ func (m *Module) oneShot(userID string) claude.OneShot {
 		ConfigDir: p.HostConfigDir(home), AsUID: sandbox.ContainerUID}
 }
 
+// generateText runs a one-shot Claude prompt (prompt enhancing, titles). A
+// Codex or Antigravity thread's model can't run on Claude, so Haiku stands in.
 func (m *Module) generateText(ctx context.Context, userID, modelID, systemPrompt, prompt string) (string, error) {
-	if modelID == "" {
+	if modelID == "" || otherProviderModel(modelID) {
 		modelID = "haiku"
 	}
 	return m.oneShot(userID).Run(ctx, modelID, systemPrompt, prompt)
