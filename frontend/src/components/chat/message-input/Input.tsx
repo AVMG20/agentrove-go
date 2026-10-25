@@ -10,7 +10,7 @@ import { ComposerAttachmentSlots } from './ComposerAttachmentSlots';
 import { SelectionAttachments } from './SelectionAttachments';
 import { InputSuggestionsPanel } from './InputSuggestionsPanel';
 import { ComposerUsage } from './ComposerUsage';
-import { PlanUsageIndicator } from './PlanUsageIndicator';
+import { ComposerAccount } from './ComposerAccount';
 import { InputProvider } from './InputProvider';
 import { useInputContext } from '@/hooks/useInputContext';
 import type { ContextUsageInfo } from '@/utils/contextUsage';
@@ -150,8 +150,7 @@ function InputLayout() {
       }
     >
       <div className={styles['footer-row']}>
-        {/* Plan usage is Claude's (subscription windows). */}
-        {state.agentKind === 'claude' && <PlanUsageIndicator profileId={state.selectedProfileId} />}
+        <ComposerAccount />
         <InputControls />
       </div>
 

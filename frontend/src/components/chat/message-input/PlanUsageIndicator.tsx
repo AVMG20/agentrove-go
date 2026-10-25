@@ -18,7 +18,14 @@ function windowText(window: ClaudeUsageWindow | null, now: number): string | nul
 // Always-visible plan usage under the composer: the Claude spark, a thin bar
 // for the 5-hour window, then "39% 4h 18m · 6% 6d 19h" (5-hour, then weekly,
 // each with time to reset). Click for the per-window bars and a refresh.
-export function PlanUsageIndicator({ profileId }: { profileId?: string }) {
+export function PlanUsageIndicator({
+  profileId,
+  // Off when the account picker beside it already shows the provider icon.
+  showSpark = true,
+}: {
+  profileId?: string;
+  showSpark?: boolean;
+}) {
   const { usage } = useClaudeUsage(profileId);
   const now = useNow(30_000);
   const { isOpen, setIsOpen, dropdownRef } = useDropdown();
@@ -43,7 +50,7 @@ export function PlanUsageIndicator({ profileId }: { profileId?: string }) {
         aria-label={`Claude plan usage: ${text}`}
         title={isOpen ? undefined : 'Plan usage (5-hour · weekly)'}
       >
-        <ClaudeIcon aria-hidden className={styles.spark} />
+        {showSpark && <ClaudeIcon aria-hidden className={styles.spark} />}
         {session && (
           <span className={styles.bar} aria-hidden="true">
             <span
