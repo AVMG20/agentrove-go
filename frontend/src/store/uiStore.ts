@@ -108,10 +108,6 @@ type UIStoreState = ThemeState &
     // Landing workspace sandbox for git shortcuts before a chat exists.
     workspaceSandboxId: string | null;
     setWorkspaceSandboxId: (sandboxId: string | null) => void;
-    // Title-bar working set (explicitly opened); sidebar is the full archive.
-    chatTabs: string[];
-    openChatTab: (chatId: string) => void;
-    closeChatTab: (chatId: string) => void;
   };
 
 const getInitialSidebarState = (): boolean => {
@@ -322,18 +318,6 @@ export const useUIStore = create<UIStoreState>()(
       workspaceSandboxId: null,
       setWorkspaceSandboxId: (sandboxId) => set({ workspaceSandboxId: sandboxId }),
 
-      chatTabs: [],
-      openChatTab: (chatId) => {
-        const { chatTabs } = get();
-        if (chatTabs.includes(chatId)) return;
-        set({ chatTabs: [...chatTabs, chatId] });
-      },
-      closeChatTab: (chatId) => {
-        const { chatTabs } = get();
-        if (!chatTabs.includes(chatId)) return;
-        set({ chatTabs: chatTabs.filter((id) => id !== chatId) });
-      },
-
       pendingFileOpen: null,
       fileOpenNonce: 0,
       pendingDiffMode: null,
@@ -481,8 +465,6 @@ export const useUIStore = create<UIStoreState>()(
         }),
 
       loadWorkspaceForChat: (chatId) => {
-        // Before loading so same-chat rehydrate still keeps the title tab.
-        get().openChatTab(chatId);
         get().loadWorkspace(chatId);
       },
 
@@ -528,7 +510,6 @@ export const useUIStore = create<UIStoreState>()(
         set({
           editorByChat,
           layoutsByChat,
-          chatTabs: state.chatTabs.filter((id) => id !== chatId),
           // Null live pointer so ChatPage unmount stash can't resurrect the deleted chat.
           ...(state.currentWorkspaceChatId === chatId ? { currentWorkspaceChatId: null } : {}),
         });
@@ -538,7 +519,7 @@ export const useUIStore = create<UIStoreState>()(
       cleanupAllChats: () => {
         // Reset first so the next loadWorkspaceForChat can't re-stash deleted chats.
         get().resetWorkspace();
-        set({ editorByChat: {}, layoutsByChat: {}, chatTabs: [] });
+        set({ editorByChat: {}, layoutsByChat: {} });
         clearTerminalStorage();
       },
 
@@ -546,7 +527,6 @@ export const useUIStore = create<UIStoreState>()(
         const state = get();
         const existingIndex = state.splitChatIds.indexOf(chatId);
         if (existingIndex >= 0) {
-          get().openChatTab(chatId);
           if (!isDesktop()) return;
           const tile = splitAgentTile(splitSlotAt(existingIndex));
           set(rebuildSplitGrid(state, state.splitChatIds));
@@ -554,8 +534,6 @@ export const useUIStore = create<UIStoreState>()(
           return;
         }
         if (state.splitChatIds.length >= MAX_CHAT_PANES - 1) return;
-        // Join working set so the chat stays in the tab strip after split closes.
-        get().openChatTab(chatId);
         const splitChatIds = [...state.splitChatIds, chatId];
         const resetFocus: Pick<UIStoreState, 'activeAgentTile' | 'focusedTile'> = {
           activeAgentTile: 'agent:primary',
@@ -645,7 +623,6 @@ export const useUIStore = create<UIStoreState>()(
         visibleLayout: state.visibleLayout,
         currentWorkspaceChatId: state.currentWorkspaceChatId,
         editorByChat: state.editorByChat,
-        chatTabs: state.chatTabs,
       }),
       version: 1,
       migrate: migrateUIState,

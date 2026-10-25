@@ -5,8 +5,7 @@ import { Button } from '@/components/ui/primitives/Button/Button';
 import { ToggleButton } from '@/components/ui/ToggleButton/ToggleButton';
 import { FloatingTooltip } from '@/components/ui/FloatingTooltip/FloatingTooltip';
 import { ViewSwitcher } from '@/components/layout/ViewSwitcher/ViewSwitcher';
-import { ChatTabs, MobileChatTitle } from '@/components/layout/ChatTabs/ChatTabs';
-import { useIsMobile } from '@/hooks/useIsMobile';
+import { ChatTitle } from '@/components/layout/ChatTitle/ChatTitle';
 import { ChannelHeader } from '@/components/channels/ChannelHeader';
 import { findSettingsSection } from '@/components/settings/settingsSections';
 import styles from './TitleBar.module.scss';
@@ -28,16 +27,14 @@ function SettingsTitle({ sectionId }: { sectionId: string | undefined }) {
 
 // The bar above the page. With the sidebar closed (or on mobile) it carries
 // the sidebar toggle plus search/new thread, so they're never more than a
-// click away; the rest is per-route: chat tabs, the channel header or the
+// click away; the rest is per-route: the chat title, the channel header or the
 // settings breadcrumb.
 export function TitleBar() {
   const navigate = useNavigate();
   const isChatPage = useMatch('/chat/:chatId');
   const isChannelPage = useMatch('/channels/:channelId');
-  const isLandingPage = useMatch('/');
   const settingsMatch = useMatch('/settings/:section');
   const sidebarOpen = useUIStore((state) => state.sidebarOpen);
-  const isMobile = useIsMobile();
 
   return (
     <div className={styles['title-bar']}>
@@ -75,8 +72,7 @@ export function TitleBar() {
       </div>
 
       <div className={styles.content}>
-        {(isChatPage || isLandingPage) &&
-          (isMobile ? isChatPage && <MobileChatTitle /> : <ChatTabs />)}
+        {isChatPage && <ChatTitle />}
         {isChannelPage && <ChannelHeader />}
         {settingsMatch && <SettingsTitle sectionId={settingsMatch.params.section} />}
       </div>

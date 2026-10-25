@@ -135,7 +135,6 @@ export function ChatPage() {
   const channelId = currentChat?.channel_id;
   useEffect(() => {
     if (!channelId || !chatId) return;
-    useUIStore.getState().closeChatTab(chatId);
     navigate(`/channels/${channelId}`, { replace: true });
   }, [channelId, chatId, navigate]);
 

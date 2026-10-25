@@ -27,7 +27,6 @@ beforeEach(() => {
     layoutsByChat: {},
     editorByChat: {},
     currentWorkspaceChatId: null,
-    chatTabs: [],
     pendingFileOpen: null,
     fileOpenNonce: 0,
     composerSelectionsByChat: {},
@@ -106,73 +105,10 @@ describe('composer selections', () => {
   });
 });
 
-describe('chatTabs', () => {
-  it('opens a tab once, ignoring duplicates', () => {
-    state().openChatTab('c1');
-    const before = state();
-    state().openChatTab('c1');
-    // Idempotent — a second open must not re-write the array.
-    expect(useUIStore.getState()).toBe(before);
-    expect(state().chatTabs).toEqual(['c1']);
-  });
-
-  it('closes an open tab and no-ops an unknown one', () => {
-    state().openChatTab('c1');
-    state().closeChatTab('c1');
-    expect(state().chatTabs).toEqual([]);
-    const before = state();
-    state().closeChatTab('missing');
-    expect(useUIStore.getState()).toBe(before);
-  });
-});
-
-describe('openFileInEditor', () => {
-  it('records the pending open, adds the editor tab, and bumps the nonce on re-open', () => {
-    state().openFileInEditor('a.ts', 'c1', 12);
-    expect(state().pendingFileOpen).toMatchObject({
-      path: 'a.ts',
-      chatId: 'c1',
-      line: 12,
-      nonce: 1,
-    });
-    expect(state().openTabs).toContain('editor');
-
-    state().openFileInEditor('a.ts', 'c1', 12);
-    // Same path/line re-opens must still register (nonce increments) so the
-    // editor re-focuses after the user scrolled away.
-    expect(state().pendingFileOpen?.nonce).toBe(2);
-  });
-
-  it('keeps incrementing the nonce after a consumer clears pendingFileOpen', () => {
-    state().openFileInEditor('a.ts', 'c1', 12);
-    // Consumers null the pending open — a restarted nonce would repeat a
-    // path:line:nonce key and the editor would skip the jump as already applied.
-    useUIStore.setState({ pendingFileOpen: null });
-    state().openFileInEditor('a.ts', 'c1', 12);
-    expect(state().pendingFileOpen?.nonce).toBe(2);
-  });
-
-  it('omits the line field when none is given', () => {
-    state().openFileInEditor('a.ts', 'c1');
-    expect(state().pendingFileOpen).not.toHaveProperty('line');
-  });
-
-  it('opens the editor tile for the chat bound to a split slot', () => {
-    state().openChatInSplit('c2');
-    state().openChatInSplit('c3');
-
-    state().openFileInEditor('a.ts', 'c3');
-
-    expect(state().openTabs).toContain('editor:split-2');
-    expect(state().visibleLayout).toEqual([['editor:split-2']]);
-  });
-});
-
 describe('loadWorkspaceForChat', () => {
-  it('adds the chat tab and defaults to a lone agent view on first visit', () => {
+  it('defaults to a lone agent view on first visit', () => {
     state().loadWorkspaceForChat('c1');
     expect(state().currentWorkspaceChatId).toBe('c1');
-    expect(state().chatTabs).toContain('c1');
     expect(state().visibleLayout).toEqual([['agent:primary']]);
   });
 
@@ -193,12 +129,10 @@ describe('loadWorkspaceForChat', () => {
 });
 
 describe('cleanupChat', () => {
-  it('drops the chat tab, saved layout, and clears the live pointer when it is current', () => {
+  it('drops the saved layout and clears the live pointer when it is current', () => {
     state().loadWorkspaceForChat('c1');
     state().toggleView('editor', false);
     state().cleanupChat('c1');
-
-    expect(state().chatTabs).not.toContain('c1');
     expect('c1' in state().layoutsByChat).toBe(false);
     expect(state().currentWorkspaceChatId).toBeNull();
   });
@@ -209,8 +143,6 @@ describe('cleanupAllChats', () => {
     state().loadWorkspaceForChat('c1');
     state().toggleView('editor', false);
     state().cleanupAllChats();
-
-    expect(state().chatTabs).toEqual([]);
     expect(state().layoutsByChat).toEqual({});
     expect(state().editorByChat).toEqual({});
     expect(state().visibleLayout).toEqual([['agent:primary']]);
@@ -243,7 +175,6 @@ describe('split chat', () => {
     const before = state();
     state().openChatInSplit('c5');
     expect(state()).toBe(before);
-    expect(state().chatTabs).not.toContain('c5');
   });
 
   it('focuses an existing split chat without duplicating it', () => {

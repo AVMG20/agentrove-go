@@ -2,7 +2,6 @@ import { useEffect } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { chatService } from '@/services/chatService';
 import { applyCreatedChat, patchChatInCache } from '@/hooks/queries/useChatQueries';
-import { useUIStore } from '@/store/uiStore';
 import { useStreamStore } from '@/store/streamStore';
 import { useBackgroundTasksStore } from '@/store/backgroundTasksStore';
 import { useMessageQueueStore } from '@/store/messageQueueStore';
@@ -52,12 +51,11 @@ export function useChatEvents(options?: { enabled?: boolean }) {
         void applyCreatedChat(queryClient, parsed.chat).catch((error) =>
           logger.error('Chat cache update failed', 'useChatEvents', error),
         );
-        useUIStore.getState().openChatTab(parsed.chat.id);
         return;
       }
 
       if (parsed.kind === 'title_updated') {
-        // Mid-stream title backfill — patch caches so sidebar/tab rename without refetch.
+        // Mid-stream title backfill — patch caches so sidebar/title rename without refetch.
         patchChatInCache(queryClient, parsed.chat_id, (chat) => ({
           ...chat,
           title: parsed.title,
@@ -71,8 +69,6 @@ export function useChatEvents(options?: { enabled?: boolean }) {
       }
 
       if (parsed.kind === 'stream_started') {
-        // Out-of-band turns on existing chats skip chat_created — open the tab here.
-        useUIStore.getState().openChatTab(parsed.chat_id);
         // Server bumps updated_at — refetch so chats outside loaded pages surface.
         queryClient.invalidateQueries({ queryKey: [queryKeys.chats, 'infinite'] });
         queryClient.invalidateQueries({ queryKey: queryKeys.workspaces });
