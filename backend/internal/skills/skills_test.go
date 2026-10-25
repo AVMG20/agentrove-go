@@ -91,24 +91,24 @@ func TestServiceListFilesUpdate(t *testing.T) {
 		}
 	}
 
-	if _, err := s.Files("claude", "../etc"); !errors.Is(err, ErrNotFound) {
+	if _, err := s.Files("claude", "../etc", ""); !errors.Is(err, ErrNotFound) {
 		t.Errorf("traversal name: %v", err)
 	}
-	if _, err := s.Files("codex", "mine"); !errors.Is(err, ErrNotFound) {
+	if _, err := s.Files("codex", "mine", ""); !errors.Is(err, ErrNotFound) {
 		t.Errorf("other source: %v", err)
 	}
-	files, err := s.Files("claude", "mine")
+	files, err := s.Files("claude", "mine", "")
 	if err != nil || len(files) != 1 || files[0].Path != "SKILL.md" {
 		t.Fatalf("files = %+v %v", files, err)
 	}
 
-	if _, err := s.Update("claude", "mine", []FileEntry{{Path: "../x", Content: "x"}}); !errors.Is(err, ErrInvalid) {
+	if _, err := s.Update("claude", "mine", "", []FileEntry{{Path: "../x", Content: "x"}}); !errors.Is(err, ErrInvalid) {
 		t.Errorf("escaping path: %v", err)
 	}
-	if _, err := s.Update("claude", "mine", []FileEntry{{Path: "SKILL.md", Content: "no frontmatter"}}); !errors.Is(err, ErrInvalid) {
+	if _, err := s.Update("claude", "mine", "", []FileEntry{{Path: "SKILL.md", Content: "no frontmatter"}}); !errors.Is(err, ErrInvalid) {
 		t.Errorf("bad frontmatter: %v", err)
 	}
-	out, err := s.Update("claude", "mine", []FileEntry{
+	out, err := s.Update("claude", "mine", "", []FileEntry{
 		{Path: "SKILL.md", Content: "---\ndescription: new\n---\n"},
 		{Path: "refs/data.bin", Content: "AAE=", IsBinary: true},
 	})
@@ -167,7 +167,7 @@ func TestSkillsStayInsideTheirRoots(t *testing.T) {
 			t.Errorf("listed %q (%s) from outside its root", sk.Name, sk.Description)
 		}
 	}
-	files, err := s.Files("claude", "ok")
+	files, err := s.Files("claude", "ok", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -177,10 +177,10 @@ func TestSkillsStayInsideTheirRoots(t *testing.T) {
 		}
 	}
 	for _, name := range []string{"stolen", "linkmd", "viaplugin"} {
-		if _, err := s.Files("claude", name); !errors.Is(err, ErrNotFound) {
+		if _, err := s.Files("claude", name, ""); !errors.Is(err, ErrNotFound) {
 			t.Errorf("Files(%s) = %v, want not found", name, err)
 		}
-		if _, err := s.Update("claude", name, []FileEntry{{Path: "SKILL.md", Content: "---\ndescription: x\n---\n"}}); !errors.Is(err, ErrNotFound) {
+		if _, err := s.Update("claude", name, "", []FileEntry{{Path: "SKILL.md", Content: "---\ndescription: x\n---\n"}}); !errors.Is(err, ErrNotFound) {
 			t.Errorf("Update(%s) = %v, want not found", name, err)
 		}
 	}
@@ -214,13 +214,68 @@ func TestConfigDirSymlinkSwapBlocked(t *testing.T) {
 	if list := s.List(); len(list) != 0 {
 		t.Errorf("listed skills through a swapped ~/claude: %+v", list)
 	}
-	if _, err := s.Files("claude", "mine"); !errors.Is(err, ErrNotFound) {
+	if _, err := s.Files("claude", "mine", ""); !errors.Is(err, ErrNotFound) {
 		t.Errorf("Files via swapped ~/claude = %v, want not found", err)
 	}
-	if _, err := s.Update("claude", "mine", []FileEntry{{Path: "SKILL.md", Content: "---\ndescription: x\n---\n"}}); !errors.Is(err, ErrNotFound) {
+	if _, err := s.Update("claude", "mine", "", []FileEntry{{Path: "SKILL.md", Content: "---\ndescription: x\n---\n"}}); !errors.Is(err, ErrNotFound) {
 		t.Errorf("Update via swapped ~/claude = %v, want not found", err)
 	}
 	if b, err := os.ReadFile(filepath.Join(victimClaude, "skills", "mine", skillMD)); err != nil || !strings.Contains(string(b), "other user's skill") {
 		t.Errorf("victim skill was modified: %q %v", b, err)
+	}
+}
+
+func TestCreateDeleteAndScopes(t *testing.T) {
+	storage := t.TempDir()
+	cfg := &config.Config{StoragePath: storage}
+	ws := &models.Workspace{ID: "w", UserID: "u1", SandboxProvider: "docker", WorkspacePath: filepath.Join(storage, "ws")}
+	if err := os.MkdirAll(ws.WorkspacePath, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(cfg.AgentHomeDir("u1"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	md := []FileEntry{{Path: "SKILL.md", Content: "---\nname: x\ndescription: d\n---\nbody"}}
+
+	// Global skills need no project, and the skills dir is created on demand.
+	user := NewUserService(cfg, "u1")
+	if out, err := user.Create("claude", "global-one", ScopeUser, md); err != nil || out.Scope != ScopeUser {
+		t.Fatalf("create user: %+v %v", out, err)
+	}
+	if _, err := user.Create("claude", "global-one", ScopeUser, md); !errors.Is(err, ErrConflict) {
+		t.Fatalf("duplicate: %v", err)
+	}
+	for _, bad := range []string{"Bad Name", "../x", "", strings.Repeat("a", 65)} {
+		if _, err := user.Create("claude", bad, ScopeUser, md); !errors.Is(err, ErrInvalid) {
+			t.Errorf("name %q: %v", bad, err)
+		}
+	}
+	if _, err := user.Create("claude", "p", ScopeProject, md); !errors.Is(err, ErrInvalid) {
+		t.Errorf("project scope without a project: %v", err)
+	}
+
+	proj := NewService(cfg, ws)
+	if _, err := proj.Create("claude", "global-one", ScopeProject, md); err != nil {
+		t.Fatalf("same name in project scope: %v", err)
+	}
+	scopes := map[string]string{}
+	for _, sk := range proj.List() {
+		scopes[sk.Name] = sk.Scope
+	}
+	// The project copy shadows the global one in a project's list.
+	if scopes["global-one"] != ScopeProject {
+		t.Fatalf("scopes: %v", scopes)
+	}
+	if err := proj.Delete("claude", "global-one", ScopeUser); err != nil {
+		t.Fatalf("delete user copy: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(ws.WorkspacePath, ".claude", "skills", "global-one", "SKILL.md")); err != nil {
+		t.Fatalf("project copy must stay: %v", err)
+	}
+	if list := user.List(); len(list) != 0 {
+		t.Fatalf("user list after delete: %v", list)
+	}
+	if err := user.Delete("claude", "missing", ScopeUser); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("delete missing: %v", err)
 	}
 }

@@ -28,12 +28,17 @@ export interface CustomEnvVar {
   [key: string]: unknown;
 }
 
+// project: the project's .claude/skills; user: global, in every project;
+// plugin: from an enabled Claude plugin (read-only).
+export type SkillScope = 'project' | 'user' | 'plugin';
+
 export interface CustomSkill {
   name: string;
   description: string;
   size_bytes: number;
   file_count: number;
   sources: string[];
+  scope: SkillScope;
   read_only: boolean;
 }
 

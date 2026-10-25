@@ -109,11 +109,24 @@
   }
 }
 
+.controls-end {
+  display: flex;
+  gap: var(--space-2);
+}
+
 .workspace-wrap {
+  flex: 1;
+  min-width: 0;
+
   @include responsive.media('sm-up') {
+    flex: none;
     width: var(--space-52);
-    flex-shrink: 0;
   }
+}
+
+.new-button {
+  flex-shrink: 0;
+  height: var(--space-10);
 }
 
 .loading-wrap {

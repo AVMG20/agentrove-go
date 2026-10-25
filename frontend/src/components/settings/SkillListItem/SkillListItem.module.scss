@@ -39,6 +39,12 @@
   color: var(--theme-text-quaternary);
 }
 
+.actions {
+  display: flex;
+  flex-shrink: 0;
+  gap: var(--space-0-5);
+}
+
 .edit-button {
   @include anim.transition-colors;
   height: var(--space-7);

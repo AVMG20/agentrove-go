@@ -1,6 +1,7 @@
-// Package skills lists and edits Claude skills (<dir>/<name>/SKILL.md) from
-// the workspace's .claude/skills, the user's Claude config dir and enabled
-// Claude plugins, and serves /api/v1/skills.
+// Package skills lists, creates, edits and deletes Claude skills
+// (<dir>/<name>/SKILL.md) in the workspace's .claude/skills (project scope)
+// and the user's Claude config dir (global, "user" scope), lists those of
+// enabled Claude plugins, and serves /api/v1/skills.
 package skills
 
 import (
@@ -12,6 +13,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 	"syscall"
@@ -34,8 +36,16 @@ type CustomSkill struct {
 	SizeBytes   int64    `json:"size_bytes"`
 	FileCount   int      `json:"file_count"`
 	Sources     []string `json:"sources"`
-	ReadOnly    bool     `json:"read_only"`
+	// Scope is where the skill lives: ScopeProject, ScopeUser or ScopePlugin.
+	Scope    string `json:"scope"`
+	ReadOnly bool   `json:"read_only"`
 }
+
+const (
+	ScopeProject = "project"
+	ScopeUser    = "user"
+	ScopePlugin  = "plugin"
+)
 
 type FileEntry struct {
 	Path     string `json:"path"`
@@ -43,10 +53,11 @@ type FileEntry struct {
 	IsBinary bool   `json:"is_binary"`
 }
 
-// ErrNotFound and ErrInvalid map to 404 / 400.
+// ErrNotFound, ErrInvalid and ErrConflict map to 404 / 400 / 409.
 var (
 	ErrNotFound = errors.New("not found")
 	ErrInvalid  = errors.New("invalid")
+	ErrConflict = errors.New("conflict")
 )
 
 // ClaudeConfigDir is the host path of the per-user Claude config dir, seen
@@ -70,11 +81,18 @@ func ClaudeConfigDir(cfg *config.Config, ws *models.Workspace) string {
 //	rel     the skills base dir, relative to the pinned dir (or anchor)
 type skillRoot struct {
 	anchor, pin, rel string
+	scope            string
 }
 
 // openBase opens the skills base dir as a pinned, symlink-safe *os.Root. The
 // caller closes it.
 func (sr skillRoot) openBase() (*os.Root, error) {
+	return sr.open(false)
+}
+
+// open is openBase; with create it first makes the base dir (a project or
+// config dir without skills yet), owned like the dir it's created in.
+func (sr skillRoot) open(create bool) (*os.Root, error) {
 	a, err := os.OpenRoot(sr.anchor)
 	if err != nil {
 		return nil, err
@@ -88,6 +106,21 @@ func (sr skillRoot) openBase() (*os.Root, error) {
 		}
 		cur = p
 	}
+	if create {
+		if _, err := cur.Stat(sr.rel); errors.Is(err, fs.ErrNotExist) {
+			uid, gid := skillOwner(cur, ".")
+			if err := cur.MkdirAll(sr.rel, 0o755); err != nil {
+				cur.Close()
+				return nil, err
+			}
+			if os.Geteuid() == 0 && uid >= 0 {
+				// Each new component, so the agent can still write them.
+				for d := sr.rel; d != "." && d != "/"; d = path.Dir(d) {
+					_ = cur.Lchown(d, uid, gid)
+				}
+			}
+		}
+	}
 	base, err := cur.OpenRoot(sr.rel)
 	cur.Close()
 	return base, err
@@ -95,6 +128,17 @@ func (sr skillRoot) openBase() (*os.Root, error) {
 
 type Service struct {
 	paths []skillRoot // search order: workspace first, then user, then plugins
+}
+
+// userRoot is the global skills dir, anchored at the (non-swappable) HOME
+// mount; ~/claude itself is swappable, so os.Root navigation guards it.
+func userRoot(cfg *config.Config, userID string) skillRoot {
+	return skillRoot{anchor: cfg.AgentHomeDir(userID), rel: "claude/skills", scope: ScopeUser}
+}
+
+// NewUserService covers only the user's global skills (no project).
+func NewUserService(cfg *config.Config, userID string) *Service {
+	return &Service{paths: []skillRoot{userRoot(cfg, userID)}}
 }
 
 // maxSkillFile bounds one file the API reads from an agent-writable skill
@@ -122,10 +166,8 @@ func NewService(cfg *config.Config, ws *models.Workspace) *Service {
 	paths := []skillRoot{
 		// Workspace skills: anchor at the (non-swappable) projects mount, pin
 		// the project dir to defeat a project-dir symlink swap, then .claude/skills.
-		{anchor: filepath.Dir(ws.WorkspacePath), pin: filepath.Base(ws.WorkspacePath), rel: filepath.Join(".claude", "skills")},
-		// Config-dir skills: anchor at the (non-swappable) HOME mount; ~/claude
-		// itself is swappable, so os.Root navigation guards it.
-		{anchor: cfg.AgentHomeDir(ws.UserID), rel: "claude/skills"},
+		{anchor: filepath.Dir(ws.WorkspacePath), pin: filepath.Base(ws.WorkspacePath), rel: filepath.Join(".claude", "skills"), scope: ScopeProject},
+		userRoot(cfg, ws.UserID),
 	}
 	containerClaude := ""
 	if ws.SandboxProvider == sandbox.KindDocker {
@@ -184,7 +226,7 @@ func pluginSkillPaths(homeDir, claudeDir, containerClaude string) []skillRoot {
 			if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) || filepath.IsAbs(rel) {
 				continue
 			}
-			out = append(out, skillRoot{anchor: homeDir, rel: filepath.ToSlash(rel)})
+			out = append(out, skillRoot{anchor: homeDir, rel: filepath.ToSlash(rel), scope: ScopePlugin})
 		}
 	}
 	return out
@@ -253,7 +295,8 @@ func (s *Service) List() []CustomSkill {
 			}
 			count, size := dirStats(base, name)
 			seenNames[name] = true
-			out = append(out, CustomSkill{Name: name, Description: description(meta), SizeBytes: size, FileCount: count, Sources: []string{Source}})
+			out = append(out, CustomSkill{Name: name, Description: description(meta), SizeBytes: size, FileCount: count,
+				Sources: []string{Source}, Scope: sr.scope, ReadOnly: sr.scope == ScopePlugin})
 		}
 		base.Close()
 	}
@@ -264,12 +307,16 @@ func validName(name string) bool {
 	return name != "" && name != "." && name != ".." && !strings.ContainsAny(name, `/\`) && !strings.ContainsRune(name, 0)
 }
 
-// find returns the skillRoot that holds the named skill.
-func (s *Service) find(source, name string) (skillRoot, error) {
+// find returns the skillRoot that holds the named skill; scope "" searches
+// every root in order.
+func (s *Service) find(source, name, scope string) (skillRoot, error) {
 	if source != Source || !validName(name) {
 		return skillRoot{}, fmt.Errorf("%w: Skill '%s' not found", ErrNotFound, name)
 	}
 	for _, sr := range s.paths {
+		if scope != "" && sr.scope != scope {
+			continue
+		}
 		base, err := sr.openBase()
 		if err != nil {
 			continue
@@ -284,8 +331,8 @@ func (s *Service) find(source, name string) (skillRoot, error) {
 }
 
 // Files returns every file of a skill; non-UTF-8 files come back base64.
-func (s *Service) Files(source, name string) ([]FileEntry, error) {
-	sr, err := s.find(source, name)
+func (s *Service) Files(source, name, scope string) ([]FileEntry, error) {
+	sr, err := s.find(source, name, scope)
 	if err != nil {
 		return nil, err
 	}
@@ -330,11 +377,63 @@ func (s *Service) Files(source, name string) ([]FileEntry, error) {
 // symlink-safe skills root, so a concurrent symlink swap can neither redirect
 // the delete nor the writes out of the user's own tree. (A skill that was a
 // symlink is replaced by a regular directory.)
-func (s *Service) Update(source, name string, files []FileEntry) (CustomSkill, error) {
-	sr, err := s.find(source, name)
+func (s *Service) Update(source, name, scope string, files []FileEntry) (CustomSkill, error) {
+	sr, err := s.find(source, name, scope)
 	if err != nil {
 		return CustomSkill{}, err
 	}
+	if sr.scope == ScopePlugin {
+		return CustomSkill{}, fmt.Errorf("%w: plugin skills are read-only", ErrInvalid)
+	}
+	return s.write(sr, source, name, files, false)
+}
+
+// newNameRE is the naming Claude expects for skills; existing skills with
+// other names stay editable.
+var newNameRE = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,63}$`)
+
+// Create adds a skill in the project or user scope.
+func (s *Service) Create(source, name, scope string, files []FileEntry) (CustomSkill, error) {
+	if source != Source {
+		return CustomSkill{}, fmt.Errorf("%w: unknown source %s", ErrInvalid, source)
+	}
+	if !newNameRE.MatchString(name) {
+		return CustomSkill{}, fmt.Errorf("%w: name must be lowercase letters, digits and hyphens (max 64)", ErrInvalid)
+	}
+	var target *skillRoot
+	for i := range s.paths {
+		if s.paths[i].scope == scope && scope != ScopePlugin {
+			target = &s.paths[i]
+			break
+		}
+	}
+	if target == nil {
+		return CustomSkill{}, fmt.Errorf("%w: can't create skills in scope %q", ErrInvalid, scope)
+	}
+	if _, err := s.find(source, name, scope); err == nil {
+		return CustomSkill{}, fmt.Errorf("%w: a skill named %s already exists", ErrConflict, name)
+	}
+	return s.write(*target, source, name, files, true)
+}
+
+// Delete removes a project or user skill.
+func (s *Service) Delete(source, name, scope string) error {
+	sr, err := s.find(source, name, scope)
+	if err != nil {
+		return err
+	}
+	if sr.scope == ScopePlugin {
+		return fmt.Errorf("%w: plugin skills are read-only", ErrInvalid)
+	}
+	base, err := sr.openBase()
+	if err != nil {
+		return err
+	}
+	defer base.Close()
+	return base.RemoveAll(name)
+}
+
+func (s *Service) write(sr skillRoot, source, name string, files []FileEntry, create bool) (CustomSkill, error) {
 	// Validate and decode everything before touching the real tree.
 	type decoded struct {
 		rel  string
@@ -368,7 +467,7 @@ func (s *Service) Update(source, name string, files []FileEntry) (CustomSkill, e
 		return CustomSkill{}, fmt.Errorf("%w: %s", ErrInvalid, err.Error())
 	}
 
-	base, err := sr.openBase()
+	base, err := sr.open(create)
 	if err != nil {
 		return CustomSkill{}, err
 	}
@@ -376,6 +475,9 @@ func (s *Service) Update(source, name string, files []FileEntry) (CustomSkill, e
 	// Preserve the owner (the sandbox user for Docker) so the agent keeps edit
 	// access; fall back to the skills dir's owner.
 	uid, gid := skillOwner(base, name)
+	if uid < 0 {
+		uid, gid = skillOwner(base, ".")
+	}
 	if err := base.RemoveAll(name); err != nil {
 		return CustomSkill{}, err
 	}
@@ -402,7 +504,7 @@ func (s *Service) Update(source, name string, files []FileEntry) (CustomSkill, e
 		})
 	}
 	count, size := dirStats(base, name)
-	return CustomSkill{Name: name, Description: description(meta), SizeBytes: size, FileCount: count, Sources: []string{source}}, nil
+	return CustomSkill{Name: name, Description: description(meta), SizeBytes: size, FileCount: count, Sources: []string{source}, Scope: sr.scope}, nil
 }
 
 // skillOwner returns the uid/gid of the skill dir name under base, or -1,-1.

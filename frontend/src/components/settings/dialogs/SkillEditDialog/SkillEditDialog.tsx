@@ -7,7 +7,7 @@ import { Tree } from '@/components/editor/file-tree/Tree';
 import { useEditorTheme } from '@/hooks/useEditorTheme';
 import type { CustomSkill } from '@/types/user.types';
 import type { FileStructure } from '@/types/file-system.types';
-import { skillService, type SkillFileEntry } from '@/services/skillService';
+import { skillService, type SkillFileEntry, type SkillLocation } from '@/services/skillService';
 import { detectLanguage, sortFiles } from '@/utils/file';
 import { MONACO_FONT_FAMILY } from '@/config/constants';
 import styles from './SkillEditDialog.module.scss';
@@ -35,7 +35,8 @@ const EDITOR_OPTIONS = {
 
 interface SkillEditDialogProps {
   isOpen: boolean;
-  workspaceId: string;
+  // The list the skill came from; the skill's own scope picks the copy.
+  location: SkillLocation;
   skill: CustomSkill | null;
   onClose: () => void;
   onSaved: () => Promise<void>;
@@ -43,11 +44,13 @@ interface SkillEditDialogProps {
 
 export function SkillEditDialog({
   isOpen,
-  workspaceId,
+  location,
   skill,
   onClose,
   onSaved,
 }: SkillEditDialogProps) {
+  const workspaceId = location.workspaceId;
+  const target = useMemo(() => ({ workspaceId, scope: skill?.scope }), [workspaceId, skill?.scope]);
   const titleId = useId();
   const [files, setFiles] = useState<SkillFileEntry[]>([]);
   const [selectedFile, setSelectedFile] = useState<FileStructure | null>(null);
@@ -77,7 +80,7 @@ export function SkillEditDialog({
 
     let cancelled = false;
     void skillService
-      .getSkillFiles(workspaceId, skill.sources[0], skill.name)
+      .getSkillFiles(target, skill.sources[0], skill.name)
       .then((loaded) => {
         if (cancelled) return;
         setFiles(loaded);
@@ -102,7 +105,7 @@ export function SkillEditDialog({
     return () => {
       cancelled = true;
     };
-  }, [isOpen, skill, workspaceId]);
+  }, [isOpen, skill, target]);
 
   const selectedSkillFile = useMemo(
     () => files.find((file) => file.path === selectedFile?.path) ?? null,
@@ -146,7 +149,7 @@ export function SkillEditDialog({
         const modified = modifiedFiles.get(file.path);
         return modified === undefined ? file : { ...file, content: modified };
       });
-      await skillService.updateSkill(workspaceId, skill.sources[0], skill.name, merged);
+      await skillService.updateSkill(target, skill.sources[0], skill.name, merged);
       await onSaved();
       onClose();
       toast.success('Saved');
@@ -155,7 +158,7 @@ export function SkillEditDialog({
     } finally {
       setSaving(false);
     }
-  }, [files, modifiedFiles, onClose, onSaved, skill, workspaceId]);
+  }, [files, modifiedFiles, onClose, onSaved, skill, target]);
 
   if (!isOpen || !skill) return null;
 
