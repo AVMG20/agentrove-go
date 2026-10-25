@@ -1,0 +1,17 @@
+{"type":"thread.started","thread_id":"01a1745f-55b6-7272-a1b2-59be65661587"}
+{"type":"turn.started"}
+{"type":"item.completed","item":{"id":"item_0","type":"reasoning","text":"**Reading the file**"}}
+{"type":"item.started","item":{"id":"item_1","type":"todo_list","items":[{"text":"Read sample.txt","completed":false},{"text":"Report","completed":false}]}}
+{"type":"item.started","item":{"id":"item_2","type":"command_execution","command":"/bin/zsh -lc 'cat sample.txt'","aggregated_output":"","exit_code":null,"status":"in_progress"}}
+{"type":"item.completed","item":{"id":"item_2","type":"command_execution","command":"/bin/zsh -lc 'cat sample.txt'","aggregated_output":"sample\n","exit_code":0,"status":"completed"}}
+{"type":"item.started","item":{"id":"item_3","type":"command_execution","command":"/bin/bash -lc 'false'","aggregated_output":"","exit_code":null,"status":"in_progress"}}
+{"type":"item.completed","item":{"id":"item_3","type":"command_execution","command":"/bin/bash -lc 'false'","aggregated_output":"boom\n","exit_code":1,"status":"failed"}}
+{"type":"item.completed","item":{"id":"item_4","type":"file_change","changes":[{"path":"/home/user/projects/demo/a.go","kind":"update"}],"status":"completed"}}
+{"type":"item.started","item":{"id":"item_5","type":"mcp_tool_call","server":"docs","tool":"search","arguments":{"q":"x"},"status":"in_progress"}}
+{"type":"item.completed","item":{"id":"item_5","type":"mcp_tool_call","server":"docs","tool":"search","arguments":{"q":"x"},"result":{"content":[{"type":"text","text":"hit"}]},"status":"completed"}}
+{"type":"item.started","item":{"id":"item_6","type":"web_search","query":"go generics"}}
+{"type":"item.completed","item":{"id":"item_6","type":"web_search","query":"go generics"}}
+{"type":"item.updated","item":{"id":"item_1","type":"todo_list","items":[{"text":"Read sample.txt","completed":true},{"text":"Report","completed":false}]}}
+{"type":"item.completed","item":{"id":"item_7","type":"agent_message","text":"sample"}}
+{"type":"item.completed","item":{"id":"item_8","type":"agent_message","text":"done"}}
+{"type":"turn.completed","usage":{"input_tokens":30476,"cached_input_tokens":26880,"cache_write_input_tokens":0,"output_tokens":40,"reasoning_output_tokens":0}}
