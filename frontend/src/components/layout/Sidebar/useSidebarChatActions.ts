@@ -69,8 +69,11 @@ export function useSidebarChatActions({
 
   const onChatSelect = useCallback((chatId: string) => navigate(`/chat/${chatId}`), [navigate]);
 
+  // A plain click opens just that thread: it closes any split, including when
+  // the thread is already the main pane (otherwise the click did nothing).
   const handleChatSelect = useCallback(
     (chatId: string) => {
+      useUIStore.getState().closeSplitChat();
       onChatSelect(chatId);
       if (isMobile) {
         useUIStore.getState().setSidebarOpen(false);
