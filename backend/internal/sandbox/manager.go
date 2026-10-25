@@ -96,6 +96,17 @@ func (m *Manager) For(ws *models.Workspace) (*Sandbox, error) {
 	return s, nil
 }
 
+// ForUser returns a handle on the user's box rooted at its home, for work
+// that belongs to no project (provider sign-in, CLI probes).
+func (m *Manager) ForUser(userID string) (*Sandbox, error) {
+	p, err := m.Provider(KindDocker)
+	if err != nil {
+		return nil, err
+	}
+	return &Sandbox{ID: BoxID(userID), Kind: KindDocker, UserID: userID, WorkspacePath: m.cfg.AgentHomeDir(userID),
+		provider: p, mgr: m, Root: ContainerHome, Home: ContainerHome}, nil
+}
+
 // Create prepares a project whose files are at workspacePath: a folder in
 // the user's box, which starts lazily on first use.
 func (m *Manager) Create(ctx context.Context, kind, sandboxID, workspacePath, userID string) error {
@@ -267,7 +278,7 @@ func (m *Manager) stopIdle(ctx context.Context, p Provider, id string) {
 	}
 }
 
-func (m *Manager) mergeEnv(s *Sandbox, extra map[string]string) map[string]string {
+func (m *Manager) mergeEnv(s *Sandbox, extra map[string]string, unset []string) map[string]string {
 	env := map[string]string{}
 	for k, v := range m.cfg.AgentGlobalEnv() {
 		env[k] = v
@@ -290,6 +301,9 @@ func (m *Manager) mergeEnv(s *Sandbox, extra map[string]string) map[string]strin
 		env["GIT_ASKPASS"] = s.GitAskpassPath()
 	}
 	env["TERM"] = TerminalType
+	for _, k := range unset {
+		delete(env, k)
+	}
 	for k, v := range extra {
 		env[k] = v
 	}

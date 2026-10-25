@@ -8,22 +8,15 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+
+	"agentrove/internal/agentstream"
 )
 
-// Event is one frontend stream event: kind plus payload (the envelope body).
-type Event struct {
-	Kind    string
-	Payload map[string]any
-}
+// Event is one frontend stream event (shared by every provider adapter).
+type Event = agentstream.Event
 
 // Result summarizes the CLI's terminal `result` message of a turn.
-type Result struct {
-	IsError       bool
-	Subtype       string
-	ErrorText     string
-	TotalCostUSD  float64
-	ContextWindow int
-}
+type Result = agentstream.Result
 
 // Translator turns CLI messages of one turn into frontend stream events.
 // Tool payloads mirror what the Claude tool cards expect: name/input are the
