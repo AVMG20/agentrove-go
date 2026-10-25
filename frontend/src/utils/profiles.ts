@@ -29,10 +29,23 @@ export function authModeLabel(provider: ProviderKind, mode: ProfileAuthMode): st
 
 // The small chip next to a profile's name.
 export function profileChip(profile: Profile): string {
-  if (profile.builtin) return 'Server';
+  if (profile.builtin) return 'Built-in';
   if (profile.auth_mode === 'endpoint') return 'Gateway';
   if (profile.auth_mode === 'login') return 'Sign-in';
   return profile.provider === 'claude' ? 'Token' : 'API key';
+}
+
+// What removing an account does, for its confirm dialog (mirrors
+// profiles.Service.Delete).
+export function removeProfileMessage(profile: Profile): string {
+  const stored =
+    profile.auth_mode === 'login'
+      ? 'Its sign-in files stay in your box, but adding the account again needs a new sign-in.'
+      : 'Its saved token is deleted.';
+  const threads = profile.shares_server_sessions
+    ? 'Its threads move to the Server account and continue there, on the server’s Claude credentials.'
+    : 'Threads on it can’t continue: start a new thread on another account.';
+  return `Remove "${profile.name}"? ${threads} ${stored}`;
 }
 
 // Whether the profile has an in-box sign-in flow (mirrors profiles.loginCommand).

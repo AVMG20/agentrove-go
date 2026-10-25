@@ -33,6 +33,11 @@ export interface Profile {
   // The token never leaves the server; only whether one is set and its end.
   has_token: boolean;
   token_hint: string;
+  // The variable a Claude token is passed in; '' picks it by auth mode.
+  token_env: ClaudeTokenEnv | '';
+  // On the box's ~/claude (migrated from env vars): removing it moves its
+  // threads to the built-in Server account.
+  shares_server_sessions: boolean;
   is_default: boolean;
   builtin: boolean;
   login: ProfileLogin | null;
@@ -51,6 +56,12 @@ export interface ProfileInput {
   // Blank keeps the stored token.
   token?: string;
   clear_token?: boolean;
+  token_env?: ClaudeTokenEnv | '';
 }
+
+export type ClaudeTokenEnv =
+  | 'ANTHROPIC_AUTH_TOKEN'
+  | 'ANTHROPIC_API_KEY'
+  | 'CLAUDE_CODE_OAUTH_TOKEN';
 
 export const BUILTIN_PROFILE_ID = 'builtin';

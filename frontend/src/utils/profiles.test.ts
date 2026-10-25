@@ -11,6 +11,8 @@ const profile = (over: Partial<Profile> = {}): Profile => ({
   usage_url: '',
   has_token: true,
   token_hint: '…abcd',
+  token_env: '',
+  shares_server_sessions: false,
   is_default: false,
   builtin: false,
   login: null,

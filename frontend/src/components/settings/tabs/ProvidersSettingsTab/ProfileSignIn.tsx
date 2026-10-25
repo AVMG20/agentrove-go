@@ -16,6 +16,9 @@ import styles from './ProvidersSettingsTab.module.scss';
 
 interface ProfileSignInProps {
   profile: Profile;
+  // POST /login is still running (it may first boot a stopped box): there is
+  // nothing to poll yet.
+  starting: boolean;
   onClose: () => void;
   onRetry: () => void;
 }
@@ -32,16 +35,16 @@ function signInIntro(profile: Profile): string {
 
 // A sign-in running in the box: the CLI's link, device code and output, plus
 // a field to answer its prompts.
-export function ProfileSignIn({ profile, onClose, onRetry }: ProfileSignInProps) {
+export function ProfileSignIn({ profile, starting, onClose, onRetry }: ProfileSignInProps) {
   const id = useId();
   const queryClient = useQueryClient();
-  const { data: login, error: loginError } = useProfileLoginQuery(profile.id, true);
+  const { data: login, error: loginError } = useProfileLoginQuery(profile.id, !starting);
   const sendInput = useSendProfileLoginInputMutation();
   const cancel = useCancelProfileLoginMutation();
   const [answer, setAnswer] = useState('');
   const [inputError, setInputError] = useState<string | null>(null);
 
-  const status = login?.status;
+  const status = starting ? undefined : login?.status;
   // A finished sign-in changes the account's status.
   useEffect(() => {
     if (status && status !== 'running') {
@@ -67,6 +70,17 @@ export function ProfileSignIn({ profile, onClose, onRetry }: ProfileSignInProps)
   const handleCancel = () => {
     cancel.mutate(profile.id, { onSettled: onClose });
   };
+
+  if (starting) {
+    return (
+      <div className={styles.signin} role="status">
+        <p className={styles['signin-text']}>
+          <Loader2 aria-hidden className={clsx(styles['signin-icon'], styles.spin)} />
+          Starting your box and {PROVIDER_CLI[profile.provider]}…
+        </p>
+      </div>
+    );
+  }
 
   if (!login) {
     return (

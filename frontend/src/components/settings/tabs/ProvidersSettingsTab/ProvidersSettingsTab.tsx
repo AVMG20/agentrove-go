@@ -20,6 +20,7 @@ import {
   groupProfiles,
   profileChip,
   profileStatusLabel,
+  removeProfileMessage,
 } from '@/utils/profiles';
 import type { Profile, ProfileInput, ProviderKind } from '@/types/profile.types';
 import { ProfileForm } from './ProfileForm';
@@ -44,6 +45,8 @@ export function ProvidersSettingsTab() {
   const [formError, setFormError] = useState<string | null>(null);
   // Accounts whose sign-in panel is open.
   const [signingIn, setSigningIn] = useState<Set<string>>(() => new Set());
+  // Accounts whose sign-in is still being started (POST /login pending).
+  const [starting, setStarting] = useState<Set<string>>(() => new Set());
   const [pendingDelete, setPendingDelete] = useState<Profile | null>(null);
 
   const openForm = (next: Editing) => {
@@ -51,21 +54,25 @@ export function ProvidersSettingsTab() {
     setEditing(next);
   };
 
-  const showSignIn = (profileId: string, open: boolean) =>
-    setSigningIn((prev) => {
+  const toggle = (set: typeof setSigningIn) => (profileId: string, on: boolean) =>
+    set((prev) => {
       const next = new Set(prev);
-      if (open) next.add(profileId);
+      if (on) next.add(profileId);
       else next.delete(profileId);
       return next;
     });
+  const showSignIn = toggle(setSigningIn);
+  const markStarting = toggle(setStarting);
 
   const beginSignIn = (profile: Profile) => {
     showSignIn(profile.id, true);
+    markStarting(profile.id, true);
     startLogin.mutate(profile.id, {
       onError: (err) => {
         showSignIn(profile.id, false);
         toast.error(errorText(err, 'Failed to start sign-in'));
       },
+      onSettled: () => markStarting(profile.id, false),
     });
   };
 
@@ -221,6 +228,7 @@ export function ProvidersSettingsTab() {
         {signInOpen && (
           <ProfileSignIn
             profile={profile}
+            starting={starting.has(profile.id)}
             onClose={() => showSignIn(profile.id, false)}
             onRetry={() => beginSignIn(profile)}
           />
@@ -300,11 +308,7 @@ export function ProvidersSettingsTab() {
         onClose={() => setPendingDelete(null)}
         onConfirm={() => void handleDelete()}
         title="Remove account"
-        message={
-          pendingDelete
-            ? `Remove "${pendingDelete.name}" and its sign-in? Threads on it can't continue; start a new thread on another account.`
-            : ''
-        }
+        message={pendingDelete ? removeProfileMessage(pendingDelete) : ''}
         confirmLabel="Remove"
       />
     </div>

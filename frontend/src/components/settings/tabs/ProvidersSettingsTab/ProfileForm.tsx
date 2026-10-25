@@ -4,9 +4,16 @@ import { Input } from '@/components/ui/primitives/Input/Input';
 import { Label } from '@/components/ui/primitives/Label/Label';
 import { FieldMessage } from '@/components/ui/primitives/FieldMessage/FieldMessage';
 import { SegmentedControl } from '@/components/ui/primitives/SegmentedControl/SegmentedControl';
+import { Select } from '@/components/ui/primitives/Select/Select';
 import { SecretInput } from '@/components/settings/inputs/SecretInput/SecretInput';
 import { AUTH_MODES, authModeLabel } from '@/utils/profiles';
-import type { Profile, ProfileAuthMode, ProfileInput, ProviderKind } from '@/types/profile.types';
+import type {
+  ClaudeTokenEnv,
+  Profile,
+  ProfileAuthMode,
+  ProfileInput,
+  ProviderKind,
+} from '@/types/profile.types';
 import styles from './ProvidersSettingsTab.module.scss';
 
 interface ProfileFormProps {
@@ -24,9 +31,16 @@ function tokenLabel(provider: ProviderKind, mode: ProfileAuthMode): string {
   return provider === 'claude' ? 'Claude token' : 'API key';
 }
 
+// How an endpoint's token reaches it ('' = the default, a bearer token).
+const ENDPOINT_TOKEN_ENVS: { value: ClaudeTokenEnv | ''; label: string }[] = [
+  { value: '', label: 'Bearer token (ANTHROPIC_AUTH_TOKEN)' },
+  { value: 'ANTHROPIC_API_KEY', label: 'API key header (ANTHROPIC_API_KEY)' },
+  { value: 'CLAUDE_CODE_OAUTH_TOKEN', label: 'Claude OAuth token (CLAUDE_CODE_OAUTH_TOKEN)' },
+];
+
 function tokenHint(provider: ProviderKind, mode: ProfileAuthMode, editing: boolean): string {
   if (editing) return 'Leave blank to keep the current one.';
-  if (mode === 'endpoint') return 'Sent as ANTHROPIC_AUTH_TOKEN to the endpoint.';
+  if (mode === 'endpoint') return 'The token the endpoint accepts.';
   if (provider === 'claude') {
     return 'From claude setup-token. Leave blank to sign in from here after saving.';
   }
@@ -51,6 +65,9 @@ export function ProfileForm({
   );
   const [baseUrl, setBaseUrl] = useState(profile?.base_url ?? '');
   const [usageUrl, setUsageUrl] = useState(profile?.usage_url ?? '');
+  const [tokenEnv, setTokenEnv] = useState<ClaudeTokenEnv | ''>(
+    profile?.auth_mode === 'endpoint' ? profile.token_env : '',
+  );
   const [token, setToken] = useState('');
   const [tokenVisible, setTokenVisible] = useState(false);
   const [localError, setLocalError] = useState<string | null>(null);
@@ -85,6 +102,7 @@ export function ProfileForm({
       usage_url: authMode === 'endpoint' ? usageUrl.trim() : '',
     };
     if (!editing) input.provider = provider;
+    if (authMode === 'endpoint') input.token_env = tokenEnv;
     if (needsToken && token.trim()) input.token = token.trim();
     onSubmit(input);
   };
@@ -130,6 +148,7 @@ export function ProfileForm({
               value={authMode}
               onChange={(mode) => {
                 setAuthMode(mode);
+                setTokenEnv('');
                 setLocalError(null);
               }}
               options={modes.map((mode) => ({
@@ -194,6 +213,29 @@ export function ProfileForm({
           />
           <FieldMessage>{tokenHint(provider, authMode, editing && profile.has_token)}</FieldMessage>
         </div>
+      )}
+
+      {authMode === 'endpoint' && (
+        <div className={styles.field}>
+          <Label htmlFor={`${id}-token-env`}>Send the token as</Label>
+          <Select
+            id={`${id}-token-env`}
+            value={tokenEnv}
+            onChange={(e) => setTokenEnv(e.target.value as ClaudeTokenEnv | '')}
+          >
+            {ENDPOINT_TOKEN_ENVS.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </Select>
+        </div>
+      )}
+
+      {authMode === 'token' && provider === 'claude' && editing && profile.token_env && (
+        <FieldMessage>
+          Passed as {profile.token_env}, as your env vars did. A new token is passed by its kind.
+        </FieldMessage>
       )}
 
       {shownError && (

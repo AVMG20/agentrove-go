@@ -2,10 +2,10 @@
 
 import type { ReactNode } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { profileService } from '@/services/profileService';
-import type { Profile } from '@/types/profile.types';
+import type { Profile, ProfileLogin } from '@/types/profile.types';
 import { ProvidersSettingsTab } from './ProvidersSettingsTab';
 
 vi.mock('@/services/profileService', () => ({
@@ -42,6 +42,8 @@ const profile = (over: Partial<Profile>): Profile => ({
   usage_url: '',
   has_token: true,
   token_hint: '…abcd',
+  token_env: '',
+  shares_server_sessions: false,
   is_default: false,
   builtin: false,
   login: null,
@@ -55,7 +57,7 @@ const profile = (over: Partial<Profile>): Profile => ({
 const PROFILES = [
   profile({
     id: 'builtin',
-    name: 'Default',
+    name: 'Server',
     builtin: true,
     auth_mode: 'login',
     is_default: true,
@@ -84,9 +86,10 @@ describe('ProvidersSettingsTab', () => {
     const claude = await screen.findByRole('region', { name: /Claude Code/ });
     expect(within(claude).getByText('· 3 accounts')).toBeTruthy();
     expect(within(claude).getByText('max · me@example.com')).toBeTruthy();
-    expect(within(claude).getAllByText('Default')).toHaveLength(2); // name + marker
+    expect(within(claude).getByText('Server')).toBeTruthy();
+    expect(within(claude).getByText('Default')).toBeTruthy(); // the marker
     // The server's account can't be edited or removed, only signed in.
-    expect(within(claude).queryByRole('button', { name: 'Edit Default' })).toBeNull();
+    expect(within(claude).queryByRole('button', { name: 'Edit Server' })).toBeNull();
     expect(within(claude).getByRole('button', { name: 'Edit Work' })).toBeTruthy();
     expect(screen.getByRole('region', { name: /Codex/ })).toBeTruthy();
     expect(screen.getByText('No Codex accounts yet.')).toBeTruthy();
@@ -140,6 +143,79 @@ describe('ProvidersSettingsTab', () => {
         auth_mode: 'token',
         base_url: '',
         usage_url: '',
+      }),
+    );
+  });
+
+  it('waits for the sign-in to start before polling it', async () => {
+    vi.mocked(profileService.listProfiles).mockResolvedValue(PROFILES);
+    let started: (login: ProfileLogin) => void = () => {};
+    vi.mocked(profileService.startLogin).mockReturnValue(
+      new Promise<ProfileLogin>((resolve) => {
+        started = resolve;
+      }),
+    );
+    vi.mocked(profileService.getLogin).mockRejectedValue(new Error('No sign-in for this profile'));
+    render(<ProvidersSettingsTab />, { wrapper });
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Sign in Work' }));
+    // Booting the box: no poll yet, so no "no longer running".
+    expect(await screen.findByText(/Starting your box/)).toBeTruthy();
+    expect(profileService.getLogin).not.toHaveBeenCalled();
+    expect(screen.queryByText(/no longer running/)).toBeNull();
+
+    act(() =>
+      started({
+        profile_id: 'work',
+        status: 'running',
+        url: 'https://claude.ai/oauth',
+        code: '',
+        output: '',
+        error: '',
+      }),
+    );
+    expect(await screen.findByRole('link', { name: /Open sign-in page/ })).toBeTruthy();
+  });
+
+  it('says what removing an account does to its threads', async () => {
+    vi.mocked(profileService.listProfiles).mockResolvedValue([
+      ...PROFILES,
+      profile({
+        id: 'mig',
+        name: 'Claude (from env vars)',
+        token_env: 'ANTHROPIC_AUTH_TOKEN',
+        shares_server_sessions: true,
+      }),
+    ]);
+    render(<ProvidersSettingsTab />, { wrapper });
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Remove Claude (from env vars)' }));
+    expect(screen.getByText(/Its threads move to the Server account/)).toBeTruthy();
+    expect(screen.getByText(/Its saved token is deleted/)).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+
+    fireEvent.click(screen.getByRole('button', { name: 'Remove Work' }));
+    expect(screen.getByText(/Threads on it can’t continue/)).toBeTruthy();
+  });
+
+  it('sends how an endpoint takes its token', async () => {
+    vi.mocked(profileService.listProfiles).mockResolvedValue(PROFILES);
+    vi.mocked(profileService.updateProfile).mockResolvedValue(PROFILES[2]);
+    render(<ProvidersSettingsTab />, { wrapper });
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Edit Gateway' }));
+    const form = screen.getByRole('form', { name: 'Edit Gateway' });
+    fireEvent.change(within(form).getByLabelText('Send the token as'), {
+      target: { value: 'ANTHROPIC_API_KEY' },
+    });
+    fireEvent.click(within(form).getByRole('button', { name: 'Save' }));
+    await waitFor(() =>
+      expect(profileService.updateProfile).toHaveBeenCalledWith('gw', {
+        name: 'Gateway',
+        auth_mode: 'endpoint',
+        base_url: 'https://gw.example',
+        usage_url: '',
+        token_env: 'ANTHROPIC_API_KEY',
       }),
     );
   });

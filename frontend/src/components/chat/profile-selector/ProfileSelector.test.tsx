@@ -32,6 +32,8 @@ const profile = (over: Partial<Profile>): Profile => ({
   usage_url: '',
   has_token: true,
   token_hint: '',
+  token_env: '',
+  shares_server_sessions: false,
   is_default: false,
   builtin: false,
   login: null,
@@ -63,7 +65,7 @@ beforeEach(() => {
   h.profiles = [
     profile({
       id: 'builtin',
-      name: 'Default',
+      name: 'Server',
       builtin: true,
       auth_mode: 'login',
       is_default: true,
@@ -84,7 +86,7 @@ afterEach(cleanup);
 describe('ProfileSelector', () => {
   it('lists accounts grouped by provider with their status', () => {
     renderSelector({});
-    openPicker(/Default/);
+    openPicker(/Server/);
     const list = screen.getByRole('listbox');
     expect(within(list).getByText('Claude Code')).toBeTruthy();
     expect(within(list).getByText('Codex')).toBeTruthy();
@@ -95,7 +97,7 @@ describe('ProfileSelector', () => {
   it('warns that a locked thread opens a new thread, and reports the pick', () => {
     const onChange = vi.fn();
     renderSelector({ locked: true, onChange });
-    openPicker(/Default/);
+    openPicker(/Server/);
     expect(screen.getByText(/Picking another one starts a new thread/)).toBeTruthy();
     fireEvent.click(screen.getByRole('option', { name: /Codex Plus/ }));
     expect(onChange).toHaveBeenCalledWith('cx');
@@ -103,7 +105,7 @@ describe('ProfileSelector', () => {
 
   it('has no lock note on an empty thread', () => {
     renderSelector({});
-    openPicker(/Default/);
+    openPicker(/Server/);
     expect(screen.queryByText(/starts a new thread/)).toBeNull();
   });
 
