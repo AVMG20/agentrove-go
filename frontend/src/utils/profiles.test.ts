@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import type { Profile } from '@/types/profile.types';
-import { canSignIn, groupProfiles, profileStatusLabel, resolveProfilePick } from './profiles';
+import {
+  canSignIn,
+  groupProfiles,
+  offersSignIn,
+  profileStatusLabel,
+  resolveProfilePick,
+} from './profiles';
 
 const profile = (over: Partial<Profile> = {}): Profile => ({
   id: 'p1',
@@ -88,5 +94,17 @@ describe('groupProfiles', () => {
       ['codex', ['x', 'z']],
       ['antigravity', []],
     ]);
+  });
+});
+
+describe('offersSignIn', () => {
+  it('skips a signed-in Antigravity account and a missing CLI', () => {
+    const agy = { provider: 'antigravity' as const, auth_mode: 'login' as const };
+    expect(offersSignIn(profile({ ...agy, status: 'needs_sign_in' }))).toBe(true);
+    expect(offersSignIn(profile({ ...agy, status: 'ready' }))).toBe(false);
+    expect(offersSignIn(profile({ ...agy, status: 'cli_missing' }))).toBe(false);
+    // Signing a ready Claude or Codex account in again is fine.
+    expect(offersSignIn(profile({ status: 'ready' }))).toBe(true);
+    expect(offersSignIn(profile({ provider: 'codex', auth_mode: 'login' }))).toBe(true);
   });
 });

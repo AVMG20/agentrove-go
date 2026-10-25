@@ -17,6 +17,7 @@ import {
   PROVIDER_CLI,
   PROVIDER_NAMES,
   canSignIn,
+  offersSignIn,
   groupProfiles,
   profileChip,
   profileStatusLabel,
@@ -179,7 +180,7 @@ export function ProvidersSettingsTab() {
                 Set default
               </Button>
             )}
-            {canSignIn(profile) && !signInOpen && profile.status !== 'cli_missing' && (
+            {offersSignIn(profile) && !signInOpen && (
               <Button
                 type="button"
                 variant="ghost"

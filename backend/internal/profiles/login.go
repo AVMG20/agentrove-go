@@ -154,6 +154,11 @@ func (s *Service) StartLogin(ctx context.Context, p *Profile) (LoginState, error
 	if err != nil {
 		return LoginState{}, err
 	}
+	if p.Provider == models.ProviderAntigravity && s.signedIn(p) {
+		// A signed-in agy opens a session instead of a sign-in, and its token
+		// file (the success signal) is already there.
+		return LoginState{}, httpx.Conflict("This Antigravity account is already signed in. To use another Google account, add a new account.")
+	}
 	s.logins.cancel(p)
 	sb, err := s.sandboxes.ForUser(p.UserID)
 	if err != nil {

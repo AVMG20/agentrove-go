@@ -55,6 +55,14 @@ export function canSignIn(profile: Profile): boolean {
   return profile.auth_mode === 'login';
 }
 
+// Whether to offer the sign-in button now: never without the CLI, and not
+// for a signed-in Antigravity account (agy then opens a session instead of
+// signing in, and the server refuses it).
+export function offersSignIn(profile: Profile): boolean {
+  if (!canSignIn(profile) || profile.status === 'cli_missing') return false;
+  return !(profile.provider === 'antigravity' && profile.status === 'ready');
+}
+
 // One line on a profile's state: who it's signed in as when ready, else what
 // it needs.
 export function profileStatusLabel(profile: Profile): string {

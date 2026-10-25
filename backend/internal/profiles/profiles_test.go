@@ -528,6 +528,11 @@ func TestStatusReadsHostLogins(t *testing.T) {
 	if st := s.Status(ctx, agy, nil); st.State != StatusReady || st.Account == nil || st.Account.Email != "g@example.com" {
 		t.Fatalf("agy signed in = %+v", st)
 	}
+	// Signing a signed-in agy in again would only open a session (and never
+	// see a new token file): refused up front.
+	if _, err := s.StartLogin(ctx, agy); status(err) != 409 {
+		t.Fatalf("agy re-sign-in: %v", err)
+	}
 
 	// A login file planted as a symlink out of the home doesn't count.
 	outside := filepath.Join(t.TempDir(), "auth.json")
