@@ -8,6 +8,7 @@ import (
 	"agentrove/internal/config"
 	"agentrove/internal/db"
 	"agentrove/internal/events"
+	"agentrove/internal/profiles"
 	"agentrove/internal/sandbox"
 	"agentrove/internal/store"
 )
@@ -20,6 +21,9 @@ type App struct {
 	Hub       *events.Hub
 	Sandboxes *sandbox.Manager
 	Store     *store.Store
+	// Profiles are the provider accounts chats run on (nil in some tests:
+	// everything then runs on the built-in Claude profile).
+	Profiles *profiles.Service
 
 	// Late-bound hooks so modules can call each other without import cycles.
 	// Set by main after all modules are constructed.

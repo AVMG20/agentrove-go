@@ -28,6 +28,7 @@ import (
 	"agentrove/internal/db"
 	"agentrove/internal/httpx"
 	"agentrove/internal/models"
+	"agentrove/internal/profiles"
 )
 
 const (
@@ -278,11 +279,37 @@ func (m *Module) get(w http.ResponseWriter, r *http.Request) error {
 	if b := httpx.QueryBool(r, "refresh"); b != nil {
 		refresh = *b
 	}
+	// The meter follows a profile: the chat's (profile_id), else the default
+	// Claude one. A profile's endpoint and usage URL were chosen by the user,
+	// so they go in as user vars (public addresses only).
+	globalEnv := m.a.Cfg.AgentGlobalEnv()
 	var custom []models.CustomEnvVar
-	if st, err := m.a.Store.GetUserSettings(r.Context(), u.ID); err == nil && st.CustomEnvVars.Valid {
-		custom = st.CustomEnvVars.V
+	p := profiles.Builtin(u.ID)
+	if m.a.Profiles != nil {
+		if id := r.URL.Query().Get("profile_id"); id != "" {
+			got, err := m.a.Profiles.Get(r.Context(), u.ID, id)
+			if err != nil {
+				return err
+			}
+			p = got
+		} else {
+			p = m.a.Profiles.DefaultClaude(r.Context(), u.ID)
+		}
 	}
-	src := ResolveSource(m.a.Cfg.AgentGlobalEnv(), custom)
+	if p.Provider != models.ProviderClaude {
+		return httpx.OK(w, Response{Status: "unavailable", FetchedAt: db.Now()})
+	}
+	if p.Builtin {
+		if st, err := m.a.Store.GetUserSettings(r.Context(), u.ID); err == nil && st.CustomEnvVars.Valid {
+			custom = st.CustomEnvVars.V
+		}
+	} else {
+		globalEnv = map[string]string{}
+		for k, v := range p.ApplyEnv(nil) {
+			custom = append(custom, models.CustomEnvVar{Key: k, Value: v})
+		}
+	}
+	src := ResolveSource(globalEnv, custom)
 	return httpx.OK(w, m.usage(r.Context(), u.ID, src, refresh))
 }
 

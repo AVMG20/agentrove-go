@@ -18,6 +18,7 @@ import (
 	"agentrove/internal/db"
 	"agentrove/internal/events"
 	"agentrove/internal/httpx"
+	"agentrove/internal/profiles"
 	"agentrove/internal/sandbox"
 	"agentrove/internal/server"
 	"agentrove/internal/store"
@@ -61,10 +62,14 @@ func run() error {
 		Hub:       events.NewHub(),
 		Sandboxes: sandboxes,
 		Store:     st,
+		Profiles:  profiles.NewService(database, keys, cfg, sandboxes),
 	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+
+	// One-time: Claude env vars from before profiles become a profile.
+	a.Profiles.MigrateEnvVars(ctx)
 
 	handler, shutdown, err := server.Build(ctx, a)
 	if err != nil {

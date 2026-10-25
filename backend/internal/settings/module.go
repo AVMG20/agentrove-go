@@ -14,6 +14,7 @@ import (
 	"agentrove/internal/db"
 	"agentrove/internal/httpx"
 	"agentrove/internal/models"
+	"agentrove/internal/profiles"
 )
 
 const defaultPersonaName = "Default"
@@ -163,6 +164,11 @@ func (m *Module) patch(w http.ResponseWriter, r *http.Request) error {
 		v, err := decodeList[models.CustomEnvVar]("custom_env_vars", raw, nil)
 		if err != nil {
 			return err
+		}
+		for _, ev := range v.V {
+			if profiles.ManagedEnvKey(ev.Key) {
+				return httpx.Unprocessable(ev.Key + " is set through a provider profile: add it under Settings → Providers")
+			}
 		}
 		set("custom_env_vars", v)
 	}

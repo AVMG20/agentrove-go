@@ -11,13 +11,14 @@ import (
 	"agentrove/internal/app"
 	"agentrove/internal/chat"
 	"agentrove/internal/mcpserver"
+	"agentrove/internal/profileapi"
 )
 
 // chatModules: chat, streaming runtime, Claude driver, models, attachments.
 func chatModules(a *app.App) ([]Module, error) {
 	m := chat.New(a)
 	m.MCPConfig = newMCPConfigs(a).forChat
-	return []Module{m}, nil
+	return []Module{m, profileapi.New(a)}, nil
 }
 
 // mcpConfigs hands each chat session the agentrove MCP server over HTTP.
