@@ -95,6 +95,7 @@ export const ModelSelector = memo(function ModelSelector({
       getItemLabel={(model) => model.name}
       onSelect={(model) => onModelChange(model.model_id)}
       leftIcon={ClaudeIcon}
+      keepIcon
       width="16rem"
       dropdownPosition={dropdownPosition}
       disabled={disabled}

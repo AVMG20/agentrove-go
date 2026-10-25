@@ -120,6 +120,7 @@ export function SkillsSettingsTab() {
               value={workspaceId ?? GLOBAL}
               onChange={(e) => setSelected(e.target.value)}
               aria-label="Skills location"
+              className={styles['workspace-select']}
             >
               <option value={GLOBAL}>Global</option>
               {workspaces.map((ws) => (

@@ -124,9 +124,16 @@
   }
 }
 
+// The search field, location select and button share one height and radius.
+.workspace-select {
+  height: var(--space-10);
+  border-radius: var(--radius-lg);
+}
+
 .new-button {
   flex-shrink: 0;
   height: var(--space-10);
+  border-radius: var(--radius-lg);
 }
 
 .loading-wrap {
