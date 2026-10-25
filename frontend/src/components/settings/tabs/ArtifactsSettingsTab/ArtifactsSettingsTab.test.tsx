@@ -10,7 +10,7 @@ import type { Artifact } from '@/types/artifact.types';
 import { ArtifactsSettingsTab } from './ArtifactsSettingsTab';
 
 vi.mock('@/services/artifactService', () => ({
-  artifactService: { listArtifacts: vi.fn(), getShareUrl: vi.fn() },
+  artifactService: { listArtifacts: vi.fn(), getShareUrl: vi.fn(), updateArtifact: vi.fn() },
 }));
 
 const artifact = (n: number): Artifact => ({
@@ -19,6 +19,7 @@ const artifact = (n: number): Artifact => ({
   title: `Page ${n}`,
   is_public: false,
   version: 1,
+  pinned_at: null,
   created_at: '2026-10-25T00:00:00Z',
   updated_at: '2026-10-25T00:00:00Z',
 });
@@ -32,6 +33,7 @@ const wrapper = ({ children }: { children: ReactNode }) => (
 afterEach(() => {
   cleanup();
   vi.mocked(artifactService.listArtifacts).mockReset();
+  vi.mocked(artifactService.updateArtifact).mockReset();
 });
 
 describe('ArtifactsSettingsTab', () => {
@@ -63,5 +65,37 @@ describe('ArtifactsSettingsTab', () => {
     await waitFor(() =>
       expect(list).toHaveBeenLastCalledWith({ q: 'Page 7', limit: 20, offset: 0 }),
     );
+  });
+
+  it('renames an artifact from its edit button', async () => {
+    vi.mocked(artifactService.listArtifacts).mockResolvedValue([artifact(1)]);
+    vi.mocked(artifactService.updateArtifact).mockResolvedValue({ ...artifact(1), title: 'Q3' });
+    render(<ArtifactsSettingsTab />, { wrapper });
+
+    await screen.findByText('Page 1');
+    fireEvent.click(screen.getByRole('button', { name: 'Edit item' }));
+    fireEvent.change(screen.getByLabelText('New name'), { target: { value: ' Q3 ' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() =>
+      expect(artifactService.updateArtifact).toHaveBeenCalledWith('a1', { title: 'Q3' }),
+    );
+  });
+
+  it('pins and unpins', async () => {
+    vi.mocked(artifactService.listArtifacts).mockResolvedValue([
+      artifact(1),
+      { ...artifact(2), pinned_at: '2026-10-25T00:00:00Z' },
+    ]);
+    vi.mocked(artifactService.updateArtifact).mockResolvedValue(artifact(1));
+    render(<ArtifactsSettingsTab />, { wrapper });
+
+    await screen.findByText('Page 1');
+    expect(screen.getByText('Pinned')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Pin to top' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Unpin' }));
+    await waitFor(() => {
+      expect(artifactService.updateArtifact).toHaveBeenCalledWith('a1', { pinned: true });
+      expect(artifactService.updateArtifact).toHaveBeenCalledWith('a2', { pinned: false });
+    });
   });
 });

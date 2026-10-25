@@ -157,7 +157,7 @@ func (m *Module) update(w http.ResponseWriter, r *http.Request) error {
 		return err
 	}
 	var title, html *string
-	var isPublic *bool
+	var isPublic, pinned *bool
 	for key, val := range raw {
 		if string(val) == "null" {
 			return httpx.Unprocessable(key + ": Field cannot be null")
@@ -173,6 +173,9 @@ func (m *Module) update(w http.ResponseWriter, r *http.Request) error {
 		case "is_public":
 			isPublic = new(bool)
 			err = json.Unmarshal(val, isPublic)
+		case "pinned":
+			pinned = new(bool)
+			err = json.Unmarshal(val, pinned)
 		}
 		if err != nil {
 			return httpx.Unprocessable(fmt.Sprintf("%s: %v", key, err))
@@ -182,7 +185,21 @@ func (m *Module) update(w http.ResponseWriter, r *http.Request) error {
 	if isPublic != nil && act.agentScoped {
 		return httpx.Forbidden("Only the user can change the visibility of an artifact")
 	}
-	a, err := m.svc.Update(r.Context(), r.PathValue("id"), act.user.ID, title, html, isPublic)
+	if pinned != nil {
+		if act.agentScoped {
+			return httpx.Forbidden("Only the user can pin an artifact")
+		}
+		if err := m.svc.SetPinned(r.Context(), r.PathValue("id"), act.user.ID, *pinned); err != nil {
+			return err
+		}
+	}
+	var a *Artifact
+	var err error
+	if title != nil || html != nil || isPublic != nil {
+		a, err = m.svc.Update(r.Context(), r.PathValue("id"), act.user.ID, title, html, isPublic)
+	} else {
+		a, err = m.svc.Get(r.Context(), r.PathValue("id"), act.user.ID)
+	}
 	if err != nil {
 		return err
 	}
