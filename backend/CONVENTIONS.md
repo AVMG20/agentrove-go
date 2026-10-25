@@ -8,8 +8,12 @@ and the frontend service/types that call it (`frontend/src/services/*.ts`,
 `frontend/src/types/*.ts`).
 
 Scope changes vs Python:
-- **Claude only.** No Codex/Copilot/Cursor/Grok/OpenCode/Antigravity. Agent
-  kind is always `"claude"`. Model ids are Claude ids/aliases.
+- **Claude first, plus Codex and Antigravity through provider profiles.** No
+  Copilot/Cursor/Grok/OpenCode. A chat's `provider` (its profile's) is its
+  agent kind (`claude`, `codex`, `antigravity`); model ids are that
+  provider's. Claude-only features (permission modes, plan mode, personas,
+  slash commands, channels, automations, title/commit generation) stay on
+  Claude and must not break a Codex/Antigravity chat. See "Provider profiles".
 - **No Redis.** In-process pub/sub (`internal/events.Hub`), queues in SQLite.
 - **No ACP.** The Claude CLI is driven directly (`claude -p --input-format
   stream-json --output-format stream-json`).
@@ -169,6 +173,48 @@ Nothing browser-related runs until it is used.
   `browser_available` (`SANDBOX_BROWSER_ENABLED`) so the UI can hide it.
   `TestRealBox` (env `AGENTROVE_BROWSER_E2E_CONTAINER`) drives a real box.
 
+## Provider profiles
+A profile is one agent account (`agent_profiles`): a provider (`claude`,
+`codex`, `antigravity`), a name, an auth mode and an optional token, base URL
+and usage URL. Tokens are encrypted with `auth.Keys` and never leave the
+server (the API returns `has_token` and a 4-char `token_hint`). Every user
+also has the virtual `builtin` profile: Claude on the server's env
+credentials (`AGENT_ENV`/`.env`) or the `claude` login in `~/claude`, as
+before profiles. `user_settings.default_profile_id` is the default (NULL =
+builtin).
+
+- **Auth modes.** Claude: `token` (an OAuth `sk-ant-oat…` token, else an API
+  key; "Sign in" runs `claude setup-token` in the box and stores the token it
+  prints) or `endpoint` (base URL + auth token + optional usage URL). Codex
+  and Antigravity: `login` (the CLI's own sign-in, run in a PTY in the box and
+  surfaced in Settings → Providers: `codex login --device-auth`, `agy`) or
+  `token` (`CODEX_API_KEY` / `GEMINI_API_KEY`).
+- **Isolation.** Each profile gets `/home/user/.agentrove/profiles/<id>`:
+  `CLAUDE_CONFIG_DIR=<dir>/claude`, `CODEX_HOME=<dir>/codex`, or
+  `HOME=<dir>/home` for agy (it has no config-dir variable). `Launch()` gives
+  the env, the credential vars to unset (`ExecRequest.Unset`, so the
+  server's or another provider's credentials never leak in) and a setup
+  script that links the shared bits in: `~/claude/{skills,agents,commands,
+  CLAUDE.md}` for Claude, `.gitconfig`/`.ssh`/`.config/gh` for agy's HOME.
+  Host-side reads of those dirs (status) go through `os.Root` +
+  `sandbox.ReadRegular`: the box can write them.
+- **Chats.** `chats.profile_id`/`provider` (NULL = builtin/claude) are set at
+  creation (the request's profile, else the default) and fixed once the chat
+  has messages, a session or a running turn (`PATCH` → 409); the composer
+  then opens a new thread instead. A deleted profile's chats fail with a
+  message to start a new thread. Claude turns keep the long-lived driver;
+  Codex (`codex exec --json`, `exec resume <thread>`) and agy (`agy -p …
+  --output-format stream-json --conversation <id>`) run one process per turn,
+  translated by `internal/codex` / `internal/antigravity` into the same
+  events, with the thread/conversation id stored as the session id. A
+  missing CLI exits 127 → "CLI not found".
+- **Env vars.** `profiles.ManagedEnvKey` names (Claude credentials, base and
+  usage URL, config dirs) are refused in Settings → Environment Variables.
+  `MigrateEnvVars` (startup, idempotent) turned pre-profile ones into a
+  "Claude (from env vars)" profile on `~/claude` (so sessions still resume),
+  made it the default if none was set, and moved the user's existing
+  (non-channel) chats onto it.
+
 ## Layout
 - `cmd/agentrove` — entrypoint.
 - `internal/config` — env config. `internal/db` — SQLite + embedded
@@ -188,10 +234,15 @@ Nothing browser-related runs until it is used.
   `httpx.ClientIP(r, cfg.TrustedProxies, authService.BoxSubnets)` for the
   client address, never `X-Forwarded-For` directly: box network subnets
   (recorded by the Docker provider) are never trusted as proxies.
-- `internal/usage` — usage meter. Endpoint follows `ANTHROPIC_BASE_URL`
+- `internal/usage` — usage meter, per Claude profile (`?profile_id=`, else
+  the default Claude profile). Endpoint follows the profile's base URL
   (official `https://api.anthropic.com/api/oauth/usage`, else
-  `<ANTHROPIC_BASE_URL>/api/usage`); a `CLAUDE_USAGE_URL` env var (user or
-  `AGENT_ENV`) replaces the endpoint.
+  `<base URL>/api/usage`); the profile's usage URL (or, for the built-in
+  profile, `CLAUDE_USAGE_URL` in `AGENT_ENV`) replaces the endpoint.
+- `internal/profiles` — provider profiles (see below); `internal/profileapi`
+  serves them under `/api/v1/profiles`.
+- `internal/agentstream` — provider-neutral stream events; `internal/codex`
+  and `internal/antigravity` translate those CLIs' JSON lines into them.
 - `internal/store` — ownership-checked `GetWorkspace`, `GetWorkspaceBySandbox`,
   `GetChat`, `GetMemberChat`, `GetUserSettings`, `UserEnv`.
 - `internal/sandbox` — `Manager.For(workspace) -> *Sandbox`. `Sandbox.Exec`,

@@ -1,11 +1,12 @@
 # Bitbox
 
-Bitbox (formerly Agentrove) is a Go rewrite of the Agentrove backend, as a web app only. Internal names (Docker images and containers, env vars, storage paths, the Go module and the `agentrove` MCP server id) keep the old name. It is Claude-only, needs no Redis and stores everything in SQLite. The React frontend in `frontend/` is the upstream app with the desktop/mobile shells removed; the API keeps its paths and JSON shapes.
+Bitbox (formerly Agentrove) is a Go rewrite of the Agentrove backend, as a web app only. Internal names (Docker images and containers, env vars, storage paths, the Go module and the `agentrove` MCP server id) keep the old name. It runs Claude Code first (plus Codex and Antigravity through provider profiles), needs no Redis and stores everything in SQLite. The React frontend in `frontend/` is the upstream app with the desktop/mobile shells removed; the API keeps its paths and JSON shapes.
 
 ## What changed vs. the Python backend
 
 - **One Go binary.** It uses net/http, SQLite (modernc, pure Go, WAL), JWT/bcrypt auth and the Docker SDK. Streaming, queues and pub/sub run in process, so Redis and the SQLAdmin dashboard are gone.
-- **Claude only.** The `claude` CLI is driven directly over its stream-json control protocol, with no ACP adapter. There is one long-lived CLI process per chat. Model and permission-mode switches apply live. Idle processes close after `CHAT_PROCESS_IDLE_TTL_SECONDS` and `--resume` their session on the next message, including after an API restart.
+- **Claude first.** The `claude` CLI is driven directly over its stream-json control protocol, with no ACP adapter. There is one long-lived CLI process per chat. Model and permission-mode switches apply live. Idle processes close after `CHAT_PROCESS_IDLE_TTL_SECONDS` and `--resume` their session on the next message, including after an API restart.
+- **Provider profiles.** Settings → Providers holds named agent accounts: several Claude accounts (a Claude token, or a custom endpoint with base URL, token and usage URL), Codex (ChatGPT sign-in or an OpenAI API key) and Antigravity (Google sign-in or a Gemini API key). Sign-ins run the CLI's own login in the box and show its link and code in Settings. Each account keeps its own config dir in the box, and tokens are stored encrypted and never sent back. The composer picks the account per thread, next to the model; once a thread has messages its account is fixed, and picking another one opens a new thread in the same project. Codex and Antigravity run one `codex exec --json` / `agy -p` process per turn, resumed by thread id; Claude-only features (permission modes, personas, slash commands, plan usage) stay on Claude threads.
 - **One box per user, stopped when idle.** All of a user's projects run in one Docker container (`/home/user/projects/<project>`) with a persistent home, so toolchains installed once serve every project. A box with no running turn or open terminal for `SANDBOX_IDLE_TTL_SECONDS` (default 15m) is stopped. The next request that needs it (a message, terminal or git mutation) starts it again, rebuilt from the current image if that changed.
 - **Reads don't wake containers.** Workspaces live on a host dir that is bind-mounted into the sandbox. File browsing, diffs, git status and search read the host copy directly, so they work while the container is stopped.
 - **Claude login per user.** The login is stored under `STORAGE_PATH/agent-homes/<user>/claude` and mounted into every sandbox of that user. Title, commit-message and PR generation use the same login.
@@ -20,7 +21,7 @@ cp .env.example .env               # set SECRET_KEY (openssl rand -hex 32)
 docker compose up --build
 ```
 
-Open http://localhost:8080 (`APP_PORT`). The frontend is embedded into the Go binary, so one container (and one executable) serves the whole app. The first account you register becomes the superuser. Open a terminal in a project and run `claude` once to log in, or set `CLAUDE_CODE_OAUTH_TOKEN` in `.env`.
+Open http://localhost:8080 (`APP_PORT`). The frontend is embedded into the Go binary, so one container (and one executable) serves the whole app. The first account you register becomes the superuser. Sign the built-in "Default" Claude account in under Settings → Providers (or run `claude` once in a terminal), set `CLAUDE_CODE_OAUTH_TOKEN` in `.env` for every user, or add your own accounts there. The sandbox image ships `claude` and `codex`; Antigravity's `agy` is installed only when you pass `--build-arg AGY_URL=<download URL of the agy linux binary or archive>` to `build.sh` (or set `AGY_URL` for the production compose file), or install it yourself into the box's `~/.local/bin` (until then its accounts show "CLI not found").
 
 For production (e.g. Coolify), use `docker-compose-production.yml`. It builds the sandbox image and the app image (point the domain at `api`, port 8080) and keeps data in `/data/agentrove-go/storage`. Set `SECRET_KEY` and `APP_URL`.
 
@@ -30,7 +31,9 @@ Box networking: each user's box gets its own bridge network. The API firewalls b
 
 ### Usage meter
 
-The chat input shows the 5-hour and weekly usage of the account the agents run on. With `ANTHROPIC_BASE_URL` unset or `https://api.anthropic.com`, it reads Anthropic's OAuth usage endpoint with `CLAUDE_CODE_OAUTH_TOKEN` (or an OAuth `sk-ant-oat…` token in `ANTHROPIC_AUTH_TOKEN` / `ANTHROPIC_API_KEY`; plain API keys have no usage meter). With an https proxy as base URL (e.g. `https://claude.bitsec.dev`), it reads `<ANTHROPIC_BASE_URL>/api/usage` with `ANTHROPIC_AUTH_TOKEN` / `ANTHROPIC_API_KEY`. If your proxy serves usage somewhere else, add `CLAUDE_USAGE_URL` as an environment variable in Settings (e.g. `CLAUDE_USAGE_URL=https://claude-admin.bitsec.dev/api/usage` for bitsec), or in `AGENT_ENV` for every user. URLs set in your own settings must resolve to a public address.
+The chat input of a Claude thread shows the 5-hour and weekly usage of the thread's Claude account. For a Claude token (or the built-in account without a base URL), it reads Anthropic's OAuth usage endpoint with the OAuth `sk-ant-oat…` token; plain API keys have no usage meter. For a custom endpoint (e.g. `https://claude.bitsec.dev`), it reads `<base URL>/api/usage` with the endpoint's token, or the account's usage URL if set (e.g. `https://claude-admin.bitsec.dev/api/usage` for bitsec). The built-in account follows `ANTHROPIC_BASE_URL` / `CLAUDE_USAGE_URL` in `AGENT_ENV`. URLs set in your own accounts must resolve to a public address.
+
+Claude credentials, base URL and usage URL are no longer environment variables in Settings: on upgrade, existing ones (`CLAUDE_CODE_OAUTH_TOKEN`, `ANTHROPIC_API_KEY`, `ANTHROPIC_BASE_URL`, `ANTHROPIC_AUTH_TOKEN`, `CLAUDE_USAGE_URL`) become a "Claude (from env vars)" account, made the default if you had none.
 
 ## Run locally without Compose
 
@@ -63,6 +66,8 @@ backend/
   cmd/agentrove        entrypoint
   internal/
     claude             CLI session driver, stream translation, permissions, one-shot generation
+    codex antigravity  per-turn CLI adapters (JSON lines → the same stream events)
+    profiles           provider profiles: storage, launch env, status, in-box sign-in
     chat               chat API, turn runtime, SSE feeds, queue, attachments
     sandbox            docker/host providers, idle reaper, leases
     sandboxapi         files, git, search, terminal and browser websockets
@@ -76,7 +81,7 @@ backend/
     auth settings github skills usage
     db                 SQLite + embedded migrations
   cmd/agentrove-browser-mcp  lazy Playwright MCP proxy, built into the box image
-sandbox/docker         Claude-only sandbox image (with agentrove-browser)
+sandbox/docker         sandbox image (claude, codex, optional agy, agentrove-browser)
 frontend/              React app
 ```
 
@@ -91,6 +96,6 @@ cd frontend && bun run typecheck && bun run lint && bunx vitest run
 
 - The Tauri desktop and iOS apps, and the desktop app's "cloud" mode.
 - The browser-use MCP (replaced by Playwright MCP on a browser in the box).
-- The non-Claude agents (Codex, Copilot, Cursor, OpenCode, Grok, Antigravity).
+- The other non-Claude agents (Copilot, Cursor, OpenCode, Grok).
 
 Existing Python databases are not migrated; start with a fresh storage dir.

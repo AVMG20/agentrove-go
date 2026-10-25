@@ -9,6 +9,9 @@ services:
     build:
       context: .
       dockerfile: sandbox/docker/Dockerfile
+      args:
+        # Optional: a download URL of the Antigravity CLI (agy) to install.
+        AGY_URL: ${AGY_URL:-}
     image: ${DOCKER_IMAGE:-agentrove-sandbox:latest}
     command: ["true"]
     restart: "no"
