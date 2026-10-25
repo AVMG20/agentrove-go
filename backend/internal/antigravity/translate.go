@@ -42,8 +42,11 @@ type line struct {
 		ConversationID string `json:"conversation_id"`
 		Status         string `json:"status"`
 		Response       string `json:"response"`
-		ErrorMessage   string `json:"error_message"`
-		IsError        bool   `json:"is_error"`
+		// agy reports a failed turn in "error" (a string, e.g. "authentication
+		// failed or timed out"); error_message is kept for older builds.
+		Error        any    `json:"error"`
+		ErrorMessage string `json:"error_message"`
+		IsError      bool   `json:"is_error"`
 	} `json:"result"`
 	Error        any    `json:"error"`
 	ErrorMessage string `json:"error_message"`
@@ -96,13 +99,13 @@ func (t *Translator) HandleLine(raw []byte) ([]agentstream.Event, *agentstream.R
 		if strings.EqualFold(l.Result.Status, "SUCCESS") && !l.Result.IsError {
 			return out, &agentstream.Result{}
 		}
-		msg := firstNonEmpty(l.Result.ErrorMessage, t.lastError)
+		msg := firstNonEmpty(errorString(l.Result.Error), l.Result.ErrorMessage, t.lastError)
 		if msg == "" {
 			msg = fmt.Sprintf("Antigravity ended the turn (%s)", strings.ToLower(firstNonEmpty(l.Result.Status, "error")))
 		}
 		return out, &agentstream.Result{IsError: true, Subtype: strings.ToLower(l.Result.Status), ErrorText: msg}
 	case "error":
-		t.lastError = firstNonEmpty(l.ErrorMessage, fmt.Sprint(l.Error))
+		t.lastError = firstNonEmpty(l.ErrorMessage, errorString(l.Error))
 	}
 	return nil, nil
 }
@@ -282,4 +285,24 @@ func firstNonEmpty(vals ...string) string {
 		}
 	}
 	return ""
+}
+
+// errorString reads an "error" field: a message string, or an object with a
+// message.
+func errorString(v any) string {
+	switch e := v.(type) {
+	case nil:
+		return ""
+	case string:
+		return strings.TrimSpace(e)
+	case map[string]any:
+		if m, ok := e["message"].(string); ok {
+			return strings.TrimSpace(m)
+		}
+	}
+	b, err := json.Marshal(v)
+	if err != nil {
+		return fmt.Sprint(v)
+	}
+	return string(b)
 }

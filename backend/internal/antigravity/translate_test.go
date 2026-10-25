@@ -72,10 +72,28 @@ func TestSeparateResponsesGetAParagraphBreak(t *testing.T) {
 }
 
 func TestFailedResult(t *testing.T) {
+	// agy reports the failure in result.error.
+	data, err := os.ReadFile("testdata/auth_failed.jsonl")
+	if err != nil {
+		t.Fatal(err)
+	}
 	tr := NewTranslator()
-	_, res := replay(t, tr, []byte(`{"event":"init","conversation_id":"c1"}
-{"event":"result","result":{"conversation_id":"c1","status":"ERROR","error_message":"quota exhausted"}}`))
-	if res == nil || !res.IsError || res.ErrorText != "quota exhausted" {
+	got, res := replay(t, tr, data)
+	if res == nil || !res.IsError || res.ErrorText != "authentication failed or timed out" || res.Subtype != "error" {
+		t.Fatalf("result = %+v", res)
+	}
+	if want := []string{"system session=6d1f0c2a-4c1e-4f7e-9a51-3b2f6f0d8e11"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("events %q, want %q", got, want)
+	}
+	// An object error and the older error_message field read the same way.
+	tr = NewTranslator()
+	_, res = replay(t, tr, []byte(`{"event":"result","result":{"status":"ERROR","error":{"message":"quota exhausted"}}}`))
+	if res == nil || res.ErrorText != "quota exhausted" {
+		t.Fatalf("result = %+v", res)
+	}
+	tr = NewTranslator()
+	_, res = replay(t, tr, []byte(`{"event":"result","result":{"status":"ERROR","error_message":"quota exhausted"}}`))
+	if res == nil || res.ErrorText != "quota exhausted" {
 		t.Fatalf("result = %+v", res)
 	}
 	tr = NewTranslator()
