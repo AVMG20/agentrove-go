@@ -161,7 +161,9 @@ export function ProfileForm({
             <FieldMessage>
               {provider === 'codex'
                 ? 'After saving, sign in with your ChatGPT account using a device code.'
-                : 'After saving, sign in with your Google account.'}
+                : provider === 'claude'
+                  ? 'After saving, sign in with your Claude account.'
+                  : 'After saving, sign in with your Google account.'}
             </FieldMessage>
           )}
         </div>

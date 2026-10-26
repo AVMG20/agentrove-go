@@ -1,14 +1,17 @@
-export interface ClaudeUsageWindow {
+// One rate-limit window of an account's plan: 5-hour, weekly, monthly, ...
+export interface UsageWindow {
   used_percent: number;
   resets_at: string | null;
+  window_seconds: number;
 }
 
-// GET /usage/claude — 'unavailable' when the Claude proxy has no usage endpoint.
-export interface ClaudeUsage {
+// GET /usage — 'unavailable' when the account has no usage to show (an API
+// key, Antigravity, or a gateway without a usage endpoint).
+export interface AccountUsage {
   status: 'ok' | 'error' | 'unavailable';
   provider: string | null;
-  session: ClaudeUsageWindow | null;
-  weekly: ClaudeUsageWindow | null;
+  // Shortest window first.
+  windows: UsageWindow[];
   error: string | null;
   fetched_at: string;
 }

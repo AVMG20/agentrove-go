@@ -1,0 +1,578 @@
+@use '@/styles/globals/colors' as colors;
+@use '@/styles/globals/typography' as type;
+@use '@/styles/globals/animations' as anim;
+@use '@/styles/globals/controls' as controls;
+@use '@/styles/globals/responsive' as responsive;
+@use '@/styles/globals/zlayer' as z;
+
+.switcher {
+  position: relative;
+  min-width: 0;
+}
+
+// --- trigger: "[icon] Personal ▬▬ 2% 2h 9m · 43% 3d 23h" ---
+
+.trigger {
+  @include type.type-meta;
+  @include type.type-noselect;
+  @include controls.focus-ring;
+  @include anim.transition-colors;
+  display: flex;
+  min-width: 0;
+  max-width: 100%;
+  align-items: center;
+  gap: var(--space-1-5);
+  border-radius: var(--radius-md);
+  padding: var(--space-1) var(--space-1-5);
+  color: var(--theme-text-tertiary);
+
+  @include responsive.hover {
+    background-color: var(--theme-surface-hover);
+    color: var(--theme-text-secondary);
+  }
+
+  &:disabled {
+    cursor: default;
+    opacity: 0.6;
+  }
+
+  // The thread's account is gone.
+  &--missing .trigger-name {
+    color: var(--theme-warning);
+  }
+
+  &--empty {
+    color: var(--theme-text-secondary);
+  }
+}
+
+.trigger--open {
+  background-color: var(--theme-surface-hover);
+  color: var(--theme-text-secondary);
+}
+
+.trigger-icon {
+  height: var(--space-3-5);
+  width: var(--space-3-5);
+  flex-shrink: 0;
+}
+
+.trigger-name {
+  @include type.type-overflow;
+  min-width: 0;
+  max-width: var(--space-32);
+  font-weight: 500;
+}
+
+// The account needs a sign-in (or its CLI): a dot, the popover says what.
+.trigger-warning {
+  height: var(--space-1-5);
+  width: var(--space-1-5);
+  flex-shrink: 0;
+  border-radius: var(--radius-full);
+  background-color: var(--theme-warning);
+}
+
+.trigger-bar {
+  width: var(--space-10);
+  flex-shrink: 0;
+}
+
+.trigger-usage {
+  @include type.type-overflow;
+  min-width: 0;
+  color: var(--theme-text-quaternary);
+  font-variant-numeric: tabular-nums;
+
+  // Phones: the bar says enough; the numbers are a tap away.
+  @include responsive.hide('mobile');
+}
+
+.loading {
+  display: flex;
+  align-items: center;
+  padding: var(--space-1) var(--space-1-5);
+}
+
+.loading-pill {
+  @include anim.pulse;
+  height: var(--space-3-5);
+  width: var(--space-20);
+  border-radius: var(--radius-full);
+  background-color: colors.theme-color('text-quaternary', 0.2);
+}
+
+// --- bars ---
+
+.bar {
+  position: relative;
+  display: block;
+  height: var(--space-1);
+  overflow: hidden;
+  border-radius: var(--radius-full);
+  background-color: var(--theme-border-secondary);
+}
+
+.fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  border-radius: inherit;
+  transition: width 300ms ease;
+
+  &--normal {
+    background-color: var(--theme-text-tertiary);
+  }
+
+  &--warning {
+    background-color: var(--theme-warning);
+  }
+
+  &--danger {
+    background-color: var(--theme-error);
+  }
+}
+
+// --- panel ---
+
+.panel {
+  @include z.z('dropdown');
+  @include anim.fade-in(var(--duration-base), forwards);
+  position: absolute;
+  left: 0;
+  bottom: calc(100% + var(--space-2));
+  display: flex;
+  width: var(--space-96);
+  max-width: calc(100vw - var(--space-8));
+  max-height: min(36rem, calc(var(--app-height, 100dvh) - var(--space-32)));
+  flex-direction: column;
+  gap: var(--space-2);
+  overflow-y: auto;
+  border: 1px solid colors.theme-color('border', 0.6);
+  border-radius: var(--radius-2xl);
+  background-color: var(--theme-surface-secondary);
+  box-shadow: var(--shadow-medium);
+  padding: var(--space-3);
+}
+
+// Phones: a bottom sheet over a scrim, portalled to <body> so the composer's
+// stacking context can't clip it.
+.sheet-layer {
+  display: contents;
+}
+
+.scrim {
+  @include z.z('modal');
+  @include anim.fade-in(var(--duration-fast));
+  position: fixed;
+  inset: 0;
+  // Pure-black scrim — an overlay, not a theme surface
+  background-color: rgb(0 0 0 / 0.4);
+}
+
+.panel--sheet {
+  @include z.z('modal');
+  position: fixed;
+  inset: auto 0 var(--keyboard-inset, 0px);
+  width: auto;
+  max-width: none;
+  max-height: min(80dvh, calc(var(--app-height, 100dvh) - var(--space-16)));
+  border-bottom: 0;
+  border-radius: var(--radius-2xl) var(--radius-2xl) 0 0;
+  padding: var(--space-4) calc(var(--space-4) + var(--safe-area-right))
+    calc(var(--space-4) + var(--device-safe-area-bottom))
+    calc(var(--space-4) + var(--safe-area-left));
+  animation: account-sheet-enter var(--duration-base) var(--easing-out);
+
+  @include responsive.media('reduced-motion') {
+    animation: none;
+  }
+}
+
+@keyframes account-sheet-enter {
+  from {
+    transform: translateY(var(--space-6));
+    opacity: 0;
+  }
+}
+
+.header {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: var(--space-2-5);
+}
+
+.header-tile {
+  display: flex;
+  height: var(--space-9);
+  width: var(--space-9);
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--theme-border);
+  border-radius: var(--radius-lg);
+  background-color: var(--theme-surface-tertiary);
+}
+
+.header-icon {
+  height: var(--space-4);
+  width: var(--space-4);
+  color: var(--theme-text-secondary);
+}
+
+.header-text {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+}
+
+.title {
+  @include type.type-default(600);
+  @include type.type-overflow;
+  flex: 1;
+  color: var(--theme-text-primary);
+}
+
+.subtitle {
+  @include type.type-meta;
+  color: var(--theme-text-quaternary);
+}
+
+.back {
+  @include controls.focus-ring;
+  @include anim.transition-colors;
+  display: flex;
+  height: var(--space-7);
+  width: var(--space-7);
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  margin-left: calc(-1 * var(--space-1));
+  border-radius: var(--radius-md);
+  color: var(--theme-text-tertiary);
+
+  @include responsive.hover {
+    background-color: var(--theme-surface-hover);
+    color: var(--theme-text-primary);
+  }
+}
+
+.back-icon {
+  height: var(--space-4);
+  width: var(--space-4);
+}
+
+// "Personal  Max · you@example.com  ›": opens the account list.
+.account-row {
+  @include type.type-meta;
+  @include controls.focus-ring;
+  @include anim.transition-colors;
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: var(--space-1-5);
+  border-radius: var(--radius-md);
+  padding: var(--space-1-5) var(--space-2);
+  margin-inline: calc(-1 * var(--space-2));
+  text-align: left;
+
+  @include responsive.hover {
+    background-color: var(--theme-surface-hover);
+
+    .account-meta--warning {
+      color: var(--theme-warning);
+    }
+
+    .account-chevron {
+      color: var(--theme-text-primary);
+    }
+  }
+}
+
+.account-name {
+  flex-shrink: 0;
+  font-weight: 500;
+  color: var(--theme-text-secondary);
+}
+
+.account-meta {
+  @include type.type-overflow;
+  min-width: 0;
+  flex: 1;
+  color: var(--theme-text-quaternary);
+}
+
+.account-meta--warning {
+  color: var(--theme-warning);
+}
+
+.account-chevron {
+  height: var(--space-3-5);
+  width: var(--space-3-5);
+  flex-shrink: 0;
+  color: var(--theme-text-quaternary);
+}
+
+.windows {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.window {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  border: 1px solid var(--theme-border);
+  border-radius: var(--radius-xl);
+  background-color: var(--theme-surface-tertiary);
+  padding: var(--space-3);
+
+  .bar {
+    height: var(--space-1-5);
+  }
+}
+
+.window-loading {
+  @include anim.pulse;
+  height: var(--space-20);
+  border-radius: var(--radius-xl);
+  background-color: var(--theme-surface-tertiary);
+}
+
+.window-row {
+  @include type.type-meta;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-2);
+  color: var(--theme-text-secondary);
+  font-variant-numeric: tabular-nums;
+
+  &--meta {
+    color: var(--theme-text-quaternary);
+  }
+}
+
+.window-name {
+  font-weight: 500;
+}
+
+.window-used {
+  font-weight: 600;
+  color: var(--theme-text-primary);
+}
+
+.empty,
+.note {
+  @include type.type-meta;
+  color: var(--theme-text-quaternary);
+  line-height: 1.45;
+}
+
+.empty-link {
+  @include controls.focus-ring;
+  color: var(--theme-text-secondary);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+
+  @include responsive.hover {
+    color: var(--theme-text-primary);
+  }
+}
+
+.empty {
+  border: 1px dashed var(--theme-border);
+  border-radius: var(--radius-xl);
+  padding: var(--space-3);
+}
+
+// --- account list ---
+
+.accounts {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1-5);
+}
+
+.group-label {
+  @include type.type-meta(500);
+  display: flex;
+  align-items: center;
+  gap: var(--space-1-5);
+  padding-inline: var(--space-0-5);
+  color: var(--theme-text-quaternary);
+}
+
+.group-icon {
+  height: var(--space-3);
+  width: var(--space-3);
+}
+
+.row {
+  @include controls.focus-ring;
+  @include anim.transition-colors;
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: var(--space-2);
+  border: 1px solid var(--theme-border);
+  border-radius: var(--radius-xl);
+  background-color: var(--theme-surface-tertiary);
+  padding: var(--space-2-5) var(--space-3);
+  text-align: left;
+
+  @include responsive.hover {
+    border-color: var(--theme-border-secondary);
+    background-color: var(--theme-surface-hover);
+  }
+
+  &--selected {
+    border-color: colors.theme-color('accent', 0.45);
+    background-color: colors.theme-color('accent', 0.08);
+
+    @include responsive.hover {
+      border-color: colors.theme-color('accent', 0.6);
+      background-color: colors.theme-color('accent', 0.12);
+    }
+  }
+}
+
+.row-head {
+  @include type.type-meta;
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: var(--space-1-5);
+}
+
+.row-name {
+  flex-shrink: 0;
+  font-weight: 500;
+  color: var(--theme-text-primary);
+}
+
+.row-meta {
+  @include type.type-overflow;
+  min-width: 0;
+  color: var(--theme-text-quaternary);
+}
+
+// Same as the Default badge in Settings → Providers.
+.row-chip {
+  flex-shrink: 0;
+  border-radius: var(--radius-md);
+  background-color: var(--theme-surface-active);
+  padding: 0 var(--space-1-5);
+  color: var(--theme-text-quaternary);
+  font-size: 0.625rem;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  line-height: 1.125rem;
+  text-transform: uppercase;
+}
+
+.row-check {
+  height: var(--space-4);
+  width: var(--space-4);
+  flex-shrink: 0;
+  margin-left: auto;
+  color: var(--theme-accent);
+}
+
+.row-body {
+  @include type.type-meta;
+  display: flex;
+  min-width: 0;
+  align-items: flex-end;
+  gap: var(--space-3);
+}
+
+.state {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: var(--space-1-5);
+  padding-bottom: 1px;
+  color: var(--theme-text-tertiary);
+
+  &--needs_sign_in,
+  &--cli_missing {
+    color: var(--theme-warning);
+  }
+}
+
+.state-dot {
+  height: var(--space-1-5);
+  width: var(--space-1-5);
+  border-radius: var(--radius-full);
+  background-color: var(--theme-success);
+
+  .state--needs_sign_in &,
+  .state--cli_missing & {
+    background-color: var(--theme-warning);
+  }
+}
+
+.row-window {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.row-window-text {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-2);
+  color: var(--theme-text-quaternary);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.row-window-used {
+  font-weight: 500;
+  color: var(--theme-text-secondary);
+}
+
+.links {
+  display: flex;
+  flex-direction: column;
+  border-top: 1px solid var(--theme-border);
+  padding-top: var(--space-1-5);
+}
+
+.link {
+  @include type.type-meta;
+  @include controls.focus-ring;
+  @include anim.transition-colors;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  border-radius: var(--radius-md);
+  padding: var(--space-2);
+  color: var(--theme-text-tertiary);
+
+  @include responsive.hover {
+    background-color: var(--theme-surface-hover);
+    color: var(--theme-text-primary);
+  }
+
+  .panel--sheet & {
+    min-height: var(--space-11);
+  }
+}
+
+.link-icon {
+  height: var(--space-3-5);
+  width: var(--space-3-5);
+  flex-shrink: 0;
+}

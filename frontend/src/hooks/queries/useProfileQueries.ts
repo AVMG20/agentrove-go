@@ -11,7 +11,7 @@ const LOGIN_POLL_MS = 1500;
 const invalidateProfiles = async (queryClient: QueryClient): Promise<void> => {
   await Promise.all([
     queryClient.invalidateQueries({ queryKey: queryKeys.profiles }),
-    queryClient.invalidateQueries({ queryKey: queryKeys.claudeUsage }),
+    queryClient.invalidateQueries({ queryKey: queryKeys.usage }),
   ]);
 };
 

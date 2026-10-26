@@ -69,6 +69,16 @@ func AllModels() []ModelInfo {
 	return out
 }
 
+// ProviderOf is the provider whose registry lists id ("" for none).
+func ProviderOf(id string) string {
+	for _, p := range Providers {
+		if _, ok := LookupProviderModel(p, id); ok {
+			return p
+		}
+	}
+	return ""
+}
+
 // LookupProviderModel returns a provider's registry entry for id.
 func LookupProviderModel(provider, id string) (ModelInfo, bool) {
 	for _, m := range ModelsFor(provider) {

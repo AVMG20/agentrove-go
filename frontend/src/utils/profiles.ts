@@ -16,20 +16,22 @@ export const PROVIDER_CLI: Record<ProviderKind, string> = {
 
 // Auth modes per provider, default first (mirrors profiles.AuthModes).
 export const AUTH_MODES: Record<ProviderKind, ProfileAuthMode[]> = {
-  claude: ['token', 'endpoint'],
+  claude: ['login', 'token', 'endpoint'],
   codex: ['login', 'token'],
   antigravity: ['login', 'token'],
 };
 
 export function authModeLabel(provider: ProviderKind, mode: ProfileAuthMode): string {
   if (mode === 'endpoint') return 'Custom endpoint';
-  if (mode === 'login') return provider === 'codex' ? 'ChatGPT sign-in' : 'Google sign-in';
+  if (mode === 'login') {
+    if (provider === 'claude') return 'Claude sign-in';
+    return provider === 'codex' ? 'ChatGPT sign-in' : 'Google sign-in';
+  }
   return provider === 'claude' ? 'Claude token' : 'API key';
 }
 
 // The small chip next to a profile's name.
 export function profileChip(profile: Profile): string {
-  if (profile.builtin) return 'Built-in';
   if (profile.auth_mode === 'endpoint') return 'Gateway';
   if (profile.auth_mode === 'login') return 'Sign-in';
   return profile.provider === 'claude' ? 'Token' : 'API key';
@@ -42,16 +44,12 @@ export function removeProfileMessage(profile: Profile): string {
     profile.auth_mode === 'login'
       ? 'Its sign-in files stay in your box, but adding the account again needs a new sign-in.'
       : 'Its saved token is deleted.';
-  const threads = profile.shares_server_sessions
-    ? 'Its threads move to the Server account and continue there, on the server’s Claude credentials.'
-    : 'Threads on it can’t continue: start a new thread on another account.';
-  return `Remove "${profile.name}"? ${threads} ${stored}`;
+  return `Remove "${profile.name}"? Threads on it can’t continue: start a new thread on another account. ${stored}`;
 }
 
 // Whether the profile has an in-box sign-in flow (mirrors profiles.loginCommand).
 export function canSignIn(profile: Profile): boolean {
-  if (profile.builtin) return true;
-  if (profile.provider === 'claude') return profile.auth_mode === 'token';
+  if (profile.provider === 'claude') return profile.auth_mode !== 'endpoint';
   return profile.auth_mode === 'login';
 }
 
@@ -100,4 +98,22 @@ export function resolveProfilePick(input: {
 }): ProfilePick {
   if (input.pickedProfileId === input.currentProfileId) return 'none';
   return input.hasMessages ? 'new-thread' : 'switch';
+}
+
+// "Max · you@example.com": who a signed-in account runs as ('' if unknown).
+export function accountLine(profile: Profile): string {
+  return [profile.account?.plan, profile.account?.email].filter(Boolean).join(' · ');
+}
+
+// Why an account shows no plan usage, for the usage card.
+export function noUsageReason(profile: Profile): string {
+  if (profile.status !== 'ready') return 'Sign this account in to see its usage.';
+  if (profile.provider === 'antigravity') return 'Antigravity doesn’t report plan usage.';
+  if (profile.auth_mode === 'endpoint') return 'This endpoint has no usage URL.';
+  if (profile.auth_mode === 'token') {
+    return profile.provider === 'claude'
+      ? 'Usage needs a Claude sign-in or an OAuth token; API keys have no plan limits.'
+      : 'API keys have no plan limits to show.';
+  }
+  return 'No usage reported for this account yet.';
 }

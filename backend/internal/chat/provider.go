@@ -28,35 +28,26 @@ import (
 
 // chatProfile resolves the profile a chat runs on.
 func (m *Module) chatProfile(ctx context.Context, userID string, chat *models.Chat) (*profiles.Profile, error) {
-	if m.a.Profiles == nil {
-		return profiles.Builtin(userID), nil
-	}
 	return m.a.Profiles.ForChat(ctx, userID, chat.StoredProfileID)
 }
 
 // newChatProfile picks the profile a new chat starts on: the requested one,
-// else the user's default. A model id from another provider (a stream
-// action's Claude model) picks the default Claude profile instead.
+// else the user's default. A model id of another provider (a stream
+// action's model) picks an account of that provider when there is one.
 func (m *Module) newChatProfile(ctx context.Context, userID, profileID, modelID string) (*profiles.Profile, error) {
-	if m.a.Profiles == nil {
-		return profiles.Builtin(userID), nil
-	}
 	if profileID != "" {
 		return m.a.Profiles.Get(ctx, userID, profileID)
 	}
-	p := m.a.Profiles.Default(ctx, userID)
-	if modelID != "" && !models.ValidModelFor(p.Provider, modelID) && models.ValidModelFor(models.ProviderClaude, modelID) {
-		p = m.a.Profiles.DefaultClaude(ctx, userID)
+	p, err := m.a.Profiles.Default(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+	if modelID != "" && !models.ValidModelFor(p.Provider, modelID) {
+		if other := m.a.Profiles.DefaultFor(ctx, userID, models.ProviderOf(modelID)); other != nil {
+			p = other
+		}
 	}
 	return p, nil
-}
-
-// storedProfile is how a profile is recorded on a chat row (NULL = built-in).
-func storedProfile(p *profiles.Profile) (id, provider any) {
-	if p == nil || p.Builtin {
-		return nil, nil
-	}
-	return p.ID, p.Provider
 }
 
 func reqProvider(req *turnRequest) string {
@@ -85,8 +76,8 @@ func otherProviderModel(id string) bool {
 
 // signInHint explains a credentials failure in terms of the chat's profile.
 func signInHint(p *profiles.Profile) string {
-	if p == nil || p.Builtin {
-		return "\n\nThe Server account has no Claude credentials. Sign it in under Settings → Providers, or add a Claude account there (a Claude token or a custom endpoint) and start a new thread on it."
+	if p == nil {
+		return "\n\nAdd an account under Settings → Providers and start a new thread on it."
 	}
 	return fmt.Sprintf("\n\nThe %s profile \"%s\" isn't signed in. Sign in or add a token under Settings → Providers.", profiles.ProviderName(p.Provider), p.Name)
 }

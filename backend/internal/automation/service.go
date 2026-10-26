@@ -194,7 +194,7 @@ func validate(in *Input) error {
 		in.GithubEvents = &evs
 	}
 	if in.ModelID != nil {
-		if _, ok := models.LookupModel(*in.ModelID); !ok {
+		if models.ProviderOf(*in.ModelID) == "" {
 			return httpx.BadRequest("Unknown model")
 		}
 	}
@@ -760,7 +760,7 @@ func RunTitle(x *Automation, ev *ActivityEvent, now time.Time) string {
 func (s *Service) fire(ctx context.Context, x *Automation, ev *ActivityEvent) (string, error) {
 	// Re-check the model first: a retired model would otherwise leave an
 	// orphan empty chat every slot.
-	if _, ok := models.LookupModel(x.ModelID); !ok {
+	if models.ProviderOf(x.ModelID) == "" {
 		return "", httpx.BadRequest("Unknown model")
 	}
 	if s.a.Hooks.StartChatTurn == nil {
@@ -770,7 +770,7 @@ func (s *Service) fire(ctx context.Context, x *Automation, ev *ActivityEvent) (s
 	if ev != nil {
 		prompt = EventPrompt(x.Prompt, ev)
 	}
-	chat, err := CreateChat(ctx, s.a, x.UserID, x.WorkspaceID, RunTitle(x, ev, time.Now()), &x.ID)
+	chat, err := CreateChat(ctx, s.a, x.UserID, x.WorkspaceID, RunTitle(x, ev, time.Now()), x.ModelID, &x.ID)
 	if err != nil {
 		return "", err
 	}

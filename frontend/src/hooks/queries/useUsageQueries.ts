@@ -3,19 +3,19 @@ import { useQuery, useQueryClient, type QueryClient } from '@tanstack/react-quer
 import { queryKeys } from '@/hooks/queries/queryKeys';
 import { usageService } from '@/services/usageService';
 import { useStreamStore } from '@/store/streamStore';
-import type { ClaudeUsage } from '@/types/usage.types';
+import type { AccountUsage } from '@/types/usage.types';
 import {
   USAGE_AFTER_TURN_DELAY_MS,
   USAGE_POLL_ACTIVE_MS,
   USAGE_RESET_GRACE_MS,
   nextResetMs,
   usagePollInterval,
-} from '@/utils/claudeUsage';
+} from '@/utils/planUsage';
 
 // Per profile, shared across every mounted meter so split panes trigger one fetch.
 const freshInFlight = new Map<string, Promise<void>>();
 
-const usageKey = (profileId: string) => [...queryKeys.claudeUsage, profileId] as const;
+const usageKey = (profileId: string) => [...queryKeys.usage, profileId] as const;
 
 // Bypasses the server's short cache: used right after a turn or a reset, when
 // the cached numbers are known to be behind.
@@ -23,7 +23,7 @@ function fetchFreshUsage(queryClient: QueryClient, profileId: string): Promise<v
   let pending = freshInFlight.get(profileId);
   if (!pending) {
     pending = usageService
-      .getClaudeUsage(true, profileId || undefined)
+      .getUsage(true, profileId || undefined)
       .then((fresh) => {
         queryClient.setQueryData(usageKey(profileId), fresh);
       })
@@ -38,17 +38,19 @@ function fetchFreshUsage(queryClient: QueryClient, profileId: string): Promise<v
   return pending;
 }
 
-// Plan usage of a Claude profile ('' or omitted: the default Claude profile).
-export function useClaudeUsage(profileId = '') {
+// Plan usage of an account ('' or omitted: the default account). Off while
+// !enabled (no account to show).
+export function useAccountUsage(profileId = '', enabled = true) {
   const queryClient = useQueryClient();
   // Any running turn — this tab's, another tab's, or an automation's (the chat
   // events feed registers those too).
   const working = useStreamStore((state) => state.activeStreamMetadata.length > 0);
   const interval = usagePollInterval(working);
 
-  const query = useQuery<ClaudeUsage>({
+  const query = useQuery<AccountUsage>({
     queryKey: usageKey(profileId),
-    queryFn: () => usageService.getClaudeUsage(false, profileId || undefined),
+    queryFn: () => usageService.getUsage(false, profileId || undefined),
+    enabled,
     // No usage endpoint for this proxy: stop polling until settings or the
     // profile change (saving either invalidates this query).
     refetchInterval: (q) => (q.state.data?.status === 'unavailable' ? false : interval),
@@ -64,16 +66,16 @@ export function useClaudeUsage(profileId = '') {
   useEffect(() => {
     const finished = wasWorking.current && !working;
     wasWorking.current = working;
-    if (!finished) return;
+    if (!finished || !enabled) return;
     const timer = setTimeout(
       () => void fetchFreshUsage(queryClient, profileId),
       USAGE_AFTER_TURN_DELAY_MS,
     );
     return () => clearTimeout(timer);
-  }, [working, queryClient, profileId]);
+  }, [working, queryClient, profileId, enabled]);
 
   const data = query.data;
-  const nextReset = data?.status === 'ok' ? nextResetMs([data.session, data.weekly]) : null;
+  const nextReset = data?.status === 'ok' ? nextResetMs(data.windows) : null;
   useEffect(() => {
     if (nextReset == null) return;
     const delay = nextReset - Date.now() + USAGE_RESET_GRACE_MS;

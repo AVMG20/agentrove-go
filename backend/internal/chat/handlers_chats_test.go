@@ -10,7 +10,7 @@ import (
 
 	"agentrove/internal/app"
 	"agentrove/internal/db"
-	"agentrove/internal/events"
+	"agentrove/internal/models"
 	"agentrove/internal/sandbox"
 	appstore "agentrove/internal/store"
 )
@@ -50,7 +50,7 @@ func TestDeletingLastChatKeepsProject(t *testing.T) {
 func TestCreateChatInAnotherChatsWorktree(t *testing.T) {
 	m, d := newTestModule(t)
 	withApp(m, d)
-	m.a.Hub = events.NewHub()
+	addProfile(t, withProfiles(t, m), models.ProviderClaude, "Work")
 	ctx := context.Background()
 	wt := ".worktrees/33333333"
 	if _, err := d.Exec(`UPDATE chats SET worktree_cwd = ? WHERE id = ?`, wt, testChat); err != nil {

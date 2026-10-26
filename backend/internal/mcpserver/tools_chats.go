@@ -67,8 +67,8 @@ func (m *Module) listModels(ctx context.Context, c *caller, args json.RawMessage
 		return nil, err
 	}
 	list := []map[string]any{}
-	if a.AgentKind == nil || *a.AgentKind == "" || *a.AgentKind == "claude" {
-		for _, mi := range models.ClaudeModels {
+	for _, mi := range models.AllModels() {
+		if a.AgentKind == nil || *a.AgentKind == "" || *a.AgentKind == mi.AgentKind {
 			list = append(list, map[string]any{"model_id": mi.ID, "name": mi.Name, "agent_kind": mi.AgentKind, "thinking_modes": mi.EffortLevels})
 		}
 	}
@@ -191,7 +191,7 @@ func (m *Module) sendMessage(ctx context.Context, c *caller, args json.RawMessag
 		if title == "" {
 			title = "New chat"
 		}
-		chat, err := automation.CreateChat(ctx, m.a, c.userID, ws, title, nil)
+		chat, err := automation.CreateChat(ctx, m.a, c.userID, ws, title, model, nil)
 		if err != nil {
 			return nil, err
 		}
@@ -329,7 +329,7 @@ func (m *Module) getMessages(ctx context.Context, c *caller, args json.RawMessag
 
 func contextUsage(used, window int, modelID *string) map[string]any {
 	if window <= 0 && modelID != nil {
-		if mi, ok := models.LookupModel(*modelID); ok {
+		if mi, ok := models.LookupProviderModel(models.ProviderOf(*modelID), *modelID); ok {
 			window = mi.ContextWindow
 		}
 	}

@@ -74,7 +74,8 @@ export function AutomationEditDialog({
   onChange,
 }: AutomationEditDialogProps) {
   const titleId = useId();
-  const { data: models = [] } = useModelsQuery();
+  // Every provider's models; runs go to an account of the model's provider.
+  const { data: models = [] } = useModelsQuery(undefined, 'all');
   const workspaces = useWorkspacesList();
 
   // Seed model when missing/left registry. Effect (onChange writes parent state).
@@ -104,6 +105,8 @@ export function AutomationEditDialog({
   };
 
   const selectedModel = models.find((m) => m.model_id === form.model_id);
+  // Personas and permission modes are Claude Code features.
+  const isClaude = (selectedModel?.agent_kind ?? 'claude') === 'claude';
 
   const selectedPermissionOption = getPermissionModeOption(form.permission_mode);
   const thinkingModes = getThinkingModes(selectedModel);
@@ -195,12 +198,13 @@ export function AutomationEditDialog({
               <ModelSelector
                 selectedModelId={form.model_id}
                 onModelChange={(modelId) => onChange('model_id', modelId)}
+                agentKind="enabled"
                 dropdownPosition="bottom"
                 compact={false}
               />
             </div>
 
-            <div>
+            <div hidden={!isClaude}>
               <Label className={styles.label}>Persona</Label>
               <Select
                 value={form.persona_name}
@@ -229,15 +233,17 @@ export function AutomationEditDialog({
                 dropdownPosition="bottom"
               />
             )}
-            <Dropdown
-              value={selectedPermissionOption}
-              items={PERMISSION_MODES}
-              getItemKey={(m) => m.value}
-              getItemLabel={(m) => m.label}
-              onSelect={(m) => onChange('permission_mode', m.value)}
-              leftIcon={Shield}
-              dropdownPosition="bottom"
-            />
+            {isClaude && (
+              <Dropdown
+                value={selectedPermissionOption}
+                items={PERMISSION_MODES}
+                getItemKey={(m) => m.value}
+                getItemLabel={(m) => m.label}
+                onSelect={(m) => onChange('permission_mode', m.value)}
+                leftIcon={Shield}
+                dropdownPosition="bottom"
+              />
+            )}
             <ToggleDropdown
               options={WORKTREE_OPTIONS}
               value={form.worktree}

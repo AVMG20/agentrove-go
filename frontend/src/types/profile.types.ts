@@ -1,7 +1,7 @@
 // Provider profiles: the agent accounts a chat runs on (Settings → Providers).
 export type ProviderKind = 'claude' | 'codex' | 'antigravity';
 
-// claude: token | endpoint; codex, antigravity: login | token.
+// claude: login | token | endpoint; codex, antigravity: login | token.
 export type ProfileAuthMode = 'token' | 'endpoint' | 'login';
 
 export type ProfileState = 'ready' | 'needs_sign_in' | 'cli_missing';
@@ -35,13 +35,9 @@ export interface Profile {
   token_hint: string;
   // The variable a Claude token is passed in; '' picks it by auth mode.
   token_env: ClaudeTokenEnv | '';
-  // On the box's ~/claude (migrated from env vars): removing it moves its
-  // threads to the built-in Server account.
-  shares_server_sessions: boolean;
   is_default: boolean;
-  builtin: boolean;
   login: ProfileLogin | null;
-  created_at: string | null;
+  created_at: string;
   status: ProfileState;
   status_detail: string;
   account: ProfileAccount | null;
@@ -63,5 +59,3 @@ export type ClaudeTokenEnv =
   | 'ANTHROPIC_AUTH_TOKEN'
   | 'ANTHROPIC_API_KEY'
   | 'CLAUDE_CODE_OAUTH_TOKEN';
-
-export const BUILTIN_PROFILE_ID = 'builtin';

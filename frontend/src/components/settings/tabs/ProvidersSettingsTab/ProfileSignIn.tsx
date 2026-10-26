@@ -49,7 +49,7 @@ export function ProfileSignIn({ profile, starting, onClose, onRetry }: ProfileSi
   useEffect(() => {
     if (status && status !== 'running') {
       void queryClient.invalidateQueries({ queryKey: queryKeys.profiles });
-      void queryClient.invalidateQueries({ queryKey: queryKeys.claudeUsage });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.usage });
     }
   }, [status, queryClient]);
 

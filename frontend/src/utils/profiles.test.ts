@@ -1,10 +1,16 @@
 import { describe, expect, it } from 'vitest';
 import type { Profile } from '@/types/profile.types';
 import {
+  AUTH_MODES,
+  accountLine,
+  authModeLabel,
   canSignIn,
   groupProfiles,
+  noUsageReason,
   offersSignIn,
+  profileChip,
   profileStatusLabel,
+  removeProfileMessage,
   resolveProfilePick,
 } from './profiles';
 
@@ -18,11 +24,9 @@ const profile = (over: Partial<Profile> = {}): Profile => ({
   has_token: true,
   token_hint: '…abcd',
   token_env: '',
-  shares_server_sessions: false,
   is_default: false,
-  builtin: false,
   login: null,
-  created_at: null,
+  created_at: '2026-10-01T00:00:00Z',
   status: 'ready',
   status_detail: '',
   account: null,
@@ -74,7 +78,7 @@ describe('profileStatusLabel', () => {
 
 describe('canSignIn', () => {
   it('matches the CLI sign-in flows', () => {
-    expect(canSignIn(profile({ builtin: true, auth_mode: 'login' }))).toBe(true);
+    expect(canSignIn(profile({ auth_mode: 'login' }))).toBe(true);
     expect(canSignIn(profile({ auth_mode: 'token' }))).toBe(true);
     expect(canSignIn(profile({ auth_mode: 'endpoint' }))).toBe(false);
     expect(canSignIn(profile({ provider: 'codex', auth_mode: 'login' }))).toBe(true);
@@ -106,5 +110,55 @@ describe('offersSignIn', () => {
     // Signing a ready Claude or Codex account in again is fine.
     expect(offersSignIn(profile({ status: 'ready' }))).toBe(true);
     expect(offersSignIn(profile({ provider: 'codex', auth_mode: 'login' }))).toBe(true);
+  });
+});
+
+describe('claude sign-in', () => {
+  it('offers Claude sign-in first', () => {
+    expect(AUTH_MODES.claude).toEqual(['login', 'token', 'endpoint']);
+    expect(authModeLabel('claude', 'login')).toBe('Claude sign-in');
+    expect(authModeLabel('codex', 'login')).toBe('ChatGPT sign-in');
+    expect(authModeLabel('antigravity', 'login')).toBe('Google sign-in');
+    expect(profileChip(profile({ auth_mode: 'login' }))).toBe('Sign-in');
+  });
+});
+
+describe('removeProfileMessage', () => {
+  it('says threads cannot continue', () => {
+    expect(removeProfileMessage(profile())).toBe(
+      'Remove "Work"? Threads on it can’t continue: start a new thread on another account. Its saved token is deleted.',
+    );
+    expect(removeProfileMessage(profile({ auth_mode: 'login' }))).toMatch(
+      /sign-in files stay in your box/,
+    );
+  });
+});
+
+describe('accountLine', () => {
+  it('joins plan and email', () => {
+    expect(accountLine(profile({ account: { plan: 'Max', email: 'a@b.c' } }))).toBe('Max · a@b.c');
+    expect(accountLine(profile({ account: { email: 'a@b.c' } }))).toBe('a@b.c');
+    expect(accountLine(profile())).toBe('');
+  });
+});
+
+describe('noUsageReason', () => {
+  it('explains why an account has no usage', () => {
+    expect(noUsageReason(profile({ status: 'needs_sign_in' }))).toBe(
+      'Sign this account in to see its usage.',
+    );
+    expect(noUsageReason(profile({ provider: 'antigravity', auth_mode: 'login' }))).toBe(
+      'Antigravity doesn’t report plan usage.',
+    );
+    expect(noUsageReason(profile({ auth_mode: 'endpoint' }))).toBe(
+      'This endpoint has no usage URL.',
+    );
+    expect(noUsageReason(profile())).toMatch(/^Usage needs a Claude sign-in/);
+    expect(noUsageReason(profile({ provider: 'codex' }))).toBe(
+      'API keys have no plan limits to show.',
+    );
+    expect(noUsageReason(profile({ auth_mode: 'login' }))).toBe(
+      'No usage reported for this account yet.',
+    );
   });
 });

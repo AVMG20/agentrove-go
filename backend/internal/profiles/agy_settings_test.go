@@ -104,7 +104,4 @@ func TestClaudeProfilesDropDeploymentHeadersAndAliases(t *testing.T) {
 			t.Errorf("%s dropped from the user's env vars", k)
 		}
 	}
-	if env := Builtin("u").ApplyEnv(global, nil); env["ANTHROPIC_CUSTOM_HEADERS"] == "" {
-		t.Error("the built-in profile keeps the deployment's headers")
-	}
 }

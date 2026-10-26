@@ -56,6 +56,8 @@ export interface DropdownProps<T> {
   selectionStyle?: 'check' | 'accent';
   renderHeader?: () => ReactNode;
   renderFooter?: () => ReactNode;
+  // A column beside the list (e.g. provider tabs that filter it).
+  renderRail?: () => ReactNode;
   onOpenChange?: (isOpen: boolean) => void;
   // 'toolbar' matches ToggleDropdown's composer-toolbar trigger (icon always shown).
   triggerVariant?: 'default' | 'text' | 'toolbar';
@@ -151,6 +153,7 @@ const Dropdown = memo(function Dropdown<T>({
   selectionStyle = 'check',
   renderHeader,
   renderFooter,
+  renderRail,
   onOpenChange,
   triggerVariant = 'default',
   triggerClassName,
@@ -241,6 +244,129 @@ const Dropdown = memo(function Dropdown<T>({
 
   const triggerLabel = getItemShortLabel ? getItemShortLabel(value) : getItemLabel(value);
 
+  const panelBody = (
+    <>
+      {renderHeader?.()}
+      {searchable && searchVariant === 'boxed' && (
+        <div className={styles['search-box']}>
+          <div className={styles['search-box-field']}>
+            <Search className={styles['search-icon']} />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              onKeyDown={handleSearchKeyDown}
+              placeholder={searchPlaceholder}
+              autoFocus={!isMobile}
+              className={styles['search-input']}
+            />
+            {searchQuery && (
+              <Button
+                onClick={() => setSearchQuery('')}
+                variant="unstyled"
+                aria-label="Clear search"
+                className={styles['search-clear']}
+              >
+                <X />
+              </Button>
+            )}
+          </div>
+        </div>
+      )}
+      {searchable && searchVariant === 'underline' && (
+        <div className={styles['search-underline']}>
+          <Search className={styles['search-icon']} />
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            onKeyDown={handleSearchKeyDown}
+            placeholder={searchPlaceholder}
+            autoFocus={!isMobile}
+            className={styles['search-underline-input']}
+          />
+          {searchQuery && (
+            <Button
+              onClick={() => setSearchQuery('')}
+              variant="unstyled"
+              aria-label="Clear search"
+              className={styles['search-underline-clear']}
+            >
+              <X />
+            </Button>
+          )}
+        </div>
+      )}
+      <div className={clsx(styles.items, itemsClassName)}>
+        {displayItems.map((entry, index) => {
+          if (entry.type === 'divider') {
+            return <div key={`divider-${index}`} role="separator" className={styles.divider} />;
+          }
+          if (entry.type === 'header') {
+            return (
+              <div
+                key={`header-${entry.label}`}
+                className={clsx(
+                  styles['group-header'],
+                  index !== 0 && styles['group-header--divided'],
+                )}
+              >
+                {entry.label}
+              </div>
+            );
+          }
+
+          const item = entry.data;
+          const isSelected = getItemKey(item) === getItemKey(value);
+          return (
+            <SelectItem
+              key={getItemKey(item)}
+              isSelected={isSelected}
+              role="option"
+              onSelect={() => {
+                onSelect(item);
+                setIsOpen(false);
+              }}
+              className={clsx(
+                styles['item-row'],
+                selectionStyle === 'accent' && styles['item-row--accent'],
+              )}
+            >
+              {selectionStyle === 'check' && (
+                <Check
+                  className={clsx(
+                    styles['item-check'],
+                    isSelected && styles['item-check--selected'],
+                  )}
+                />
+              )}
+              {selectionStyle === 'accent' && isSelected && (
+                <div className={styles['item-accent']} />
+              )}
+              <div className={clsx(styles['item-content'], itemClassName)}>
+                {renderItem ? (
+                  renderItem(item, isSelected)
+                ) : (
+                  <FloatingTooltip content={getItemLabel(item)} className={styles['item-content']}>
+                    <span
+                      className={clsx(
+                        styles['item-label'],
+                        isSelected && styles['item-label--selected'],
+                      )}
+                    >
+                      {getItemLabel(item)}
+                    </span>
+                  </FloatingTooltip>
+                )}
+              </div>
+            </SelectItem>
+          );
+        })}
+      </div>
+      {renderFooter?.()}
+    </>
+  );
+
   return (
     <div className={styles.dropdown} ref={dropdownRef}>
       <Button
@@ -303,129 +429,14 @@ const Dropdown = memo(function Dropdown<T>({
               isMobile && styles['panel--sheet'],
             )}
           >
-            {renderHeader?.()}
-            {searchable && searchVariant === 'boxed' && (
-              <div className={styles['search-box']}>
-                <div className={styles['search-box-field']}>
-                  <Search className={styles['search-icon']} />
-                  <input
-                    type="text"
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    onKeyDown={handleSearchKeyDown}
-                    placeholder={searchPlaceholder}
-                    autoFocus={!isMobile}
-                    className={styles['search-input']}
-                  />
-                  {searchQuery && (
-                    <Button
-                      onClick={() => setSearchQuery('')}
-                      variant="unstyled"
-                      aria-label="Clear search"
-                      className={styles['search-clear']}
-                    >
-                      <X />
-                    </Button>
-                  )}
-                </div>
+            {renderRail ? (
+              <div className={styles['panel-split']}>
+                {renderRail()}
+                <div className={styles['panel-main']}>{panelBody}</div>
               </div>
+            ) : (
+              panelBody
             )}
-            {searchable && searchVariant === 'underline' && (
-              <div className={styles['search-underline']}>
-                <Search className={styles['search-icon']} />
-                <input
-                  type="text"
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  onKeyDown={handleSearchKeyDown}
-                  placeholder={searchPlaceholder}
-                  autoFocus={!isMobile}
-                  className={styles['search-underline-input']}
-                />
-                {searchQuery && (
-                  <Button
-                    onClick={() => setSearchQuery('')}
-                    variant="unstyled"
-                    aria-label="Clear search"
-                    className={styles['search-underline-clear']}
-                  >
-                    <X />
-                  </Button>
-                )}
-              </div>
-            )}
-            <div className={clsx(styles.items, itemsClassName)}>
-              {displayItems.map((entry, index) => {
-                if (entry.type === 'divider') {
-                  return (
-                    <div key={`divider-${index}`} role="separator" className={styles.divider} />
-                  );
-                }
-                if (entry.type === 'header') {
-                  return (
-                    <div
-                      key={`header-${entry.label}`}
-                      className={clsx(
-                        styles['group-header'],
-                        index !== 0 && styles['group-header--divided'],
-                      )}
-                    >
-                      {entry.label}
-                    </div>
-                  );
-                }
-
-                const item = entry.data;
-                const isSelected = getItemKey(item) === getItemKey(value);
-                return (
-                  <SelectItem
-                    key={getItemKey(item)}
-                    isSelected={isSelected}
-                    role="option"
-                    onSelect={() => {
-                      onSelect(item);
-                      setIsOpen(false);
-                    }}
-                    className={clsx(
-                      styles['item-row'],
-                      selectionStyle === 'accent' && styles['item-row--accent'],
-                    )}
-                  >
-                    {selectionStyle === 'check' && (
-                      <Check
-                        className={clsx(
-                          styles['item-check'],
-                          isSelected && styles['item-check--selected'],
-                        )}
-                      />
-                    )}
-                    {selectionStyle === 'accent' && isSelected && (
-                      <div className={styles['item-accent']} />
-                    )}
-                    <div className={clsx(styles['item-content'], itemClassName)}>
-                      {renderItem ? (
-                        renderItem(item, isSelected)
-                      ) : (
-                        <FloatingTooltip
-                          content={getItemLabel(item)}
-                          className={styles['item-content']}
-                        >
-                          <span
-                            className={clsx(
-                              styles['item-label'],
-                              isSelected && styles['item-label--selected'],
-                            )}
-                          >
-                            {getItemLabel(item)}
-                          </span>
-                        </FloatingTooltip>
-                      )}
-                    </div>
-                  </SelectItem>
-                );
-              })}
-            </div>
-            {renderFooter?.()}
           </div>,
         )}
     </div>

@@ -7,6 +7,7 @@ import (
 	"database/sql"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"maps"
@@ -26,7 +27,6 @@ import (
 	"agentrove/internal/gitops"
 	"agentrove/internal/httpx"
 	"agentrove/internal/models"
-	"agentrove/internal/profiles"
 	"agentrove/internal/prompts"
 	"agentrove/internal/sandbox"
 
@@ -535,7 +535,7 @@ func (m *Module) sessionConfig(sb *sandbox.Sandbox, req *turnRequest) claude.Con
 		Env:            m.sessionEnv(req),
 		Binary:         m.a.Cfg.ClaudeBinary,
 	}
-	if p := req.profile; p != nil && !p.Builtin {
+	if p := req.profile; p != nil {
 		launch := p.Launch()
 		for _, k := range launch.Unset {
 			delete(cfg.Env, k)
@@ -1120,26 +1120,25 @@ func (m *Module) hookStartTurn(r app.ChatTurnRequest) (app.ChatTurnResult, error
 	})
 }
 
-// oneShot returns a text-generation runner on the user's default Claude
-// profile (the built-in one when the default is another provider).
-func (m *Module) oneShot(userID string) claude.OneShot {
-	ctx := context.Background()
-	home := m.a.Cfg.AgentHomeDir(userID)
-	p := profiles.Builtin(userID)
-	if m.a.Profiles != nil {
-		p = m.a.Profiles.DefaultClaude(ctx, userID)
-	}
-	return claude.OneShot{Binary: m.a.Cfg.ClaudeBinary, Env: p.ApplyEnv(m.a.Cfg.AgentGlobalEnv(), m.a.Store.UserEnv(ctx, userID)),
-		ConfigDir: p.HostConfigDir(home), AgentHome: home, AsUID: sandbox.ContainerUID}
-}
+// errNoClaude: text generation runs on Claude, and the user has no Claude
+// account.
+var errNoClaude = errors.New("generating text needs a Claude account (Settings → Providers)")
 
-// generateText runs a one-shot Claude prompt (prompt enhancing, titles). A
-// Codex or Antigravity thread's model can't run on Claude, so Haiku stands in.
+// generateText runs a one-shot Claude prompt (prompt enhancing, titles) on
+// the user's default Claude account. A Codex or Antigravity thread's model
+// can't run on Claude, so Haiku stands in.
 func (m *Module) generateText(ctx context.Context, userID, modelID, systemPrompt, prompt string) (string, error) {
 	if modelID == "" || otherProviderModel(modelID) {
 		modelID = "haiku"
 	}
-	return m.oneShot(userID).Run(ctx, modelID, systemPrompt, prompt)
+	p := m.a.Profiles.DefaultFor(ctx, userID, models.ProviderClaude)
+	if p == nil {
+		return "", errNoClaude
+	}
+	home := m.a.Cfg.AgentHomeDir(userID)
+	run := claude.OneShot{Binary: m.a.Cfg.ClaudeBinary, Env: p.ApplyEnv(m.a.Cfg.AgentGlobalEnv(), m.a.Store.UserEnv(ctx, userID)),
+		ConfigDir: p.HostConfigDir(home), AgentHome: home, AsUID: sandbox.ContainerUID}
+	return run.Run(ctx, modelID, systemPrompt, prompt)
 }
 
 // generateTitle replaces a new chat's placeholder title (one derived from the
@@ -1158,7 +1157,9 @@ func (m *Module) generateTitle(userID string, chat *models.Chat, prompt string) 
 	title, err := m.generateText(ctx, userID, st.TitleModelID, prompts.GenerateTitleSystemPrompt,
 		"Generate a title for this message:\n<message>\n"+prompt+"\n</message>")
 	if err != nil {
-		slog.Warn("title generation failed", "chat", chat.ID, "err", err)
+		if !errors.Is(err, errNoClaude) {
+			slog.Warn("title generation failed", "chat", chat.ID, "err", err)
+		}
 		return
 	}
 	title = clipTitle(strings.Trim(strings.TrimSpace(title), `"'`))

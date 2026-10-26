@@ -2,13 +2,16 @@ package chat
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"agentrove/internal/auth"
 	"agentrove/internal/config"
+	"agentrove/internal/db"
 	"agentrove/internal/events"
 	"agentrove/internal/httpx"
 	"agentrove/internal/models"
@@ -26,6 +29,30 @@ func withProfiles(t *testing.T, m *Module) *profiles.Service {
 	return m.a.Profiles
 }
 
+// addProfile adds an account of provider to the test user.
+func addProfile(t *testing.T, ps *profiles.Service, provider, name string) *profiles.Profile {
+	t.Helper()
+	in := profiles.Input{Provider: &provider, Name: &name}
+	if provider == models.ProviderClaude {
+		mode, tok := profiles.AuthToken, "sk-ant-oat01-"+name
+		in.AuthMode, in.Token = &mode, &tok
+	}
+	p, err := ps.Create(context.Background(), testUser, in)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return p
+}
+
+// settleQueued lets the queue check a profile switch starts in the
+// background (runQueued) finish before the test's DB is closed and removed.
+func settleQueued(t *testing.T, d *db.DB) {
+	t.Cleanup(func() {
+		time.Sleep(50 * time.Millisecond)
+		waitFor(t, 2*time.Second, "background queries", func() bool { return d.Stats().InUse == 0 })
+	})
+}
+
 func patchChat(m *Module, chatID, body string) *httptest.ResponseRecorder {
 	r := httptest.NewRequest(http.MethodPatch, "/api/v1/chat/chats/"+chatID, strings.NewReader(body))
 	r.SetPathValue("chat_id", chatID)
@@ -40,11 +67,12 @@ func TestNewChatsRunOnTheRequestedOrDefaultProfile(t *testing.T) {
 	withApp(m, d)
 	ps := withProfiles(t, m)
 	ctx := context.Background()
-	codexName, codexProvider := "Codex", models.ProviderCodex
-	cx, err := ps.Create(ctx, testUser, profiles.Input{Provider: &codexProvider, Name: &codexName})
-	if err != nil {
-		t.Fatal(err)
+	// Without an account no thread can start.
+	if _, err := m.CreateChat(ctx, testUser, "t", testWS, nil, "", ""); !errors.Is(err, profiles.ErrNoProfile) {
+		t.Fatalf("chat without accounts: %v", err)
 	}
+	work := addProfile(t, ps, models.ProviderClaude, "Work")
+	cx := addProfile(t, ps, models.ProviderCodex, "Codex")
 
 	c, err := m.CreateChat(ctx, testUser, "t", testWS, nil, cx.ID, "")
 	if err != nil {
@@ -54,9 +82,9 @@ func TestNewChatsRunOnTheRequestedOrDefaultProfile(t *testing.T) {
 		t.Fatalf("chat profile = %s/%s", c.ProfileID, c.Provider)
 	}
 
-	// No profile: the default (built-in until set).
+	// No profile: the default (the oldest until set).
 	c, err = m.CreateChat(ctx, testUser, "t", testWS, nil, "", "")
-	if err != nil || c.ProfileID != profiles.BuiltinID || c.Provider != models.ProviderClaude {
+	if err != nil || c.ProfileID != work.ID || c.Provider != models.ProviderClaude {
 		t.Fatalf("default chat = %+v %v", c, err)
 	}
 	if err := ps.SetDefault(ctx, testUser, cx.ID); err != nil {
@@ -68,11 +96,50 @@ func TestNewChatsRunOnTheRequestedOrDefaultProfile(t *testing.T) {
 	}
 	// A Claude model (a stream action) doesn't land on the Codex default.
 	c, err = m.CreateChat(ctx, testUser, "t", testWS, nil, "", "claude-opus-5-5")
-	if err != nil || c.Provider != models.ProviderClaude {
+	if err != nil || c.ProfileID != work.ID || c.Provider != models.ProviderClaude {
 		t.Fatalf("claude-model chat = %+v %v", c, err)
+	}
+	// Without an account of the model's provider, the default stays.
+	c, err = m.CreateChat(ctx, testUser, "t", testWS, nil, "", "gemini-3.8-flash-high")
+	if err != nil || c.ProfileID != cx.ID {
+		t.Fatalf("antigravity-model chat = %+v %v", c, err)
 	}
 	if _, err := m.CreateChat(ctx, testUser, "t", testWS, nil, "missing", ""); err == nil {
 		t.Fatal("an unknown profile must be refused")
+	}
+}
+
+// A thread from before accounts (no profile) asks for a new thread.
+func TestChatWithoutAProfileAsksForANewThread(t *testing.T) {
+	m, d := newTestModule(t)
+	withApp(m, d)
+	ps := withProfiles(t, m)
+	addProfile(t, ps, models.ProviderClaude, "Work")
+	c, err := m.a.Store.GetChat(context.Background(), testUser, testChat)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.ProfileID != "" || c.Provider != models.ProviderClaude {
+		t.Fatalf("legacy chat = %q/%q", c.ProfileID, c.Provider)
+	}
+	if _, err := m.chatProfile(context.Background(), testUser, c); err == nil || !strings.Contains(err.Error(), "no account") {
+		t.Fatalf("chat profile = %v", err)
+	}
+}
+
+// Titles and prompt enhancing run on Claude: without a Claude account they
+// say so instead of running on anything else.
+func TestGenerateTextNeedsAClaudeAccount(t *testing.T) {
+	m, d := newTestModule(t)
+	withApp(m, d)
+	ps := withProfiles(t, m)
+	ctx := context.Background()
+	if _, err := m.generateText(ctx, testUser, "", "sys", "hi"); !errors.Is(err, errNoClaude) {
+		t.Fatalf("no accounts: %v", err)
+	}
+	addProfile(t, ps, models.ProviderCodex, "Codex")
+	if _, err := m.generateText(ctx, testUser, "gpt-6-luna", "sys", "hi"); !errors.Is(err, errNoClaude) {
+		t.Fatalf("codex only: %v", err)
 	}
 }
 
@@ -81,13 +148,11 @@ func TestNewChatsRunOnTheRequestedOrDefaultProfile(t *testing.T) {
 func TestThreadProfileLocksOnceItHasMessages(t *testing.T) {
 	m, d := newTestModule(t)
 	withApp(m, d)
+	settleQueued(t, d)
 	ps := withProfiles(t, m)
 	ctx := context.Background()
-	name, provider := "Gemini", models.ProviderAntigravity
-	ag, err := ps.Create(ctx, testUser, profiles.Input{Provider: &provider, Name: &name})
-	if err != nil {
-		t.Fatal(err)
-	}
+	work := addProfile(t, ps, models.ProviderClaude, "Work")
+	ag := addProfile(t, ps, models.ProviderAntigravity, "Gemini")
 	empty, err := m.CreateChat(ctx, testUser, "t", testWS, nil, "", "")
 	if err != nil {
 		t.Fatal(err)
@@ -95,15 +160,18 @@ func TestThreadProfileLocksOnceItHasMessages(t *testing.T) {
 	if w := patchChat(m, empty.ID, `{"profile_id":"`+ag.ID+`"}`); w.Code != http.StatusOK || !strings.Contains(w.Body.String(), `"provider":"antigravity"`) {
 		t.Fatalf("switching an empty thread: %d %s", w.Code, w.Body)
 	}
-	if w := patchChat(m, empty.ID, `{"profile_id":"builtin"}`); w.Code != http.StatusOK || !strings.Contains(w.Body.String(), `"profile_id":"builtin"`) {
+	if w := patchChat(m, empty.ID, `{"profile_id":"`+work.ID+`"}`); w.Code != http.StatusOK || !strings.Contains(w.Body.String(), `"profile_id":"`+work.ID+`"`) {
 		t.Fatalf("switching back: %d %s", w.Code, w.Body)
 	}
 	// testChat has an assistant message.
+	if _, err := d.Exec(`UPDATE chats SET profile_id = ?, provider = 'claude' WHERE id = ?`, work.ID, testChat); err != nil {
+		t.Fatal(err)
+	}
 	if w := patchChat(m, testChat, `{"profile_id":"`+ag.ID+`"}`); w.Code != http.StatusConflict {
 		t.Fatalf("switching a thread with messages: %d %s", w.Code, w.Body)
 	}
 	// Re-selecting its own profile is a no-op, not a conflict.
-	if w := patchChat(m, testChat, `{"profile_id":"builtin"}`); w.Code != http.StatusOK {
+	if w := patchChat(m, testChat, `{"profile_id":"`+work.ID+`"}`); w.Code != http.StatusOK {
 		t.Fatalf("same profile: %d %s", w.Code, w.Body)
 	}
 }
@@ -113,13 +181,11 @@ func TestThreadProfileLocksOnceItHasMessages(t *testing.T) {
 func TestThreadProfileSwitchRacesNoTurn(t *testing.T) {
 	m, d := newTestModule(t)
 	withApp(m, d)
+	settleQueued(t, d)
 	ps := withProfiles(t, m)
 	ctx := context.Background()
-	name, provider := "Gemini", models.ProviderAntigravity
-	ag, err := ps.Create(ctx, testUser, profiles.Input{Provider: &provider, Name: &name})
-	if err != nil {
-		t.Fatal(err)
-	}
+	work := addProfile(t, ps, models.ProviderClaude, "Work")
+	ag := addProfile(t, ps, models.ProviderAntigravity, "Gemini")
 	empty, err := m.CreateChat(ctx, testUser, "t", testWS, nil, "", "")
 	if err != nil {
 		t.Fatal(err)
@@ -145,7 +211,7 @@ func TestThreadProfileSwitchRacesNoTurn(t *testing.T) {
 	if err := d.QueryRow(`SELECT profile_id, title FROM chats WHERE id = ?`, empty.ID).Scan(&profileID, &title); err != nil {
 		t.Fatal(err)
 	}
-	if profileID != nil || title != "t" {
+	if db.Deref(profileID) != work.ID || title != "t" {
 		t.Fatalf("a refused switch changed the chat: %v %q", profileID, title)
 	}
 	// The slot is released again.

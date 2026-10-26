@@ -57,7 +57,7 @@ func TestSessionConfigBrowserTools(t *testing.T) {
 	}
 }
 
-// A non-builtin Claude profile keeps the user's own model aliases and drops
+// A Claude profile keeps the user's own model aliases and drops
 // only the deployment's headers and aliases.
 func TestSessionConfigKeepsUserAliasesOnProfiles(t *testing.T) {
 	m, d := newTestModule(t)

@@ -114,7 +114,8 @@ type Chat struct {
 	LastThinkingMode  *string     `json:"last_thinking_mode"`
 	LastPersonaName   *string     `json:"last_persona_name"`
 	AutomationID      *string     `json:"automation_id"` // set on automation runs
-	// StoredProfileID and StoredProvider are NULL for the built-in Claude profile.
+	// StoredProfileID and StoredProvider are NULL on threads from before
+	// accounts (which ran on the server's Claude login).
 	StoredProfileID *string `json:"-"`
 	StoredProvider  *string `json:"-"`
 	CreatedAt       db.Time `json:"created_at"`
@@ -124,8 +125,8 @@ type Chat struct {
 	SandboxID        string  `json:"sandbox_id"`
 	SessionAgentKind *string `json:"session_agent_kind"`
 	Unread           bool    `json:"unread"`
-	// ProfileID is the profile the chat runs on ("builtin" for the built-in
-	// Claude profile) and Provider that profile's provider.
+	// ProfileID is the profile the chat runs on ("" for none) and Provider
+	// that profile's provider.
 	ProfileID string `json:"profile_id"`
 	Provider  string `json:"provider"`
 }
@@ -144,7 +145,7 @@ func (c *Chat) ScanFields() []any {
 // Finish fills computed fields after a scan.
 func (c *Chat) Finish() {
 	c.Unread = !c.LastViewedAt.Valid || c.UpdatedAt.After(c.LastViewedAt.Time.Time)
-	c.ProfileID, c.Provider = "builtin", ProviderClaude
+	c.ProfileID, c.Provider = "", ProviderClaude
 	if c.StoredProfileID != nil && *c.StoredProfileID != "" {
 		c.ProfileID = *c.StoredProfileID
 	}

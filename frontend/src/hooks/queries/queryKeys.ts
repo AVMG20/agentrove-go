@@ -80,7 +80,7 @@ export const queryKeys = {
   artifactPages: (search: string) => ['artifacts', 'pages', search] as const,
   // Under the artifacts prefix so list invalidations refresh open viewers too.
   artifactView: (artifactId?: string) => ['artifacts', artifactId, 'view'] as const,
-  claudeUsage: ['usage', 'claude'] as const,
+  usage: ['usage'] as const,
   channels: (workspaceId?: string) => ['channels', workspaceId ?? null] as const,
   channelsAll: ['channels'] as const,
   channel: (channelId?: string) => ['channel', channelId] as const,

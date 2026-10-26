@@ -91,3 +91,44 @@
     fill: currentColor;
   }
 }
+
+// Provider tabs beside the list ('enabled' models).
+.rail {
+  display: flex;
+  flex-shrink: 0;
+  flex-direction: column;
+  gap: var(--space-1);
+  border-right: 1px solid var(--theme-border);
+  padding: var(--space-1-5);
+}
+
+.rail-tab {
+  @include anim.transition-colors;
+  display: flex;
+  height: var(--space-8);
+  width: var(--space-8);
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-lg);
+  color: var(--theme-text-quaternary);
+
+  @include responsive.hover {
+    background-color: var(--theme-surface-hover);
+    color: var(--theme-text-secondary);
+  }
+
+  &--active {
+    background-color: var(--theme-surface-active);
+    color: var(--theme-text-primary);
+  }
+
+  &:focus-visible {
+    outline: 2px solid colors.theme-color('accent', 0.5);
+    outline-offset: -2px;
+  }
+}
+
+.rail-icon {
+  height: var(--space-4);
+  width: var(--space-4);
+}

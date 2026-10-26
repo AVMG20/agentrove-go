@@ -392,7 +392,7 @@ func resolveModel(id *string) (string, error) {
 	if id == nil || *id == "" {
 		return models.ClaudeModels[0].ID, nil
 	}
-	if _, ok := models.LookupModel(*id); !ok {
+	if models.ProviderOf(*id) == "" {
 		return "", errorf("Unknown model_id: %s", *id)
 	}
 	return *id, nil

@@ -18,7 +18,7 @@ import (
 // surfaces what the user needs (the sign-in URL, a device code, any prompt
 // for a pasted code) to the Settings page:
 //
-//   - built-in Claude: `claude auth login` into the box's ~/claude.
+//   - a Claude sign-in: `claude auth login` into the profile's config dir.
 //   - a Claude token profile: `claude setup-token`; the long-lived OAuth
 //     token it prints is stored (encrypted) as the profile's token.
 //   - Codex: `codex login --device-auth` into the profile's CODEX_HOME.
@@ -82,9 +82,8 @@ func (l *loginSession) finish(status, errText string) bool {
 	return true
 }
 
-// logins holds sign-ins by loginKey: the built-in profile's id is the same
-// for every user, so the id alone would let one user's sign-in replace (and
-// cancel) another's.
+// logins holds sign-ins by loginKey (user and profile id), so one user's
+// sign-in can never replace (and cancel) another's.
 type logins struct {
 	mu   sync.Mutex
 	byID map[string]*loginSession
@@ -136,7 +135,7 @@ var (
 // loginCommand is the CLI invocation that signs p in.
 func loginCommand(p *Profile) ([]string, error) {
 	switch {
-	case p.Builtin:
+	case p.Provider == models.ProviderClaude && p.AuthMode == AuthLogin:
 		return []string{"claude", "auth", "login"}, nil
 	case p.Provider == models.ProviderClaude && p.AuthMode == AuthToken:
 		return []string{"claude", "setup-token"}, nil
@@ -166,9 +165,6 @@ func (s *Service) StartLogin(ctx context.Context, p *Profile) (LoginState, error
 	}
 	launch := p.Launch()
 	env := launch.Env
-	if p.Builtin {
-		env["CLAUDE_CONFIG_DIR"] = sandbox.ContainerClaudeDir
-	}
 	// The CLI fails to open a browser in the box and prints the URL instead.
 	env["BROWSER"] = "true"
 	script := `exec "$@"`
@@ -255,7 +251,7 @@ func (s *Service) loginOutput(p *Profile, l *loginSession, chunk []byte) {
 		l.state.Code = c
 	}
 	token := ""
-	if p.Provider == models.ProviderClaude && !p.Builtin {
+	if p.Provider == models.ProviderClaude && p.AuthMode == AuthToken {
 		if m := claudeTokenRE.FindStringSubmatch(text); m != nil {
 			token = m[1]
 		}
@@ -292,7 +288,7 @@ func (s *Service) saveLoginToken(p *Profile, token string) error {
 func (s *Service) loginExited(p *Profile, l *loginSession, bin string, err error, hadToken bool) {
 	out := l.snapshot().Output
 	switch {
-	case err == nil && (p.Builtin || p.Provider == models.ProviderCodex):
+	case err == nil && (p.Provider == models.ProviderCodex || (p.Provider == models.ProviderClaude && p.AuthMode == AuthLogin)):
 		l.finish(LoginSucceeded, "")
 	case strings.Contains(out, "is not installed in this box"):
 		s.NoteMissing(p.UserID, bin)

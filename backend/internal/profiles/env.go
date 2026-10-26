@@ -53,9 +53,6 @@ func (p *Profile) relDir() string {
 // CLAUDE_CONFIG_DIR, Codex's CODEX_HOME, or Antigravity's HOME (its login is
 // in ~/.gemini).
 func (p *Profile) ConfigDir() string {
-	if p.Builtin {
-		return sandbox.ContainerClaudeDir
-	}
 	if p.configDir != "" {
 		return path.Join(sandbox.ContainerHome, path.Clean("/"+p.configDir))
 	}
@@ -66,12 +63,6 @@ func (p *Profile) ConfigDir() string {
 		return path.Join(p.Dir(), "home")
 	}
 	return path.Join(p.Dir(), "claude")
-}
-
-// SharesBuiltinSessions reports a Claude profile on the box's ~/claude (as
-// the built-in profile is), whose chats' sessions the built-in one resumes.
-func (p *Profile) SharesBuiltinSessions() bool {
-	return p.Provider == models.ProviderClaude && p.ConfigDir() == sandbox.ContainerClaudeDir
 }
 
 // HostConfigDir is ConfigDir on the API host, under the user's agent home.
@@ -92,12 +83,8 @@ type Launch struct {
 	Setup string
 }
 
-// Launch returns the env and setup for the profile's CLI processes. The
-// built-in profile adds nothing: it is the box's env and ~/claude login.
+// Launch returns the env and setup for the profile's CLI processes.
 func (p *Profile) Launch() Launch {
-	if p.Builtin {
-		return Launch{Env: map[string]string{}}
-	}
 	l := Launch{Env: map[string]string{}, Unset: credentialEnv[p.Provider], UnsetGlobal: deploymentEnv[p.Provider]}
 	dir := p.ConfigDir()
 	switch p.Provider {
@@ -204,16 +191,11 @@ func (p *Profile) ApplyEnv(global, user map[string]string) map[string]string {
 	for k, v := range global {
 		out[k] = v
 	}
-	if !p.Builtin {
-		for _, k := range deploymentEnv[p.Provider] {
-			delete(out, k)
-		}
+	for _, k := range deploymentEnv[p.Provider] {
+		delete(out, k)
 	}
 	for k, v := range user {
 		out[k] = v
-	}
-	if p.Builtin {
-		return out
 	}
 	for _, k := range credentialEnv[p.Provider] {
 		delete(out, k)

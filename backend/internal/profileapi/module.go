@@ -45,14 +45,10 @@ type View struct {
 	HasToken  bool   `json:"has_token"`
 	TokenHint string `json:"token_hint"`
 	// TokenEnv is the variable a Claude token is passed in ("" = by mode).
-	TokenEnv string `json:"token_env"`
-	// SharesServerSessions: a Claude profile on ~/claude (migrated from env
-	// vars); deleting it moves its threads to the built-in profile.
-	SharesServerSessions bool                 `json:"shares_server_sessions"`
-	IsDefault            bool                 `json:"is_default"`
-	Builtin              bool                 `json:"builtin"`
-	Login                *profiles.LoginState `json:"login"`
-	CreatedAt            *db.Time             `json:"created_at"`
+	TokenEnv  string               `json:"token_env"`
+	IsDefault bool                 `json:"is_default"`
+	Login     *profiles.LoginState `json:"login"`
+	CreatedAt db.Time              `json:"created_at"`
 	profiles.Status
 }
 
@@ -63,28 +59,14 @@ func tokenHint(tok string) string {
 	return "…" + tok[len(tok)-4:]
 }
 
-func (m *Module) view(ctx context.Context, p *profiles.Profile, defaultID string, env map[string]string) View {
+func (m *Module) view(ctx context.Context, p *profiles.Profile, defaultID string) View {
 	v := View{ID: p.ID, Provider: p.Provider, Name: p.Name, AuthMode: p.AuthMode, BaseURL: p.BaseURL, UsageURL: p.UsageURL,
-		HasToken: p.Token != "", TokenHint: tokenHint(p.Token), TokenEnv: p.TokenEnv, SharesServerSessions: !p.Builtin && p.SharesBuiltinSessions(),
-		IsDefault: p.ID == defaultID, Builtin: p.Builtin,
-		Status: m.a.Profiles.Status(ctx, p, env)}
-	if !p.Builtin {
-		v.CreatedAt = &p.CreatedAt
-	}
+		HasToken: p.Token != "", TokenHint: tokenHint(p.Token), TokenEnv: p.TokenEnv,
+		IsDefault: p.ID == defaultID, CreatedAt: p.CreatedAt, Status: m.a.Profiles.Status(ctx, p)}
 	if st, ok := m.a.Profiles.LoginState(p); ok {
 		v.Login = &st
 	}
 	return v
-}
-
-// userEnv is what the built-in profile's processes see (it signs in
-// through server or user env keys).
-func (m *Module) userEnv(ctx context.Context, userID string) map[string]string {
-	env := m.a.Cfg.AgentGlobalEnv()
-	for k, v := range m.a.Store.UserEnv(ctx, userID) {
-		env[k] = v
-	}
-	return env
 }
 
 func (m *Module) list(w http.ResponseWriter, r *http.Request) error {
@@ -95,10 +77,9 @@ func (m *Module) list(w http.ResponseWriter, r *http.Request) error {
 		return err
 	}
 	def := m.a.Profiles.DefaultID(r.Context(), u.ID)
-	env := m.userEnv(r.Context(), u.ID)
 	out := make([]View, 0, len(list))
 	for _, p := range list {
-		out = append(out, m.view(r.Context(), p, def, env))
+		out = append(out, m.view(r.Context(), p, def))
 	}
 	return httpx.OK(w, out)
 }
@@ -109,7 +90,7 @@ func (m *Module) owned(r *http.Request) (*profiles.Profile, error) {
 
 func (m *Module) respond(w http.ResponseWriter, r *http.Request, p *profiles.Profile, status int) error {
 	u := auth.UserFrom(r.Context())
-	v := m.view(r.Context(), p, m.a.Profiles.DefaultID(r.Context(), u.ID), m.userEnv(r.Context(), u.ID))
+	v := m.view(r.Context(), p, m.a.Profiles.DefaultID(r.Context(), u.ID))
 	return httpx.JSON(w, status, v)
 }
 

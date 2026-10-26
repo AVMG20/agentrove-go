@@ -125,14 +125,22 @@ func TestParseBody(t *testing.T) {
 	_ = json.Unmarshal([]byte(`{"five_hour":{"utilization":42.5,"resets_at":"2026-01-02T03:04:05Z"},
 		"seven_day":{"usedPercent":150,"resetsAt":1767323045000}}`), &body)
 	r := ParseBody("p", body)
-	if r.Status != "ok" || r.Session == nil || r.Session.UsedPercent != 42.5 || r.Weekly == nil || r.Weekly.UsedPercent != 100 {
+	if r.Status != "ok" || len(r.Windows) != 2 {
 		t.Fatalf("resp = %+v", r)
 	}
-	if !r.Session.ResetsAt.Valid || !r.Session.ResetsAt.Time.Equal(time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)) {
-		t.Errorf("session reset = %+v", r.Session.ResetsAt)
+	session, weekly := r.Windows[0], r.Windows[1]
+	if session.UsedPercent != 42.5 || session.WindowSeconds != 18000 || weekly.UsedPercent != 100 || weekly.WindowSeconds != 604800 {
+		t.Fatalf("windows = %+v", r.Windows)
 	}
-	if !r.Weekly.ResetsAt.Valid || r.Weekly.ResetsAt.Time.Unix() != 1767323045 {
-		t.Errorf("weekly reset = %+v", r.Weekly.ResetsAt)
+	if !session.ResetsAt.Valid || !session.ResetsAt.Time.Equal(time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)) {
+		t.Errorf("session reset = %+v", session.ResetsAt)
+	}
+	if !weekly.ResetsAt.Valid || weekly.ResetsAt.Time.Unix() != 1767323045 {
+		t.Errorf("weekly reset = %+v", weekly.ResetsAt)
+	}
+	_ = json.Unmarshal([]byte(`{"five_hour":null,"seven_day":{"utilization":5}}`), &body)
+	if r := ParseBody("p", body); r.Status != "ok" || len(r.Windows) != 1 || r.Windows[0].WindowSeconds != 604800 {
+		t.Errorf("weekly only: %+v", r)
 	}
 	if r := ParseBody("p", []any{}); r.Status != "error" {
 		t.Errorf("non-object: %+v", r)
@@ -165,7 +173,56 @@ func TestFetchSendsTokenAndHeaders(t *testing.T) {
 	defer srv.Close()
 	m := &Module{client: srv.Client()}
 	r := m.fetch(context.Background(), &Source{Provider: "p", URL: srv.URL, Token: "tok", Headers: map[string]string{"anthropic-beta": "oauth-2025-04-20"}})
-	if r.Status != "ok" || r.Session == nil || r.Session.UsedPercent != 10 {
+	if r.Status != "ok" || len(r.Windows) != 1 || r.Windows[0].UsedPercent != 10 {
+		t.Fatalf("fetch = %+v", r)
+	}
+}
+
+func TestParseCodexBody(t *testing.T) {
+	var body any
+	_ = json.Unmarshal([]byte(`{"plan_type":"plus","rate_limit":{"allowed":true,"primary_window":{"used_percent":0,"limit_window_seconds":2592000,"reset_after_seconds":2591999,"reset_at":1795545771},"secondary_window":null}}`), &body)
+	r := ParseCodexBody("chatgpt.com", body)
+	if r.Status != "ok" || r.Provider == nil || *r.Provider != "chatgpt.com" || len(r.Windows) != 1 {
+		t.Fatalf("resp = %+v", r)
+	}
+	if w := r.Windows[0]; w.UsedPercent != 0 || w.WindowSeconds != 2592000 || !w.ResetsAt.Valid || w.ResetsAt.Time.Unix() != 1795545771 {
+		t.Fatalf("window = %+v", w)
+	}
+	// Both windows come shortest first, whichever is primary.
+	_ = json.Unmarshal([]byte(`{"rate_limit":{"primary_window":{"used_percent":12.5,"limit_window_seconds":604800,"reset_at":1795545771},
+		"secondary_window":{"used_percent":140,"limit_window_seconds":18000,"reset_at":1795000000}}}`), &body)
+	r = ParseCodexBody("chatgpt.com", body)
+	if r.Status != "ok" || len(r.Windows) != 2 || r.Windows[0].WindowSeconds != 18000 || r.Windows[0].UsedPercent != 100 ||
+		r.Windows[1].WindowSeconds != 604800 || r.Windows[1].UsedPercent != 12.5 {
+		t.Fatalf("two windows = %+v", r.Windows)
+	}
+	for name, raw := range map[string]string{
+		"no rate limit":   `{"plan_type":"free"}`,
+		"null windows":    `{"rate_limit":{"primary_window":null,"secondary_window":null}}`,
+		"no used percent": `{"rate_limit":{"primary_window":{"limit_window_seconds":18000}}}`,
+	} {
+		_ = json.Unmarshal([]byte(raw), &body)
+		if r := ParseCodexBody("chatgpt.com", body); r.Status != "error" {
+			t.Errorf("%s: %+v", name, r)
+		}
+	}
+	if r := ParseCodexBody("chatgpt.com", []any{}); r.Status != "error" {
+		t.Errorf("non-object: %+v", r)
+	}
+}
+
+func TestFetchCodexLayout(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "Bearer at" || r.Header.Get("ChatGPT-Account-Id") != "acc" {
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		_, _ = w.Write([]byte(`{"rate_limit":{"primary_window":{"used_percent":30,"limit_window_seconds":18000,"reset_at":1795545771}}}`))
+	}))
+	defer srv.Close()
+	m := &Module{client: srv.Client()}
+	r := m.fetch(context.Background(), &Source{Codex: true, Provider: "chatgpt.com", URL: srv.URL, Token: "at", Headers: map[string]string{"ChatGPT-Account-Id": "acc"}})
+	if r.Status != "ok" || len(r.Windows) != 1 || r.Windows[0].UsedPercent != 30 || r.Windows[0].WindowSeconds != 18000 {
 		t.Fatalf("fetch = %+v", r)
 	}
 }

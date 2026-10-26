@@ -135,9 +135,11 @@ func (s *Service) Create(ctx context.Context, userID string, in CreateInput) (*C
 	// Members run Claude models: on the default Claude profile.
 	var profileID, provider any
 	if s.a.Profiles != nil {
-		if p := s.a.Profiles.DefaultClaude(ctx, userID); !p.Builtin {
-			profileID, provider = p.ID, p.Provider
+		p := s.a.Profiles.DefaultFor(ctx, userID, models.ProviderClaude)
+		if p == nil {
+			return nil, httpx.BadRequest("Channel members run on Claude: add a Claude account under Settings → Providers first.")
 		}
+		profileID, provider = p.ID, p.Provider
 	}
 	ch := &Channel{ID: uuid.NewString(), UserID: userID, WorkspaceID: ws.ID, Name: in.Name, Worktree: in.Worktree, Branch: branch, CreatedAt: now, UpdatedAt: now}
 	err = s.a.DB.Tx(ctx, func(tx *sql.Tx) error {

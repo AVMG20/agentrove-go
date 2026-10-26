@@ -100,7 +100,7 @@ export interface Chat {
   last_persona_name: string | null;
   // Set when an automation started this chat.
   automation_id?: string | null;
-  // The provider profile the chat runs on ('builtin' for the server's Claude).
+  // The account the chat runs on ('' on threads from before accounts).
   profile_id: string;
   provider: AgentKind;
 }

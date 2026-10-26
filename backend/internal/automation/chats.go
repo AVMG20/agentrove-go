@@ -20,15 +20,22 @@ var ErrWorkspaceNotFound = httpx.NotFound("Workspace not found")
 
 // CreateChat inserts a visible chat the way POST /chat/chats does (used by
 // automations and the MCP server). automationID marks a run of that automation.
-// They run Claude models, so they use the default Claude profile.
-func CreateChat(ctx context.Context, a *app.App, userID, workspaceID, title string, automationID *string) (*models.Chat, error) {
+// The chat runs on an account of modelID's provider (the default one when it
+// is that provider's), else on the default account, whose provider's default
+// model then stands in.
+func CreateChat(ctx context.Context, a *app.App, userID, workspaceID, title, modelID string, automationID *string) (*models.Chat, error) {
 	now := db.Now()
 	id := uuid.NewString()
 	var profileID, provider any
 	if a.Profiles != nil {
-		if p := a.Profiles.DefaultClaude(ctx, userID); !p.Builtin {
-			profileID, provider = p.ID, p.Provider
+		p := a.Profiles.DefaultFor(ctx, userID, models.ProviderOf(modelID))
+		if p == nil {
+			var err error
+			if p, err = a.Profiles.Default(ctx, userID); err != nil {
+				return nil, err
+			}
 		}
+		profileID, provider = p.ID, p.Provider
 	}
 	err := a.DB.Tx(ctx, func(tx *sql.Tx) error {
 		var n int

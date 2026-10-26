@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -51,7 +52,7 @@ func status(err error) int {
 func TestCreateValidatesAndStoresTokenEncrypted(t *testing.T) {
 	s, d := newTestService(t)
 	ctx := context.Background()
-	p, err := s.Create(ctx, testUser, Input{Provider: ptr("claude"), Name: ptr("  Work  "), Token: ptr("sk-ant-oat01-secret-token")})
+	p, err := s.Create(ctx, testUser, Input{Provider: ptr("claude"), Name: ptr("  Work  "), AuthMode: ptr(AuthToken), Token: ptr("sk-ant-oat01-secret-token")})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -74,7 +75,6 @@ func TestCreateValidatesAndStoresTokenEncrypted(t *testing.T) {
 		"unknown provider":   {Provider: ptr("cursor"), Name: ptr("x")},
 		"empty name":         {Provider: ptr("claude"), Name: ptr(" ")},
 		"long name":          {Provider: ptr("claude"), Name: ptr(strings.Repeat("n", 61))},
-		"login for claude":   {Provider: ptr("claude"), Name: ptr("a"), AuthMode: ptr(AuthLogin)},
 		"endpoint for codex": {Provider: ptr("codex"), Name: ptr("a"), AuthMode: ptr(AuthEndpoint)},
 		"endpoint w/o url":   {Provider: ptr("claude"), Name: ptr("a"), AuthMode: ptr(AuthEndpoint), Token: ptr("t")},
 		"endpoint w/o token": {Provider: ptr("claude"), Name: ptr("a"), AuthMode: ptr(AuthEndpoint), BaseURL: ptr("https://gw.example")},
@@ -82,7 +82,6 @@ func TestCreateValidatesAndStoresTokenEncrypted(t *testing.T) {
 		"creds in url":       {Provider: ptr("claude"), Name: ptr("a"), AuthMode: ptr(AuthEndpoint), BaseURL: ptr("https://u:p@gw"), Token: ptr("t")},
 		"token with space":   {Provider: ptr("claude"), Name: ptr("a"), Token: ptr("a b")},
 		"duplicate name":     {Provider: ptr("claude"), Name: ptr("work")},
-		"built-in name":      {Provider: ptr("claude"), Name: ptr("server")},
 	} {
 		if _, err := s.Create(ctx, testUser, in); err == nil {
 			t.Errorf("%s: created, want an error", name)
@@ -91,6 +90,11 @@ func TestCreateValidatesAndStoresTokenEncrypted(t *testing.T) {
 	// The same name under another provider is fine.
 	if _, err := s.Create(ctx, testUser, Input{Provider: ptr("codex"), Name: ptr("Work")}); err != nil {
 		t.Fatalf("codex Work: %v", err)
+	}
+	// A Claude account signs in with the CLI by default, without a token.
+	box, err := s.Create(ctx, testUser, Input{Provider: ptr("claude"), Name: ptr("Box"), Token: ptr("sk-ant-oat01-ignored")})
+	if err != nil || box.AuthMode != AuthLogin || box.Token != "" {
+		t.Fatalf("claude default mode = %+v %v", box, err)
 	}
 }
 
@@ -125,8 +129,8 @@ func TestUpdateKeepsTokenUnlessReplacedOrCleared(t *testing.T) {
 	if _, err := s.Update(ctx, testUser, p.ID, Input{Provider: ptr("codex")}); err == nil {
 		t.Fatal("changing the provider must fail")
 	}
-	if _, err := s.Update(ctx, testUser, BuiltinID, Input{Name: ptr("x")}); err == nil {
-		t.Fatal("the built-in profile must not be editable")
+	if _, err := s.Update(ctx, testUser, "", Input{Name: ptr("x")}); status(err) != 404 {
+		t.Fatalf("no id: %v", err)
 	}
 	if _, err := s.Update(ctx, "someone-else", p.ID, Input{Name: ptr("x")}); status(err) != 404 {
 		t.Fatalf("another user's profile: %v", err)
@@ -136,28 +140,51 @@ func TestUpdateKeepsTokenUnlessReplacedOrCleared(t *testing.T) {
 func TestDefaultFollowsSetDefaultAndDelete(t *testing.T) {
 	s, d := newTestService(t)
 	ctx := context.Background()
-	if got := s.Default(ctx, testUser); !got.Builtin {
-		t.Fatalf("default without settings = %+v", got)
+	if got, err := s.Default(ctx, testUser); got != nil || !errors.Is(err, ErrNoProfile) {
+		t.Fatalf("default without profiles = %+v %v", got, err)
+	}
+	if got := s.DefaultID(ctx, testUser); got != "" {
+		t.Fatalf("default id without profiles = %q", got)
+	}
+	if got := s.DefaultFor(ctx, testUser, models.ProviderClaude); got != nil {
+		t.Fatalf("default claude without profiles = %+v", got)
+	}
+	if _, err := s.Get(ctx, testUser, ""); status(err) != 404 {
+		t.Fatalf("get without an id: %v", err)
+	}
+	work, err := s.Create(ctx, testUser, Input{Provider: ptr("claude"), Name: ptr("Work"), AuthMode: ptr(AuthToken), Token: ptr("sk-ant-oat01-w")})
+	if err != nil {
+		t.Fatal(err)
 	}
 	cx, err := s.Create(ctx, testUser, Input{Provider: ptr("codex"), Name: ptr("Codex")})
 	if err != nil {
 		t.Fatal(err)
 	}
+	// Without a stored default the oldest profile is it.
+	if got, err := s.Default(ctx, testUser); err != nil || got.ID != work.ID {
+		t.Fatalf("default without settings = %+v %v", got, err)
+	}
 	if err := s.SetDefault(ctx, testUser, cx.ID); err != nil {
 		t.Fatal(err)
 	}
-	if got := s.Default(ctx, testUser); got.ID != cx.ID {
-		t.Fatalf("default = %s, want %s", got.ID, cx.ID)
+	if got, err := s.Default(ctx, testUser); err != nil || got.ID != cx.ID {
+		t.Fatalf("default = %+v %v, want %s", got, err, cx.ID)
 	}
-	// Claude-only work never runs on a Codex default.
-	if got := s.DefaultClaude(ctx, testUser); !got.Builtin {
+	// Claude work never runs on a Codex default.
+	if got := s.DefaultFor(ctx, testUser, models.ProviderClaude); got == nil || got.ID != work.ID {
 		t.Fatalf("default claude = %+v", got)
+	}
+	if got := s.DefaultFor(ctx, testUser, models.ProviderCodex); got == nil || got.ID != cx.ID {
+		t.Fatalf("default codex = %+v", got)
+	}
+	if got := s.DefaultFor(ctx, testUser, models.ProviderAntigravity); got != nil {
+		t.Fatalf("default antigravity = %+v", got)
 	}
 	if err := s.SetDefault(ctx, testUser, "nope"); status(err) != 404 {
 		t.Fatalf("unknown default: %v", err)
 	}
-	if err := s.Delete(ctx, testUser, BuiltinID); err == nil {
-		t.Fatal("the built-in profile must not be deletable")
+	if err := s.SetDefault(ctx, testUser, ""); status(err) != 404 {
+		t.Fatalf("empty default: %v", err)
 	}
 	now := db.Now()
 	if _, err := d.Exec(`INSERT INTO workspaces (id, name, user_id, sandbox_id, workspace_path, created_at, updated_at) VALUES ('w', 'w', ?, 'sb', '/tmp', ?, ?)`, testUser, now, now); err != nil {
@@ -169,18 +196,33 @@ func TestDefaultFollowsSetDefaultAndDelete(t *testing.T) {
 	if err := s.Delete(ctx, testUser, cx.ID); err != nil {
 		t.Fatal(err)
 	}
-	if got := s.DefaultID(ctx, testUser); got != BuiltinID {
-		t.Fatalf("default after delete = %s", got)
+	if got := s.DefaultID(ctx, testUser); got != work.ID {
+		t.Fatalf("default after delete = %s, want the oldest left", got)
+	}
+	var chatProfile string
+	if err := d.QueryRow(`SELECT profile_id FROM chats WHERE id = 'c'`).Scan(&chatProfile); err != nil || chatProfile != cx.ID {
+		t.Fatalf("chat profile after delete = %q %v", chatProfile, err)
 	}
 	if _, err := s.ForChat(ctx, testUser, &cx.ID); status(err) != 400 || !strings.Contains(err.Error(), "deleted") {
 		t.Fatalf("chat on a deleted profile: %v", err)
 	}
-	if p, err := s.ForChat(ctx, testUser, nil); err != nil || !p.Builtin {
-		t.Fatalf("chat without a profile: %+v %v", p, err)
+	for _, id := range []*string{nil, ptr("")} {
+		if p, err := s.ForChat(ctx, testUser, id); status(err) != 400 || !strings.Contains(err.Error(), "no account") {
+			t.Fatalf("chat without a profile: %+v %v", p, err)
+		}
+	}
+	if p, err := s.ForChat(ctx, testUser, &work.ID); err != nil || p.ID != work.ID {
+		t.Fatalf("chat on work: %+v %v", p, err)
 	}
 	list, err := s.List(ctx, testUser)
-	if err != nil || len(list) != 1 || !list[0].Builtin {
+	if err != nil || len(list) != 1 || list[0].ID != work.ID {
 		t.Fatalf("list = %v %v", list, err)
+	}
+	if err := s.Delete(ctx, testUser, work.ID); err != nil {
+		t.Fatal(err)
+	}
+	if got := s.DefaultID(ctx, testUser); got != "" {
+		t.Fatalf("default without profiles left = %q", got)
 	}
 }
 
@@ -218,8 +260,13 @@ func TestLaunchIsolatesCredentials(t *testing.T) {
 	if l := agy.Launch(); l.Env["HOME"] != "/home/user/.agentrove/profiles/p6/home" || !strings.Contains(l.Setup, ".gitconfig") {
 		t.Fatalf("antigravity launch = %+v", l)
 	}
-	if l := Builtin(testUser).Launch(); len(l.Env) != 0 || len(l.Unset) != 0 || l.Setup != "" {
-		t.Fatalf("built-in launch = %+v", l)
+	box := &Profile{ID: "p7", Provider: models.ProviderClaude, AuthMode: AuthLogin}
+	if l := box.Launch(); !reflect.DeepEqual(l.Env, map[string]string{"CLAUDE_CONFIG_DIR": "/home/user/.agentrove/profiles/p7/claude"}) || !slices.Contains(l.Unset, "CLAUDE_CODE_OAUTH_TOKEN") {
+		t.Fatalf("claude login launch = %+v", l)
+	}
+	server := &Profile{ID: "p8", Provider: models.ProviderClaude, AuthMode: AuthLogin, configDir: "claude"}
+	if l := server.Launch(); l.Env["CLAUDE_CONFIG_DIR"] != "/home/user/claude" || strings.Contains(l.Setup, "ln -s") {
+		t.Fatalf("~/claude login launch = %+v", l)
 	}
 	// One-shot runs on the host: the env loses foreign credentials too.
 	env := work.ApplyEnv(map[string]string{"ANTHROPIC_API_KEY": "server", "GITHUB_TOKEN": "g"}, nil)
@@ -272,14 +319,14 @@ func TestMigrateEnvVars(t *testing.T) {
 	s.MigrateEnvVars(ctx) // once per user
 
 	list, err := s.List(ctx, testUser)
-	if err != nil || len(list) != 2 {
+	if err != nil || len(list) != 1 {
 		t.Fatalf("profiles = %v %v", list, err)
 	}
-	p := list[1]
+	p := list[0]
 	if p.AuthMode != AuthEndpoint || p.BaseURL != "https://gw.example" || p.Token != "gw-token" || p.UsageURL != "https://admin.example/api/usage" || p.TokenEnv != "ANTHROPIC_AUTH_TOKEN" {
 		t.Fatalf("migrated profile = %+v", p)
 	}
-	if p.ConfigDir() != "/home/user/claude" || !p.SharesBuiltinSessions() {
+	if p.ConfigDir() != "/home/user/claude" {
 		t.Fatalf("migrated profile must keep ~/claude for its chats' sessions, got %s", p.ConfigDir())
 	}
 	if s.DefaultID(ctx, testUser) != p.ID {
@@ -297,8 +344,8 @@ func TestMigrateEnvVars(t *testing.T) {
 	}
 }
 
-// A setup the profile can't express keeps every var and the built-in
-// profile, and isn't looked at again.
+// A setup the profile can't express keeps every var and adds no profile,
+// and isn't looked at again.
 func TestMigrateEnvVarsKeepsWhatNoProfileTakes(t *testing.T) {
 	s, d := newTestService(t)
 	s.cfg.AgentEnv = map[string]string{"ANTHROPIC_BASE_URL": "https://gw.example", "ANTHROPIC_AUTH_TOKEN": "server-token"}
@@ -306,7 +353,7 @@ func TestMigrateEnvVarsKeepsWhatNoProfileTakes(t *testing.T) {
 	vars := `[{"key":"CLAUDE_USAGE_URL","value":"https://admin.example/api/usage"}]`
 	seedMigration(t, d, vars)
 	s.MigrateEnvVars(ctx)
-	if list, _ := s.List(ctx, testUser); len(list) != 1 {
+	if list, _ := s.List(ctx, testUser); len(list) != 0 {
 		t.Fatalf("no profile expected, got %v", list)
 	}
 	if got := storedVars(t, d); got != vars {
@@ -409,19 +456,18 @@ func TestUpdateTokenEnv(t *testing.T) {
 	}
 }
 
-// Deleting a profile on ~/claude (the migrated one) hands its chats back to
-// the built-in profile, which resumes the same sessions; others' chats keep
-// their (now deleted) profile.
-func TestDeleteMovesSharedSessionChatsToBuiltin(t *testing.T) {
+// Deleting a profile leaves its chats on it (they say so when used), the
+// migrated one on ~/claude too.
+func TestDeleteKeepsChatsOnTheProfile(t *testing.T) {
 	s, d := newTestService(t)
 	ctx := context.Background()
 	seedMigration(t, d, `[{"key":"CLAUDE_CODE_OAUTH_TOKEN","value":"sk-ant-oat01-mine"}]`)
 	s.MigrateEnvVars(ctx)
 	list, _ := s.List(ctx, testUser)
-	if len(list) != 2 {
+	if len(list) != 1 {
 		t.Fatalf("profiles = %v", list)
 	}
-	migrated := list[1]
+	migrated := list[0]
 	if err := s.Delete(ctx, testUser, migrated.ID); err != nil {
 		t.Fatal(err)
 	}
@@ -430,35 +476,21 @@ func TestDeleteMovesSharedSessionChatsToBuiltin(t *testing.T) {
 		if err := d.QueryRow(`SELECT profile_id, provider FROM chats WHERE id = ?`, id).Scan(&profileID, &provider); err != nil {
 			t.Fatal(err)
 		}
-		if profileID != nil || provider != nil {
-			t.Fatalf("chat %s still on the deleted profile: %v", id, *profileID)
+		if db.Deref(profileID) != migrated.ID || db.Deref(provider) != models.ProviderClaude {
+			t.Fatalf("chat %s = %v/%v, want it kept on the deleted profile", id, profileID, provider)
 		}
 	}
-
-	own, err := s.Create(ctx, testUser, Input{Provider: ptr("claude"), Name: ptr("Work"), Token: ptr("sk-ant-oat01-w")})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if own.SharesBuiltinSessions() {
-		t.Fatal("a new profile has its own config dir")
-	}
-	if _, err := d.Exec(`UPDATE chats SET profile_id = ?, provider = 'claude' WHERE id = 'c'`, own.ID); err != nil {
-		t.Fatal(err)
-	}
-	if err := s.Delete(ctx, testUser, own.ID); err != nil {
-		t.Fatal(err)
-	}
-	var profileID string
-	if err := d.QueryRow(`SELECT profile_id FROM chats WHERE id = 'c'`).Scan(&profileID); err != nil || profileID != own.ID {
-		t.Fatalf("own-dir profile chat = %q %v", profileID, err)
+	if s.DefaultID(ctx, testUser) != "" {
+		t.Fatal("a deleted default must not stay the default")
 	}
 }
 
-// The built-in profile's id is the same for everyone: one user's sign-in
-// must not replace, cancel or show another's.
+// Sign-ins are keyed by user too: one user's sign-in must not replace,
+// cancel or show another's, even under the same profile id.
 func TestLoginsAreKeyedByUser(t *testing.T) {
 	ls := newLogins()
-	a, b := Builtin("ua"), Builtin("ub")
+	a := &Profile{ID: "same", UserID: "ua", Provider: models.ProviderClaude, AuthMode: AuthLogin}
+	b := &Profile{ID: "same", UserID: "ub", Provider: models.ProviderClaude, AuthMode: AuthLogin}
 	cancelled := map[string]bool{}
 	session := func(p *Profile) *loginSession {
 		return &loginSession{userID: p.UserID, cancel: func() { cancelled[p.UserID] = true }, state: LoginState{ProfileID: p.ID, Status: LoginRunning}}
@@ -496,36 +528,42 @@ func TestStatusReadsHostLogins(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	b := Builtin(testUser)
-	if st := s.Status(ctx, b, nil); st.State != StatusSignIn {
-		t.Fatalf("built-in without creds = %+v", st)
-	}
-	if st := s.Status(ctx, b, map[string]string{"CLAUDE_CODE_OAUTH_TOKEN": "x"}); st.State != StatusReady {
-		t.Fatalf("built-in with server token = %+v", st)
+	b := &Profile{ID: "cl", UserID: testUser, Provider: models.ProviderClaude, AuthMode: AuthLogin, configDir: "claude"}
+	if st := s.Status(ctx, b); st.State != StatusSignIn {
+		t.Fatalf("claude login without creds = %+v", st)
 	}
 	write("claude/.credentials.json", `{"claudeAiOauth":{}}`)
 	write("claude/.claude.json", `{"oauthAccount":{"emailAddress":"me@x.dev","organizationType":"claude_max"}}`)
-	if st := s.Status(ctx, b, nil); st.State != StatusReady || st.Account == nil || st.Account.Email != "me@x.dev" || st.Account.Plan != "Max" {
-		t.Fatalf("built-in with box login = %+v", st)
+	if st := s.Status(ctx, b); st.State != StatusReady || st.Account == nil || st.Account.Email != "me@x.dev" || st.Account.Plan != "Max" {
+		t.Fatalf("claude login on ~/claude = %+v", st)
+	}
+	// An account's own config dir has its own login.
+	own := &Profile{ID: "own", UserID: testUser, Provider: models.ProviderClaude, AuthMode: AuthLogin}
+	if st := s.Status(ctx, own); st.State != StatusSignIn {
+		t.Fatalf("claude login in its own dir = %+v", st)
+	}
+	write(".agentrove/profiles/own/claude/.credentials.json", `{"claudeAiOauth":{}}`)
+	if st := s.Status(ctx, own); st.State != StatusReady {
+		t.Fatalf("claude login in its own dir, signed in = %+v", st)
 	}
 
 	cx := &Profile{ID: "cx", UserID: testUser, Provider: models.ProviderCodex, AuthMode: AuthLogin}
-	if st := s.Status(ctx, cx, nil); st.State != StatusSignIn {
+	if st := s.Status(ctx, cx); st.State != StatusSignIn {
 		t.Fatalf("codex without login = %+v", st)
 	}
 	claims := base64.RawURLEncoding.EncodeToString([]byte(`{"email":"dev@openai.example","https://api.openai.com/auth":{"chatgpt_plan_type":"pro"}}`))
 	write(".agentrove/profiles/cx/codex/auth.json", `{"tokens":{"id_token":"h.`+claims+`.s"}}`)
-	if st := s.Status(ctx, cx, nil); st.State != StatusReady || st.Account == nil || st.Account.Email != "dev@openai.example" || st.Account.Plan != "Pro" {
+	if st := s.Status(ctx, cx); st.State != StatusReady || st.Account == nil || st.Account.Email != "dev@openai.example" || st.Account.Plan != "Pro" {
 		t.Fatalf("codex signed in = %+v", st)
 	}
 
 	agy := &Profile{ID: "ag", UserID: testUser, Provider: models.ProviderAntigravity, AuthMode: AuthLogin}
-	if st := s.Status(ctx, agy, nil); st.State != StatusSignIn {
+	if st := s.Status(ctx, agy); st.State != StatusSignIn {
 		t.Fatalf("agy without login = %+v", st)
 	}
 	write(".agentrove/profiles/ag/home/.gemini/antigravity-cli/antigravity-oauth-token", "tok")
 	write(".agentrove/profiles/ag/home/.gemini/google_accounts.json", `{"active":"g@example.com"}`)
-	if st := s.Status(ctx, agy, nil); st.State != StatusReady || st.Account == nil || st.Account.Email != "g@example.com" {
+	if st := s.Status(ctx, agy); st.State != StatusReady || st.Account == nil || st.Account.Email != "g@example.com" {
 		t.Fatalf("agy signed in = %+v", st)
 	}
 	// Signing a signed-in agy in again would only open a session (and never
@@ -547,12 +585,12 @@ func TestStatusReadsHostLogins(t *testing.T) {
 	if err := os.Symlink(outside, filepath.Join(dir, "auth.json")); err != nil {
 		t.Fatal(err)
 	}
-	if st := s.Status(ctx, evil, nil); st.State != StatusSignIn {
+	if st := s.Status(ctx, evil); st.State != StatusSignIn {
 		t.Fatalf("symlinked login = %+v", st)
 	}
 
 	s.NoteMissing(testUser, "codex")
-	if st := s.Status(ctx, cx, nil); st.State != StatusCLIMissing {
+	if st := s.Status(ctx, cx); st.State != StatusCLIMissing {
 		t.Fatalf("missing CLI = %+v", st)
 	}
 }
@@ -584,5 +622,180 @@ func TestLoginOutputParsing(t *testing.T) {
 	}
 	if cmd, _ := loginCommand(&Profile{Provider: models.ProviderCodex, AuthMode: AuthLogin}); !reflect.DeepEqual(cmd, []string{"codex", "login", "--device-auth"}) {
 		t.Fatalf("codex login = %v", cmd)
+	}
+	if cmd, _ := loginCommand(&Profile{Provider: models.ProviderClaude, AuthMode: AuthLogin}); !reflect.DeepEqual(cmd, []string{"claude", "auth", "login"}) {
+		t.Fatalf("claude login = %v", cmd)
+	}
+	if cmd, _ := loginCommand(&Profile{Provider: models.ProviderClaude, AuthMode: AuthToken}); !reflect.DeepEqual(cmd, []string{"claude", "setup-token"}) {
+		t.Fatalf("claude token = %v", cmd)
+	}
+}
+
+func writeHome(t *testing.T, s *Service, rel, data string) {
+	t.Helper()
+	full := filepath.Join(s.cfg.AgentHomeDir(testUser), filepath.FromSlash(rel))
+	if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(full, []byte(data), 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func chatProfiles(t *testing.T, d *db.DB) map[string]string {
+	t.Helper()
+	rows, err := d.Query(`SELECT id, profile_id, provider FROM chats`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+	out := map[string]string{}
+	for rows.Next() {
+		var id string
+		var profileID, provider *string
+		if err := rows.Scan(&id, &profileID, &provider); err != nil {
+			t.Fatal(err)
+		}
+		out[id] = db.Deref(profileID) + "/" + db.Deref(provider)
+	}
+	return out
+}
+
+func TestMigrateServerLogin(t *testing.T) {
+	ctx := context.Background()
+	t.Run("without a box login", func(t *testing.T) {
+		s, d := newTestService(t)
+		seedMigration(t, d, `[]`)
+		s.MigrateServerLogin(ctx)
+		if list, _ := s.List(ctx, testUser); len(list) != 0 {
+			t.Fatalf("profiles = %v, want none", list)
+		}
+		if got := chatProfiles(t, d); got["c"] != "/" || got["member"] != "/" {
+			t.Fatalf("chats = %v, want them left without an account", got)
+		}
+	})
+	t.Run("with a box login", func(t *testing.T) {
+		s, d := newTestService(t)
+		seedMigration(t, d, `[]`)
+		writeHome(t, s, "claude/.credentials.json", `{"claudeAiOauth":{"accessToken":"x"}}`)
+		s.MigrateServerLogin(ctx)
+		s.MigrateServerLogin(ctx) // nothing left to move
+		list, err := s.List(ctx, testUser)
+		if err != nil || len(list) != 1 {
+			t.Fatalf("profiles = %v %v", list, err)
+		}
+		p := list[0]
+		if p.Provider != models.ProviderClaude || p.AuthMode != AuthLogin || p.Name != "Claude" || p.Token != "" || p.ConfigDir() != "/home/user/claude" {
+			t.Fatalf("profile = %+v (dir %s)", p, p.ConfigDir())
+		}
+		if got := chatProfiles(t, d); got["c"] != p.ID+"/claude" || got["member"] != p.ID+"/claude" {
+			t.Fatalf("chats = %v", got)
+		}
+		if s.DefaultID(ctx, testUser) != p.ID {
+			t.Fatal("the login profile is not the default")
+		}
+		if st := s.Status(ctx, p); st.State != StatusReady {
+			t.Fatalf("status = %+v", st)
+		}
+	})
+	t.Run("keeps the default and other chats", func(t *testing.T) {
+		s, d := newTestService(t)
+		seedMigration(t, d, `[]`)
+		work, err := s.Create(ctx, testUser, Input{Provider: ptr("claude"), Name: ptr("claude")})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := s.SetDefault(ctx, testUser, work.ID); err != nil {
+			t.Fatal(err)
+		}
+		now := db.Now()
+		if _, err := d.Exec(`INSERT INTO chats (id, title, user_id, workspace_id, profile_id, provider, created_at, updated_at) VALUES ('w', 'w', ?, 'w', ?, 'claude', ?, ?)`, testUser, work.ID, now, now); err != nil {
+			t.Fatal(err)
+		}
+		writeHome(t, s, "claude/.credentials.json", `{"claudeAiOauth":{}}`)
+		s.MigrateServerLogin(ctx)
+		list, _ := s.List(ctx, testUser)
+		if len(list) != 2 || list[1].Name != "Claude (box login)" || list[1].AuthMode != AuthLogin {
+			t.Fatalf("profiles = %+v", list)
+		}
+		box := list[1]
+		if got := chatProfiles(t, d); got["c"] != box.ID+"/claude" || got["member"] != box.ID+"/claude" || got["w"] != work.ID+"/claude" {
+			t.Fatalf("chats = %v", got)
+		}
+		if s.DefaultID(ctx, testUser) != work.ID {
+			t.Fatal("the user's default must stay")
+		}
+	})
+}
+
+func TestLoginToken(t *testing.T) {
+	s, _ := newTestService(t)
+	cl := &Profile{ID: "cl", UserID: testUser, Provider: models.ProviderClaude, AuthMode: AuthLogin}
+	if tok, acc := s.LoginToken(cl); tok != "" || acc != "" {
+		t.Fatalf("no login = %q %q", tok, acc)
+	}
+	writeHome(t, s, ".agentrove/profiles/cl/claude/.credentials.json", `{"claudeAiOauth":{"accessToken":"sk-ant-oat01-box","refreshToken":"r"}}`)
+	if tok, acc := s.LoginToken(cl); tok != "sk-ant-oat01-box" || acc != "" {
+		t.Fatalf("claude = %q %q", tok, acc)
+	}
+	// A token account has no login of its own, whatever its dir holds.
+	tokenMode := &Profile{ID: "cl", UserID: testUser, Provider: models.ProviderClaude, AuthMode: AuthToken, Token: "t"}
+	if tok, _ := s.LoginToken(tokenMode); tok != "" {
+		t.Fatalf("token mode = %q", tok)
+	}
+	cx := &Profile{ID: "cx", UserID: testUser, Provider: models.ProviderCodex, AuthMode: AuthLogin}
+	writeHome(t, s, ".agentrove/profiles/cx/codex/auth.json", `{"tokens":{"id_token":"i","access_token":"at","account_id":"acc-1"}}`)
+	if tok, acc := s.LoginToken(cx); tok != "at" || acc != "acc-1" {
+		t.Fatalf("codex = %q %q", tok, acc)
+	}
+	bad := &Profile{ID: "bad", UserID: testUser, Provider: models.ProviderCodex, AuthMode: AuthLogin}
+	writeHome(t, s, ".agentrove/profiles/bad/codex/auth.json", `{"OPENAI_API_KEY":"k"}`)
+	if tok, acc := s.LoginToken(bad); tok != "" || acc != "" {
+		t.Fatalf("api key auth.json = %q %q", tok, acc)
+	}
+	agy := &Profile{ID: "ag", UserID: testUser, Provider: models.ProviderAntigravity, AuthMode: AuthLogin}
+	if tok, _ := s.LoginToken(agy); tok != "" {
+		t.Fatalf("antigravity = %q", tok)
+	}
+}
+
+type fakePTY struct{ closed bool }
+
+func (f *fakePTY) Read([]byte) (int, error)    { return 0, io.EOF }
+func (f *fakePTY) Write(b []byte) (int, error) { return len(b), nil }
+func (f *fakePTY) Close() error                { f.closed = true; return nil }
+func (f *fakePTY) Resize(int, int) error       { return nil }
+func (f *fakePTY) Wait() error                 { return nil }
+
+// Only `claude setup-token` (a token account) prints a token to keep; a
+// login account's output never turns into one.
+func TestLoginOutputCapturesTokensOnlyInTokenMode(t *testing.T) {
+	s, _ := newTestService(t)
+	ctx := context.Background()
+	chunk := []byte("Your token: sk-ant-oat01-" + strings.Repeat("a", 30) + "\r\nStore it safely\r\n")
+	for _, mode := range []string{AuthLogin, AuthToken} {
+		p, err := s.Create(ctx, testUser, Input{Provider: ptr("claude"), Name: ptr(mode), AuthMode: ptr(mode)})
+		if err != nil {
+			t.Fatal(err)
+		}
+		pty := &fakePTY{}
+		l := &loginSession{userID: testUser, pty: pty, cancel: func() {}, state: LoginState{ProfileID: p.ID, Status: LoginRunning}}
+		s.loginOutput(p, l, chunk)
+		got, err := s.Get(ctx, testUser, p.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if strings.Contains(l.snapshot().Output, "aaaa") {
+			t.Fatalf("%s: token echoed: %q", mode, l.snapshot().Output)
+		}
+		if mode == AuthLogin {
+			if l.snapshot().Status != LoginRunning || pty.closed || got.Token != "" || got.AuthMode != AuthLogin {
+				t.Fatalf("login mode took a token: %+v, profile %+v", l.snapshot(), got)
+			}
+			continue
+		}
+		if l.snapshot().Status != LoginSucceeded || !pty.closed || got.Token != "sk-ant-oat01-"+strings.Repeat("a", 30) || got.AuthMode != AuthToken {
+			t.Fatalf("token mode = %+v, profile %+v", l.snapshot(), got)
+		}
 	}
 }

@@ -1,4 +1,4 @@
-import { memo, useMemo } from 'react';
+import { memo, useCallback, useMemo, useState, type ReactNode } from 'react';
 import clsx from 'clsx';
 import { Star } from 'lucide-react';
 import { Button } from '@/components/ui/primitives/Button/Button';
@@ -8,6 +8,8 @@ import type { DropdownItemType } from '@/components/ui/primitives/Dropdown/Dropd
 import { useAuthStore } from '@/store/authStore';
 import { useModelStore } from '@/store/modelStore';
 import { useModelsQuery } from '@/hooks/queries/useModelQueries';
+import { useProfilesQuery } from '@/hooks/queries/useProfileQueries';
+import { PROVIDERS, PROVIDER_NAMES } from '@/utils/profiles';
 import { useIsSplitMode } from '@/hooks/useIsSplitMode';
 import { ProviderIcon } from '@/components/ui/icons/ProviderIcon';
 import { providerIconComponent } from '@/components/ui/icons/providerIcons';
@@ -18,8 +20,9 @@ import styles from './ModelSelector.module.scss';
 export interface ModelSelectorProps {
   selectedModelId: string;
   onModelChange: (modelId: string) => void;
-  // Whose models to offer (the thread's provider).
-  agentKind?: AgentKind;
+  // Whose models to offer: the thread's provider, or 'enabled' for every
+  // provider the user has an account of (a rail switches between them).
+  agentKind?: AgentKind | 'enabled';
   dropdownPosition?: DropdownPosition;
   disabled?: boolean;
   compact?: boolean;
@@ -41,27 +44,60 @@ export const ModelSelector = memo(function ModelSelector({
   const isSplitMode = useIsSplitMode();
   // Read-only models query — useModelSelection would run the per-chat defaulting
   // effect and persist models[0] before the owner derives the model from history.
-  const { data: models = [], isLoading } = useModelsQuery({ enabled: isAuthenticated }, agentKind);
-  const ProviderGlyph = providerIconComponent(agentKind);
+  const multi = agentKind === 'enabled';
+  const { data: models = [], isLoading } = useModelsQuery(
+    { enabled: isAuthenticated },
+    multi ? 'all' : agentKind,
+  );
+  const { data: profiles } = useProfilesQuery({ enabled: isAuthenticated && multi });
   const favoriteModelIds = useModelStore((state) => state.favoriteModelIds);
+
+  // Providers with an account (all of them before any account exists).
+  const providers = useMemo<AgentKind[]>(() => {
+    if (!multi) return [agentKind];
+    const have = new Set(profiles?.map((p) => p.provider));
+    const list = PROVIDERS.filter((p) => have.has(p));
+    return list.length > 0 ? list : PROVIDERS;
+  }, [multi, agentKind, profiles]);
 
   const filteredModels = useMemo(
     () =>
       models.filter(
-        (m) => !m.legacy || m.model_id === selectedModelId || favoriteModelIds.includes(m.model_id),
+        (m) =>
+          providers.includes(m.agent_kind) &&
+          (!m.legacy || m.model_id === selectedModelId || favoriteModelIds.includes(m.model_id)),
       ),
-    [models, selectedModelId, favoriteModelIds],
+    [models, providers, selectedModelId, favoriteModelIds],
   );
 
   const favoriteIdSet = useMemo(() => new Set(favoriteModelIds), [favoriteModelIds]);
+  const selectedModel = filteredModels.find((m) => m.model_id === selectedModelId);
+
+  // The rail's tab: favorites or one provider; opens on the selected model's.
+  type Tab = AgentKind | 'favorites';
+  const [pickedTab, setTab] = useState<Tab | null>(null);
+  const showRail = multi && providers.length > 1;
+  const tab: Tab = showRail
+    ? (pickedTab ?? selectedModel?.agent_kind ?? providers[0])
+    : (providers[0] ?? 'claude');
+  // Each opening starts on the selected model's provider again.
+  const resetTab = useCallback((open: boolean) => {
+    if (!open) setTab(null);
+  }, []);
+  const hasFavorites = filteredModels.some((m) => favoriteIdSet.has(m.model_id));
 
   const groupedItems = useMemo(() => {
+    const visible = showRail
+      ? filteredModels.filter((m) =>
+          tab === 'favorites' ? favoriteIdSet.has(m.model_id) : m.agent_kind === tab,
+        )
+      : filteredModels;
     // Favorites ordered by when each model was starred, not alphabetically.
-    const modelById = new Map(filteredModels.map((m) => [m.model_id, m]));
+    const modelById = new Map(visible.map((m) => [m.model_id, m]));
     const favoriteModels = favoriteModelIds
       .map((id) => modelById.get(id))
       .filter((m): m is Model => m !== undefined);
-    const restModels = filteredModels.filter((m) => !favoriteIdSet.has(m.model_id));
+    const restModels = visible.filter((m) => !favoriteIdSet.has(m.model_id));
 
     const items: DropdownItemType<Model>[] = favoriteModels.map((model) => ({
       type: 'item',
@@ -70,9 +106,7 @@ export const ModelSelector = memo(function ModelSelector({
     if (favoriteModels.length > 0 && restModels.length > 0) items.push({ type: 'divider' });
     restModels.forEach((model) => items.push({ type: 'item', data: model }));
     return items;
-  }, [filteredModels, favoriteModelIds, favoriteIdSet]);
-
-  const selectedModel = filteredModels.find((m) => m.model_id === selectedModelId);
+  }, [filteredModels, favoriteModelIds, favoriteIdSet, showRail, tab]);
 
   if (isLoading) {
     return (
@@ -91,6 +125,7 @@ export const ModelSelector = memo(function ModelSelector({
   }
 
   const activeModel = selectedModel || filteredModels[0];
+  const ProviderGlyph = providerIconComponent(activeModel.agent_kind ?? providers[0]);
 
   return (
     <Dropdown
@@ -101,7 +136,7 @@ export const ModelSelector = memo(function ModelSelector({
       onSelect={(model) => onModelChange(model.model_id)}
       leftIcon={ProviderGlyph}
       keepIcon
-      width="16rem"
+      width={showRail ? '19rem' : '16rem'}
       dropdownPosition={dropdownPosition}
       disabled={disabled}
       compactOnMobile={compact ?? true}
@@ -112,11 +147,39 @@ export const ModelSelector = memo(function ModelSelector({
       selectionStyle="accent"
       triggerVariant={variant}
       dropdownAlign={dropdownAlign}
+      onOpenChange={resetTab}
+      renderRail={
+        showRail
+          ? () => (
+              <div className={styles.rail} role="tablist" aria-orientation="vertical">
+                {hasFavorites && (
+                  <RailTab
+                    label="Favorites"
+                    active={tab === 'favorites'}
+                    onClick={() => setTab('favorites')}
+                  >
+                    <Star className={styles['rail-icon']} />
+                  </RailTab>
+                )}
+                {providers.map((provider) => (
+                  <RailTab
+                    key={provider}
+                    label={PROVIDER_NAMES[provider]}
+                    active={tab === provider}
+                    onClick={() => setTab(provider)}
+                  >
+                    <ProviderIcon provider={provider} className={styles['rail-icon']} />
+                  </RailTab>
+                ))}
+              </div>
+            )
+          : undefined
+      }
       renderItem={(model, isSelected) => {
         const isFavorite = favoriteIdSet.has(model.model_id);
         return (
           <div className={styles.item}>
-            <ProviderIcon provider={agentKind} className={styles['item-icon']} />
+            <ProviderIcon provider={model.agent_kind} className={styles['item-icon']} />
             <FloatingTooltip content={model.name} className={styles['item-tooltip']}>
               <span
                 className={clsx(styles['item-label'], isSelected && styles['item-label--selected'])}
@@ -161,3 +224,30 @@ export const ModelSelector = memo(function ModelSelector({
     />
   );
 });
+
+function RailTab({
+  label,
+  active,
+  onClick,
+  children,
+}: {
+  label: string;
+  active: boolean;
+  onClick: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <FloatingTooltip content={label}>
+      <button
+        type="button"
+        role="tab"
+        aria-selected={active}
+        aria-label={label}
+        className={clsx(styles['rail-tab'], active && styles['rail-tab--active'])}
+        onClick={onClick}
+      >
+        {children}
+      </button>
+    </FloatingTooltip>
+  );
+}

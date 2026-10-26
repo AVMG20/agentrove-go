@@ -70,6 +70,8 @@ func run() error {
 
 	// One-time: Claude env vars from before profiles become a profile.
 	a.Profiles.MigrateEnvVars(ctx)
+	// Threads from before accounts move onto the box's Claude login.
+	a.Profiles.MigrateServerLogin(ctx)
 
 	handler, shutdown, err := server.Build(ctx, a)
 	if err != nil {

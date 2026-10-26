@@ -63,9 +63,8 @@ func (m *Module) CreateChat(ctx context.Context, userID, title, workspaceID stri
 	}
 	id := uuid.NewString()
 	now := db.Now()
-	profileCol, providerCol := storedProfile(profile)
 	_, err = m.a.DB.ExecContext(ctx, `INSERT INTO chats (id, title, user_id, workspace_id, worktree_cwd, profile_id, provider, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`, id, title, userID, ws.ID, worktree, profileCol, providerCol, now, now)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`, id, title, userID, ws.ID, worktree, profile.ID, profile.Provider, now, now)
 	if err != nil {
 		return nil, err
 	}
@@ -195,9 +194,8 @@ func (m *Module) updateChat(w http.ResponseWriter, r *http.Request) error {
 				// A message queued meanwhile was left to the slot's holder.
 				go func() { _ = m.runQueued(c.ID, u.ID, false) }()
 			}()
-			profileCol, providerCol := storedProfile(p)
 			sets = append(sets, "profile_id = ?", "provider = ?")
-			args = append(args, profileCol, providerCol)
+			args = append(args, p.ID, p.Provider)
 			where = ` AND session_id IS NULL AND NOT EXISTS (SELECT 1 FROM messages WHERE chat_id = chats.id AND deleted_at IS NULL)`
 		}
 	}

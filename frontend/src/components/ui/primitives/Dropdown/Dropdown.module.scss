@@ -454,3 +454,23 @@
     color: var(--theme-text-primary);
   }
 }
+
+// A rail beside the search and list (renderRail).
+.panel-split {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+}
+
+.panel-main {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+
+  > .items {
+    min-height: 0;
+    flex-shrink: 1;
+  }
+}

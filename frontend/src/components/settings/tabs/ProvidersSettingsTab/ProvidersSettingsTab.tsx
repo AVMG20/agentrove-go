@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { Edit2, Loader2, LogIn, Plus, Trash2 } from 'lucide-react';
 import clsx from 'clsx';
@@ -16,6 +17,7 @@ import {
 import {
   PROVIDER_CLI,
   PROVIDER_NAMES,
+  PROVIDERS,
   canSignIn,
   offersSignIn,
   groupProfiles,
@@ -54,6 +56,24 @@ export function ProvidersSettingsTab() {
     setFormError(null);
     setEditing(next);
   };
+
+  // ?add=<provider> (the composer's "Add account") opens that provider's form.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const addProvider = searchParams.get('add');
+  useEffect(() => {
+    if (!addProvider) return;
+    if ((PROVIDERS as string[]).includes(addProvider)) {
+      setFormError(null);
+      setEditing({ provider: addProvider as ProviderKind, profileId: null });
+    }
+    setSearchParams(
+      (params) => {
+        params.delete('add');
+        return params;
+      },
+      { replace: true },
+    );
+  }, [addProvider, setSearchParams]);
 
   const toggle = (set: typeof setSigningIn) => (profileId: string, on: boolean) =>
     set((prev) => {
@@ -193,37 +213,33 @@ export function ProvidersSettingsTab() {
                 <LogIn className={styles['action-icon']} />
               </Button>
             )}
-            {!profile.builtin && (
-              <>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  className={styles['action-btn']}
-                  onClick={() => openForm({ provider: profile.provider, profileId: profile.id })}
-                  aria-label={`Edit ${profile.name}`}
-                  title="Edit"
-                >
-                  <Edit2 className={styles['action-icon']} />
-                </Button>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  className={styles['action-btn']}
-                  onClick={() => setPendingDelete(profile)}
-                  aria-label={`Remove ${profile.name}`}
-                  title="Remove"
-                  disabled={deleting}
-                >
-                  {deleting ? (
-                    <Loader2 className={clsx(styles['action-icon'], styles.spin)} />
-                  ) : (
-                    <Trash2 className={styles['action-icon']} />
-                  )}
-                </Button>
-              </>
-            )}
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className={styles['action-btn']}
+              onClick={() => openForm({ provider: profile.provider, profileId: profile.id })}
+              aria-label={`Edit ${profile.name}`}
+              title="Edit"
+            >
+              <Edit2 className={styles['action-icon']} />
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className={styles['action-btn']}
+              onClick={() => setPendingDelete(profile)}
+              aria-label={`Remove ${profile.name}`}
+              title="Remove"
+              disabled={deleting}
+            >
+              {deleting ? (
+                <Loader2 className={clsx(styles['action-icon'], styles.spin)} />
+              ) : (
+                <Trash2 className={styles['action-icon']} />
+              )}
+            </Button>
           </div>
         </div>
         {signInOpen && (

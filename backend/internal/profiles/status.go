@@ -57,28 +57,19 @@ func ProviderName(provider string) string {
 	return "Claude Code"
 }
 
-// claudeCredentialEnv are the env vars that sign the built-in profile in.
-var claudeCredentialEnv = []string{"CLAUDE_CODE_OAUTH_TOKEN", "ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN"}
-
-// Status reports whether p can run. env is the deployment + user env (the
-// built-in profile signs in through it).
-func (s *Service) Status(ctx context.Context, p *Profile, env map[string]string) Status {
+// Status reports whether p can run.
+func (s *Service) Status(ctx context.Context, p *Profile) Status {
 	if s.probes.missing(p.UserID, Binary(p.Provider)) {
 		return Status{State: StatusCLIMissing, Detail: "`" + Binary(p.Provider) + "` is not installed in your box"}
 	}
 	home := s.cfg.AgentHomeDir(p.UserID)
 	rel := strings.TrimPrefix(p.ConfigDir(), sandbox.ContainerHome+"/")
 	switch {
-	case p.Builtin:
-		for _, k := range claudeCredentialEnv {
-			if strings.TrimSpace(env[k]) != "" {
-				return Status{State: StatusReady, Detail: "Server credentials"}
-			}
-		}
+	case p.Provider == models.ProviderClaude && p.AuthMode == AuthLogin:
 		if hostFileExists(home, path.Join(rel, ".credentials.json")) {
 			return Status{State: StatusReady, Account: claudeAccount(home, path.Join(rel, ".claude.json"))}
 		}
-		return Status{State: StatusSignIn, Detail: "No Claude credentials on the server or in your box"}
+		return Status{State: StatusSignIn, Detail: "Not signed in to Claude"}
 	case p.AuthMode == AuthToken || p.AuthMode == AuthEndpoint:
 		if p.Token == "" {
 			return Status{State: StatusSignIn, Detail: "No token yet"}
@@ -102,7 +93,7 @@ func (s *Service) Status(ctx context.Context, p *Profile, env map[string]string)
 
 // signedIn reports whether a login flow has produced credentials.
 func (s *Service) signedIn(p *Profile) bool {
-	return s.Status(context.Background(), p, nil).State == StatusReady
+	return s.Status(context.Background(), p).State == StatusReady
 }
 
 const maxCredentialFile = 256 << 10
@@ -285,4 +276,47 @@ func (s *Service) ProbeCLIs(ctx context.Context, userID string) {
 		missing[b] = !found[b]
 	}
 	s.probes.set(userID, missing)
+}
+
+// LoginToken returns the access token a signed-in profile's CLI stored in
+// the box (Claude's .credentials.json, Codex's auth.json) and, for Codex, the
+// ChatGPT account id that goes with it. "" when there is none.
+func (s *Service) LoginToken(p *Profile) (token, accountID string) {
+	if p.AuthMode != AuthLogin {
+		return "", ""
+	}
+	home := s.cfg.AgentHomeDir(p.UserID)
+	rel := strings.TrimPrefix(p.ConfigDir(), sandbox.ContainerHome+"/")
+	switch p.Provider {
+	case models.ProviderClaude:
+		data, err := readHostFile(home, path.Join(rel, ".credentials.json"))
+		if err != nil {
+			return "", ""
+		}
+		var creds struct {
+			OAuth *struct {
+				AccessToken string `json:"accessToken"`
+			} `json:"claudeAiOauth"`
+		}
+		if json.Unmarshal(data, &creds) != nil || creds.OAuth == nil {
+			return "", ""
+		}
+		return creds.OAuth.AccessToken, ""
+	case models.ProviderCodex:
+		data, err := readHostFile(home, path.Join(rel, "auth.json"))
+		if err != nil {
+			return "", ""
+		}
+		var auth struct {
+			Tokens *struct {
+				AccessToken string `json:"access_token"`
+				AccountID   string `json:"account_id"`
+			} `json:"tokens"`
+		}
+		if json.Unmarshal(data, &auth) != nil || auth.Tokens == nil {
+			return "", ""
+		}
+		return auth.Tokens.AccessToken, auth.Tokens.AccountID
+	}
+	return "", ""
 }

@@ -1,9 +1,9 @@
-// Package usage serves GET /api/v1/usage/claude: the 5-hour / weekly usage
-// windows of the Claude account or proxy the user's agents run through. The
-// endpoint follows ANTHROPIC_BASE_URL: Anthropic's own OAuth usage endpoint
-// when it is unset or api.anthropic.com, otherwise <base URL>/api/usage
-// (proxies mirror the OAuth usage layout), unless CLAUDE_USAGE_URL names
-// the endpoint.
+// Package usage serves GET /api/v1/usage: the plan usage windows (5-hour,
+// weekly, ...) of an account. Claude accounts read Anthropic's OAuth usage
+// endpoint with the sign-in's or the OAuth token, or a custom endpoint's
+// <base URL>/api/usage (proxies mirror the OAuth usage layout) unless the
+// account names a usage URL. Codex accounts signed in with ChatGPT read
+// ChatGPT's rate limits. API keys and Antigravity have no usage to show.
 package usage
 
 import (
@@ -40,18 +40,21 @@ const (
 	minRefresh = 10 * time.Second
 )
 
+// Window is one rate-limit window: how much of it is used, when it resets
+// and how long it is (18000 for the 5-hour window).
 type Window struct {
-	UsedPercent float64     `json:"used_percent"`
-	ResetsAt    db.NullTime `json:"resets_at"`
+	UsedPercent   float64     `json:"used_percent"`
+	ResetsAt      db.NullTime `json:"resets_at"`
+	WindowSeconds int         `json:"window_seconds"`
 }
 
 type Response struct {
-	Status    string  `json:"status"`
-	Provider  *string `json:"provider"`
-	Session   *Window `json:"session"`
-	Weekly    *Window `json:"weekly"`
-	Error     *string `json:"error"`
-	FetchedAt db.Time `json:"fetched_at"`
+	Status   string  `json:"status"`
+	Provider *string `json:"provider"`
+	// Windows are shortest first.
+	Windows   []Window `json:"windows"`
+	Error     *string  `json:"error"`
+	FetchedAt db.Time  `json:"fetched_at"`
 }
 
 const (
@@ -60,9 +63,15 @@ const (
 	proxyUsagePath   = "/api/usage"
 	oauthTokenPrefix = "sk-ant-oat"
 	usageURLKey      = "CLAUDE_USAGE_URL"
+	codexEndpoint    = "https://chatgpt.com/backend-api/wham/usage"
+
+	sessionSeconds = 5 * 3600
+	weekSeconds    = 7 * 24 * 3600
 )
 
 type Source struct {
+	// Codex marks ChatGPT's rate-limit layout (else Anthropic's).
+	Codex    bool
 	Provider string
 	URL      string
 	Token    string
@@ -177,7 +186,7 @@ func parseReset(v any) db.NullTime {
 	return db.NullTime{}
 }
 
-func parseWindow(raw any) *Window {
+func parseWindow(raw any, seconds int) *Window {
 	m, ok := raw.(map[string]any)
 	if !ok {
 		return nil
@@ -196,7 +205,17 @@ func parseWindow(raw any) *Window {
 	if !ok {
 		reset = m["resetsAt"]
 	}
-	return &Window{UsedPercent: math.Min(100, math.Max(0, used)), ResetsAt: parseReset(reset)}
+	return &Window{UsedPercent: math.Min(100, math.Max(0, used)), ResetsAt: parseReset(reset), WindowSeconds: seconds}
+}
+
+func okResponse(provider string, windows ...*Window) Response {
+	out := []Window{}
+	for _, w := range windows {
+		if w != nil {
+			out = append(out, *w)
+		}
+	}
+	return Response{Status: "ok", Provider: &provider, Windows: out, FetchedAt: db.Now()}
 }
 
 // ParseBody reads Anthropic's OAuth usage layout (five_hour / seven_day).
@@ -206,11 +225,41 @@ func ParseBody(provider string, body any) Response {
 	if !ok {
 		return errorResponse(provider, "Usage response was not a JSON object")
 	}
-	session, weekly := parseWindow(m["five_hour"]), parseWindow(m["seven_day"])
+	session, weekly := parseWindow(m["five_hour"], sessionSeconds), parseWindow(m["seven_day"], weekSeconds)
 	if session == nil && weekly == nil {
 		return errorResponse(provider, "Usage response had no 5-hour or weekly window")
 	}
-	return Response{Status: "ok", Provider: &p, Session: session, Weekly: weekly, FetchedAt: db.Now()}
+	return okResponse(p, session, weekly)
+}
+
+// ParseCodexBody reads ChatGPT's rate limits (rate_limit.primary_window and
+// secondary_window, each with used_percent, limit_window_seconds, reset_at).
+func ParseCodexBody(provider string, body any) Response {
+	m, ok := body.(map[string]any)
+	if !ok {
+		return errorResponse(provider, "Usage response was not a JSON object")
+	}
+	limits, _ := m["rate_limit"].(map[string]any)
+	var windows []*Window
+	for _, k := range []string{"primary_window", "secondary_window"} {
+		raw, ok := limits[k].(map[string]any)
+		if !ok {
+			continue
+		}
+		used, ok := raw["used_percent"].(float64)
+		if !ok || math.IsNaN(used) || math.IsInf(used, 0) {
+			continue
+		}
+		secs, _ := raw["limit_window_seconds"].(float64)
+		windows = append(windows, &Window{UsedPercent: math.Min(100, math.Max(0, used)), ResetsAt: parseReset(raw["reset_at"]), WindowSeconds: int(secs)})
+	}
+	if len(windows) == 0 {
+		return errorResponse(provider, "Usage response had no rate-limit window")
+	}
+	if len(windows) == 2 && windows[1].WindowSeconds < windows[0].WindowSeconds {
+		windows[0], windows[1] = windows[1], windows[0]
+	}
+	return okResponse(provider, windows...)
 }
 
 func errorResponse(provider, msg string) Response {
@@ -270,47 +319,57 @@ func publicOnlyControl(_, address string, _ syscall.RawConn) error {
 }
 
 func (m *Module) Routes(mux *http.ServeMux) {
-	mux.HandleFunc("GET "+m.a.Cfg.APIPrefix+"/usage/claude", m.a.Auth.Require(m.get))
+	mux.HandleFunc("GET "+m.a.Cfg.APIPrefix+"/usage", m.a.Auth.Require(m.get))
 }
 
+// get reports the usage of an account: profile_id's, else the default one.
 func (m *Module) get(w http.ResponseWriter, r *http.Request) error {
 	u := auth.UserFrom(r.Context())
 	refresh := false
 	if b := httpx.QueryBool(r, "refresh"); b != nil {
 		refresh = *b
 	}
-	// The meter follows a profile: the chat's (profile_id), else the default
-	// Claude one. A profile's endpoint and usage URL were chosen by the user,
-	// so they go in as user vars (public addresses only).
-	globalEnv := m.a.Cfg.AgentGlobalEnv()
-	var custom []models.CustomEnvVar
-	p := profiles.Builtin(u.ID)
-	if m.a.Profiles != nil {
-		if id := r.URL.Query().Get("profile_id"); id != "" {
-			got, err := m.a.Profiles.Get(r.Context(), u.ID, id)
-			if err != nil {
-				return err
-			}
-			p = got
-		} else {
-			p = m.a.Profiles.DefaultClaude(r.Context(), u.ID)
+	var p *profiles.Profile
+	var err error
+	if id := r.URL.Query().Get("profile_id"); id != "" {
+		if p, err = m.a.Profiles.Get(r.Context(), u.ID, id); err != nil {
+			return err
 		}
+	} else if p, err = m.a.Profiles.Default(r.Context(), u.ID); err != nil {
+		return httpx.OK(w, Response{Status: "unavailable", Windows: []Window{}, FetchedAt: db.Now()})
 	}
-	if p.Provider != models.ProviderClaude {
-		return httpx.OK(w, Response{Status: "unavailable", FetchedAt: db.Now()})
-	}
-	if p.Builtin {
-		if st, err := m.a.Store.GetUserSettings(r.Context(), u.ID); err == nil && st.CustomEnvVars.Valid {
-			custom = st.CustomEnvVars.V
+	return httpx.OK(w, m.usage(r.Context(), u.ID, m.source(p), refresh))
+}
+
+// source picks where an account's usage comes from (nil: nowhere).
+func (m *Module) source(p *profiles.Profile) *Source {
+	switch {
+	case p.AuthMode == profiles.AuthLogin && p.Provider == models.ProviderClaude:
+		token, _ := m.a.Profiles.LoginToken(p)
+		if token == "" {
+			return nil
 		}
-	} else {
-		globalEnv = map[string]string{}
+		return &Source{Provider: officialHost, URL: officialEndpoint, Token: token, Headers: map[string]string{"anthropic-beta": "oauth-2025-04-20"}}
+	case p.AuthMode == profiles.AuthLogin && p.Provider == models.ProviderCodex:
+		token, account := m.a.Profiles.LoginToken(p)
+		if token == "" {
+			return nil
+		}
+		src := &Source{Codex: true, Provider: "chatgpt.com", URL: codexEndpoint, Token: token, Headers: map[string]string{}}
+		if account != "" {
+			src.Headers["ChatGPT-Account-Id"] = account
+		}
+		return src
+	case p.Provider == models.ProviderClaude:
+		// A token or an endpoint: the URLs were chosen by the user, so they go
+		// in as user vars (public addresses only).
+		var custom []models.CustomEnvVar
 		for k, v := range p.ApplyEnv(nil, nil) {
 			custom = append(custom, models.CustomEnvVar{Key: k, Value: v})
 		}
+		return ResolveSource(map[string]string{}, custom)
 	}
-	src := ResolveSource(globalEnv, custom)
-	return httpx.OK(w, m.usage(r.Context(), u.ID, src, refresh))
+	return nil
 }
 
 func cacheKey(userID string, s *Source) string {
@@ -321,7 +380,7 @@ func cacheKey(userID string, s *Source) string {
 
 func (m *Module) usage(ctx context.Context, userID string, src *Source, refresh bool) Response {
 	if src == nil {
-		return Response{Status: "unavailable", FetchedAt: db.Now()}
+		return Response{Status: "unavailable", Windows: []Window{}, FetchedAt: db.Now()}
 	}
 	key := cacheKey(userID, src)
 	m.mu.Lock()
@@ -384,6 +443,9 @@ func (m *Module) fetch(ctx context.Context, src *Source) Response {
 	var body any
 	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
 		return errorResponse(src.Provider, "Usage response was not valid JSON")
+	}
+	if src.Codex {
+		return ParseCodexBody(src.Provider, body)
 	}
 	return ParseBody(src.Provider, body)
 }

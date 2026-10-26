@@ -70,7 +70,7 @@ type turnRequest struct {
 	member         func(kind string, payload map[string]any)
 	onDone         func(status, content string)
 	unattended     bool
-	// profile is the provider account the turn runs on (nil = built-in Claude).
+	// profile is the provider account the turn runs on.
 	profile *profiles.Profile
 }
 

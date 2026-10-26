@@ -1,12 +1,8 @@
 // Package profiles manages provider profiles: named agent accounts a chat
 // runs on (several Claude accounts, Codex, Antigravity). Each profile has its
 // own auth in the user's box, under ~/.agentrove/profiles/<id>, so two
-// accounts never share a login.
-//
-// The deployment's env keys (CLAUDE_CODE_OAUTH_TOKEN, ANTHROPIC_*), the
-// user's env vars and the box's ~/claude login form the built-in Claude
-// profile. It has no row: chats without a profile run on it, and it is the
-// default until the user picks another one.
+// accounts never share a login. Every account is one the user added: a user
+// without any can't start a thread until they add one.
 package profiles
 
 import (
@@ -28,13 +24,10 @@ import (
 	"github.com/google/uuid"
 )
 
-// BuiltinID is the API id of the built-in Claude profile.
-const BuiltinID = "builtin"
-
-// Auth modes. Claude profiles hold a token (an OAuth token from `claude
-// setup-token`, or an API key) or a custom endpoint (base URL + token, plus
-// an optional usage URL). Codex and Antigravity sign in with the CLI's own
-// login in the box, or use an API key.
+// Auth modes. Claude profiles sign in with `claude auth login` in the box,
+// hold a token (an OAuth token from `claude setup-token`, or an API key) or a
+// custom endpoint (base URL + token, plus an optional usage URL). Codex and
+// Antigravity sign in with the CLI's own login in the box, or use an API key.
 const (
 	AuthToken    = "token"
 	AuthEndpoint = "endpoint"
@@ -54,14 +47,8 @@ type Profile struct {
 	TokenEnv string
 	// configDir overrides the CLI config dir (relative to the box home).
 	configDir string
-	Builtin   bool
 	CreatedAt db.Time
 	UpdatedAt db.Time
-}
-
-// Builtin returns the built-in Claude profile of a user.
-func Builtin(userID string) *Profile {
-	return &Profile{ID: BuiltinID, UserID: userID, Provider: models.ProviderClaude, Name: "Server", AuthMode: AuthLogin, Builtin: true}
 }
 
 // Service stores profiles and runs their sign-in flows.
@@ -98,14 +85,14 @@ func (s *Service) scan(row interface{ Scan(...any) error }) (*Profile, error) {
 	return p, nil
 }
 
-// List returns the user's profiles, the built-in one first.
+// List returns the user's profiles, oldest first.
 func (s *Service) List(ctx context.Context, userID string) ([]*Profile, error) {
 	rows, err := s.db.QueryContext(ctx, `SELECT `+profileColumns+` FROM agent_profiles WHERE user_id = ? ORDER BY created_at, id`, userID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	out := []*Profile{Builtin(userID)}
+	var out []*Profile
 	for rows.Next() {
 		p, err := s.scan(rows)
 		if err != nil {
@@ -116,10 +103,10 @@ func (s *Service) List(ctx context.Context, userID string) ([]*Profile, error) {
 	return out, rows.Err()
 }
 
-// Get returns one of the user's profiles; "" and BuiltinID are the built-in one.
+// Get returns one of the user's profiles.
 func (s *Service) Get(ctx context.Context, userID, id string) (*Profile, error) {
-	if id == "" || id == BuiltinID {
-		return Builtin(userID), nil
+	if id == "" {
+		return nil, httpx.NotFound("Profile not found")
 	}
 	p, err := s.scan(s.db.QueryRowContext(ctx, `SELECT `+profileColumns+` FROM agent_profiles WHERE id = ? AND user_id = ?`, id, userID))
 	if errors.Is(err, sql.ErrNoRows) {
@@ -128,33 +115,47 @@ func (s *Service) Get(ctx context.Context, userID, id string) (*Profile, error) 
 	return p, err
 }
 
-// DefaultID is the id of the user's default profile.
-func (s *Service) DefaultID(ctx context.Context, userID string) string {
+// ErrNoProfile is returned when a thread needs an account and the user has none.
+var ErrNoProfile = httpx.BadRequest("Add an account under Settings → Providers to start a thread.")
+
+// Default returns the user's default profile: the one they picked, else
+// their oldest. It is ErrNoProfile when they have none.
+func (s *Service) Default(ctx context.Context, userID string) (*Profile, error) {
 	var id *string
 	_ = s.db.QueryRowContext(ctx, `SELECT default_profile_id FROM user_settings WHERE user_id = ?`, userID).Scan(&id)
-	if id == nil || *id == "" {
-		return BuiltinID
+	if id != nil && *id != "" {
+		if p, err := s.Get(ctx, userID, *id); err == nil {
+			return p, nil
+		}
 	}
-	return *id
+	p, err := s.scan(s.db.QueryRowContext(ctx, `SELECT `+profileColumns+` FROM agent_profiles WHERE user_id = ? ORDER BY created_at, id LIMIT 1`, userID))
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, ErrNoProfile
+	}
+	return p, err
 }
 
-// Default returns the user's default profile (the built-in one if the stored
-// default is gone).
-func (s *Service) Default(ctx context.Context, userID string) *Profile {
-	if p, err := s.Get(ctx, userID, s.DefaultID(ctx, userID)); err == nil {
-		return p
+// DefaultID is the id of the user's default profile ("" without one).
+func (s *Service) DefaultID(ctx context.Context, userID string) string {
+	if p, err := s.Default(ctx, userID); err == nil {
+		return p.ID
 	}
-	return Builtin(userID)
+	return ""
 }
 
-// DefaultClaude is the Claude profile for Claude-only work outside a chat's
-// own profile (titles, commit messages, automations): the default profile
-// when it is a Claude one, else the built-in.
-func (s *Service) DefaultClaude(ctx context.Context, userID string) *Profile {
-	if p := s.Default(ctx, userID); p.Provider == models.ProviderClaude {
+// DefaultFor is the profile for work on a provider's models outside a chat's
+// own profile (automations, channel members, titles): the default profile
+// when it is that provider's, else the provider's oldest. nil when the user
+// has no account of the provider.
+func (s *Service) DefaultFor(ctx context.Context, userID, provider string) *Profile {
+	if p, err := s.Default(ctx, userID); err == nil && p.Provider == provider {
 		return p
 	}
-	return Builtin(userID)
+	p, err := s.scan(s.db.QueryRowContext(ctx, `SELECT `+profileColumns+` FROM agent_profiles WHERE user_id = ? AND provider = ? ORDER BY created_at, id LIMIT 1`, userID, provider))
+	if err != nil {
+		return nil
+	}
+	return p
 }
 
 // SetDefault makes id the user's default profile.
@@ -162,10 +163,7 @@ func (s *Service) SetDefault(ctx context.Context, userID, id string) error {
 	if _, err := s.Get(ctx, userID, id); err != nil {
 		return err
 	}
-	var stored any
-	if id != BuiltinID {
-		stored = id
-	}
+	stored := id
 	res, err := s.db.ExecContext(ctx, `UPDATE user_settings SET default_profile_id = ?, updated_at = ? WHERE user_id = ?`, stored, db.Now(), userID)
 	if err != nil {
 		return err
@@ -214,7 +212,7 @@ const (
 // AuthModes lists a provider's auth modes, the first being the default.
 func AuthModes(provider string) []string {
 	if provider == models.ProviderClaude {
-		return []string{AuthToken, AuthEndpoint}
+		return []string{AuthLogin, AuthToken, AuthEndpoint}
 	}
 	return []string{AuthLogin, AuthToken}
 }
@@ -297,7 +295,7 @@ func (s *Service) apply(ctx context.Context, p *Profile, in Input) error {
 		p.UserID, p.ID, p.Provider, p.Name).Scan(&clash); err != nil {
 		return err
 	}
-	if clash > 0 || (p.Provider == models.ProviderClaude && strings.EqualFold(p.Name, Builtin(p.UserID).Name)) {
+	if clash > 0 {
 		return httpx.Conflict("A profile with that name already exists")
 	}
 	return nil
@@ -357,14 +355,11 @@ func (s *Service) Create(ctx context.Context, userID string, in Input) (*Profile
 	return p, nil
 }
 
-// Update edits a profile; the built-in one can't be edited.
+// Update edits a profile.
 func (s *Service) Update(ctx context.Context, userID, id string, in Input) (*Profile, error) {
 	p, err := s.Get(ctx, userID, id)
 	if err != nil {
 		return nil, err
-	}
-	if p.Builtin {
-		return nil, httpx.BadRequest("The built-in profile uses the server's settings and can't be edited")
 	}
 	if in.Provider != nil && *in.Provider != p.Provider {
 		return nil, httpx.BadRequest("A profile's provider can't be changed")
@@ -386,38 +381,32 @@ func (s *Service) save(ctx context.Context, p *Profile) error {
 	return err
 }
 
-// Delete removes a profile; a deleted default falls back to the built-in
-// profile. A profile on ~/claude (one migrated from env vars) shares the
-// built-in profile's sessions, so its chats move to the built-in profile and
-// keep resuming. Other profiles' chats keep the id and say so when used: their
-// sessions live in the profile's own dir. The login files in the box stay
-// (the box is the user's own); a re-added account signs in again.
+// Delete removes a profile; a deleted default falls back to the oldest
+// profile left. Its chats keep the id and say so when used: their sessions
+// live in the profile's own dir. The login files in the box stay (the box is
+// the user's own); a re-added account signs in again.
 func (s *Service) Delete(ctx context.Context, userID, id string) error {
 	p, err := s.Get(ctx, userID, id)
 	if err != nil {
 		return err
-	}
-	if p.Builtin {
-		return httpx.BadRequest("The built-in profile can't be deleted")
 	}
 	s.logins.cancel(p)
 	return s.db.Tx(ctx, func(tx *sql.Tx) error {
 		if _, err := tx.ExecContext(ctx, `DELETE FROM agent_profiles WHERE id = ? AND user_id = ?`, p.ID, userID); err != nil {
 			return err
 		}
-		if p.SharesBuiltinSessions() {
-			if _, err := tx.ExecContext(ctx, `UPDATE chats SET profile_id = NULL, provider = NULL WHERE user_id = ? AND profile_id = ?`, userID, p.ID); err != nil {
-				return err
-			}
-		}
 		_, err := tx.ExecContext(ctx, `UPDATE user_settings SET default_profile_id = NULL WHERE user_id = ? AND default_profile_id = ?`, userID, p.ID)
 		return err
 	})
 }
 
-// ForChat resolves the profile a chat runs on. A deleted profile is an
-// error the user can act on (start a new thread), not a silent switch.
+// ForChat resolves the profile a chat runs on. A deleted profile (or none,
+// on a thread from before accounts) is an error the user can act on (start a
+// new thread), not a silent switch.
 func (s *Service) ForChat(ctx context.Context, userID string, profileID *string) (*Profile, error) {
+	if db.Deref(profileID) == "" {
+		return nil, httpx.BadRequest("This thread has no account. Start a new thread to continue on one of your accounts.")
+	}
 	p, err := s.Get(ctx, userID, db.Deref(profileID))
 	if err != nil {
 		var he *httpx.Error

@@ -29,8 +29,8 @@ func ManagedEnvKey(key string) bool { return managedEnv[strings.ToUpper(strings.
 // into a Claude profile, made the default if the user had none, with all the
 // user's chats moved onto it. The profile reproduces what the CLI ran with:
 // the deployment's env (AGENT_ENV) overlaid with the user's vars. A user
-// whose own vars don't decide the credential keeps the built-in profile and
-// every var as it was; vars the profile didn't take are kept too. It runs at
+// whose own vars don't decide the credential keeps every var as it was; vars
+// the profile didn't take are kept too. It runs at
 // startup, once per user (user_settings.profiles_env_migrated).
 func (s *Service) MigrateEnvVars(ctx context.Context) {
 	rows, err := s.db.QueryContext(ctx, `SELECT user_id, custom_env_vars, default_profile_id FROM user_settings
@@ -91,8 +91,7 @@ type envMigration struct {
 // planEnvMigration works out the profile the user's env setup amounted to,
 // from the env the CLI saw (global overlaid with the user's vars). There is
 // one only when the credential the CLI used is the user's own and a profile
-// can hold the rest (an http(s) base URL, no Bedrock/Vertex): otherwise the
-// built-in profile, which runs on that same env, stays the right one.
+// can hold the rest (an http(s) base URL, no Bedrock/Vertex).
 func planEnvMigration(userID string, global map[string]string, vars []models.CustomEnvVar) envMigration {
 	user := map[string]string{}
 	for _, v := range vars {
@@ -127,8 +126,8 @@ func planEnvMigration(userID string, global map[string]string, vars []models.Cus
 	}
 	_, userBase := user["ANTHROPIC_BASE_URL"]
 	_, userUsage := user["CLAUDE_USAGE_URL"]
-	// ~/claude, like the built-in profile: chats moved onto this profile keep
-	// resuming the sessions stored there.
+	// ~/claude, where threads from before accounts ran: chats moved onto
+	// this profile keep resuming the sessions stored there.
 	p := &Profile{UserID: userID, Provider: models.ProviderClaude, Name: "Claude (from env vars)", configDir: "claude",
 		AuthMode: AuthToken, Token: eff[tokenEnv], TokenEnv: tokenEnv}
 	if len(p.Token) > maxTokenLen || strings.ContainsAny(p.Token, " \t\r\n") {
@@ -191,6 +190,67 @@ func (s *Service) migrateUser(ctx context.Context, userID string, global map[str
 		_, err := tx.ExecContext(ctx, `UPDATE user_settings SET custom_env_vars = ?, profiles_env_migrated = 1, updated_at = ? WHERE user_id = ?`, string(b), now, userID)
 		if err == nil {
 			slog.Info("profiles: looked at Claude env vars", "user", userID, "profile", p != nil, "moved_vars", len(plan.taken))
+		}
+		return err
+	})
+}
+
+// MigrateServerLogin moves threads from before accounts (no profile: they
+// ran on the box's ~/claude login) onto a Claude sign-in account on ~/claude,
+// so they keep resuming. Only users whose ~/claude holds a login get one;
+// other such threads couldn't run anyway and ask for a new thread. It runs at
+// startup; once moved, nothing is left to move.
+func (s *Service) MigrateServerLogin(ctx context.Context) {
+	if s.cfg == nil {
+		return
+	}
+	rows, err := s.db.QueryContext(ctx, `SELECT DISTINCT user_id FROM chats WHERE profile_id IS NULL AND deleted_at IS NULL`)
+	if err != nil {
+		slog.Warn("profiles: list threads without an account", "err", err)
+		return
+	}
+	var users []string
+	for rows.Next() {
+		var id string
+		if rows.Scan(&id) == nil {
+			users = append(users, id)
+		}
+	}
+	rows.Close()
+	for _, userID := range users {
+		if !hostFileExists(s.cfg.AgentHomeDir(userID), "claude/.credentials.json") {
+			continue
+		}
+		if err := s.migrateServerLogin(ctx, userID); err != nil {
+			slog.Warn("profiles: move threads onto the box's Claude login", "user", userID, "err", err)
+		}
+	}
+}
+
+func (s *Service) migrateServerLogin(ctx context.Context, userID string) error {
+	name := "Claude"
+	var clash int
+	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(1) FROM agent_profiles WHERE user_id = ? AND provider = ? AND name = ? COLLATE NOCASE`,
+		userID, models.ProviderClaude, name).Scan(&clash); err != nil {
+		return err
+	}
+	if clash > 0 {
+		name = "Claude (box login)"
+	}
+	return s.db.Tx(ctx, func(tx *sql.Tx) error {
+		now := db.Now()
+		id := uuid.NewString()
+		if _, err := tx.ExecContext(ctx, `INSERT INTO agent_profiles (`+profileColumns+`) VALUES (`+profilePlaceholders+`)`,
+			id, userID, models.ProviderClaude, name, AuthLogin, "", "", "", "", "claude", now, now); err != nil {
+			return err
+		}
+		if _, err := tx.ExecContext(ctx, `UPDATE chats SET profile_id = ?, provider = ? WHERE user_id = ? AND profile_id IS NULL`,
+			id, models.ProviderClaude, userID); err != nil {
+			return err
+		}
+		_, err := tx.ExecContext(ctx, `UPDATE user_settings SET default_profile_id = ? WHERE user_id = ? AND (default_profile_id IS NULL OR default_profile_id = '')`, id, userID)
+		if err == nil {
+			slog.Info("profiles: moved threads onto the box's Claude login", "user", userID, "profile", id)
 		}
 		return err
 	})
