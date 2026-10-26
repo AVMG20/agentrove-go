@@ -14,14 +14,6 @@ RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/agentrove-browser-
 
 FROM ubuntu:24.04
 
-ARG CLAUDE_VERSION=2.1.308
-ARG CODEX_VERSION=0.163.0
-# Antigravity's CLI (agy): a build from Google's release bucket, as listed by
-# https://antigravity-cli-auto-updater-974169037036.us-central1.run.app/manifests/linux_<amd64|arm64>.json
-# (what https://antigravity.google/cli/install.sh installs).
-ARG AGY_VERSION=1.4.7-5900205422411776
-ARG AGY_SHA512_AMD64=beda760587589f5827b0b516c3ec2c5bd5cd2e91eb0e2533807ba1e990a27dcd63aef0191e0b76fb60feab0d16eaa8210fb79842c34dd4809e257e1712edd152
-ARG AGY_SHA512_ARM64=6a9fa0df6300633404571f66ec7924098cc70a9f23ac55c3659139bbcbdd2ea5301fe1ef728d4c064fac65104ea14a2b74421f320a82e5bcf218c482b58e3a16
 ARG NODE_MAJOR=22
 ARG PLAYWRIGHT_MCP_VERSION=0.0.83
 
@@ -65,8 +57,16 @@ RUN apt-get update && apt-get install -y --no-install-recommends socat \
     && npm cache clean --force \
     && rm -rf /var/lib/apt/lists/* /root/.npm
 
+# The agents' CLIs are the latest releases. These files name the current
+# versions; a new release changes them, which invalidates the cached install
+# steps below, so every image build after a release picks it up.
+ADD https://downloads.claude.ai/claude-code-releases/latest /tmp/cli-versions/claude
+ADD https://registry.npmjs.org/@openai/codex/latest /tmp/cli-versions/codex.json
+ADD https://antigravity-cli-auto-updater-974169037036.us-central1.run.app/manifests/linux_amd64.json /tmp/cli-versions/agy-amd64.json
+ADD https://antigravity-cli-auto-updater-974169037036.us-central1.run.app/manifests/linux_arm64.json /tmp/cli-versions/agy-arm64.json
+
 # Claude Code and uv as system binaries (HOME is a mount at runtime).
-RUN curl -fsSL https://claude.ai/install.sh | bash -s ${CLAUDE_VERSION} \
+RUN curl -fsSL https://claude.ai/install.sh | bash -s "$(cat /tmp/cli-versions/claude)" \
     && install -m 755 "$(readlink -f /home/user/.local/bin/claude)" /usr/local/bin/claude \
     && rm -rf /home/user/.local /home/user/.claude* \
     && claude --version \
@@ -75,21 +75,19 @@ RUN curl -fsSL https://claude.ai/install.sh | bash -s ${CLAUDE_VERSION} \
     && chmod 755 /usr/local/bin/git-askpass
 
 # The other providers' CLIs (provider profiles): OpenAI Codex and
-# Antigravity.
-RUN npm install -g --no-fund --no-audit @openai/codex@${CODEX_VERSION} \
+# Antigravity's agy, the build its release manifest names (what
+# https://antigravity.google/cli/install.sh installs), checked against the
+# manifest's SHA-512.
+RUN npm install -g --no-fund --no-audit "@openai/codex@$(jq -r .version /tmp/cli-versions/codex.json)" \
     && codex --version \
     && npm cache clean --force && rm -rf /root/.npm \
-    && case "$(dpkg --print-architecture)" in \
-        amd64) agy_dir=linux-x64 agy_file=cli_linux_x64.tar.gz agy_sha=$AGY_SHA512_AMD64 ;; \
-        arm64) agy_dir=linux-arm agy_file=cli_linux_arm64.tar.gz agy_sha=$AGY_SHA512_ARM64 ;; \
-        *) echo "agy: unsupported architecture" >&2; exit 1 ;; \
-    esac \
+    && manifest="/tmp/cli-versions/agy-$(dpkg --print-architecture).json" \
     && tmp=$(mktemp -d) \
-    && curl -fsSL "https://storage.googleapis.com/antigravity-public/antigravity-cli/${AGY_VERSION}/${agy_dir}/${agy_file}" -o "$tmp/agy.tar.gz" \
-    && echo "$agy_sha  $tmp/agy.tar.gz" | sha512sum -c - \
+    && curl -fsSL "$(jq -r .url "$manifest")" -o "$tmp/agy.tar.gz" \
+    && echo "$(jq -r .sha512 "$manifest")  $tmp/agy.tar.gz" | sha512sum -c - \
     && tar -xzf "$tmp/agy.tar.gz" -C "$tmp" antigravity \
     && install -m 755 "$tmp/antigravity" /usr/local/bin/agy \
-    && rm -rf "$tmp" \
+    && rm -rf "$tmp" /tmp/cli-versions \
     && agy --version
 
 # ubuntu:24.04 ships an "ubuntu" user at uid 1000; the sandbox user must own

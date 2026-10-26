@@ -21,7 +21,7 @@ cp .env.example .env               # set SECRET_KEY (openssl rand -hex 32)
 docker compose up --build
 ```
 
-Open http://localhost:8080 (`APP_PORT`). The frontend is embedded into the Go binary, so one container (and one executable) serves the whole app. The first account you register becomes the superuser. Add your agent accounts under Settings → Providers. The sandbox image ships `claude`, `codex` and Antigravity's `agy`, each pinned (`CLAUDE_VERSION`, `CODEX_VERSION`, `AGY_VERSION` with its SHA-512 per architecture in `sandbox/docker/Dockerfile`); a box picks up a rebuilt image on its next start.
+Open http://localhost:8080 (`APP_PORT`). The frontend is embedded into the Go binary, so one container (and one executable) serves the whole app. The first account you register becomes the superuser. Add your agent accounts under Settings → Providers. The sandbox image ships the latest `claude`, `codex` and Antigravity's `agy`: a build after a new release of any of them installs it (the Dockerfiles `ADD` each CLI's release pointer, so a new release invalidates the cached install), and a box picks up a rebuilt image on its next start.
 
 For production (e.g. Coolify), use `docker-compose-production.yml`. It builds the sandbox image and the app image (point the domain at `api`, port 8080) and keeps data in `/data/agentrove-go/storage`. Set `SECRET_KEY` and `APP_URL`.
 
