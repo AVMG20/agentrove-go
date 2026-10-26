@@ -5,13 +5,14 @@ import { Input } from '@/components/ui/primitives/Input/Input';
 import { BaseModal } from '@/components/ui/shared/BaseModal/BaseModal';
 import { ModalHeader } from '@/components/ui/shared/ModalHeader/ModalHeader';
 import type { Workspace } from '@/types/workspace.types';
-import { WorkspaceItem } from './WorkspaceItem';
+import { NoProjectItem, WorkspaceItem } from './WorkspaceItem';
 import styles from './WorkspacePicker.module.scss';
 
 interface WorkspacePickerProps {
   workspaces: Workspace[];
-  selectedWorkspaceId: string | null;
-  onSelect: (id: string) => void;
+  // null = no project; undefined = nothing picked yet.
+  selectedWorkspaceId: string | null | undefined;
+  onSelect: (id: string | null) => void;
   isLoading?: boolean;
   triggerDisabled?: boolean;
   // Creation flows; receives `close` so a new project can dismiss the modal.
@@ -43,15 +44,19 @@ export function WorkspacePicker({
     setSearchQuery('');
   }, []);
 
+  // Clicking the selected project again deselects it.
   const selectWorkspace = useCallback(
-    (workspace: Workspace) => {
-      onSelect(workspace.id);
+    (workspace: Workspace | null) => {
+      onSelect(workspace && workspace.id !== selectedWorkspaceId ? workspace.id : null);
       close();
     },
-    [onSelect, close],
+    [onSelect, close, selectedWorkspaceId],
   );
 
-  const label = selectedWorkspace?.name ?? (isLoading ? 'Loading…' : 'Choose a project');
+  const label =
+    selectedWorkspaceId === null
+      ? 'No project'
+      : (selectedWorkspace?.name ?? (isLoading ? 'Loading…' : 'Choose a project'));
 
   return (
     <>
@@ -101,6 +106,15 @@ export function WorkspacePicker({
                   </Button>
                 )}
               </div>
+            </div>
+          )}
+
+          {!hasSearchQuery && (
+            <div className={styles['no-project']}>
+              <NoProjectItem
+                isSelected={selectedWorkspaceId === null}
+                onSelect={() => selectWorkspace(null)}
+              />
             </div>
           )}
 

@@ -4,6 +4,7 @@ import { lazyNamed } from '@/utils/lazyNamed';
 import { useMountEffect } from '@/hooks/useMountEffect';
 import { useNavigate, useLocation } from 'react-router-dom';
 import toast from 'react-hot-toast';
+import { useQueryClient } from '@tanstack/react-query';
 import { Input as ChatInput } from '@/components/chat/message-input/Input';
 import { WorkspaceSelector } from '@/components/chat/workspace-selector/WorkspaceSelector';
 import { BranchWorktreeSelector } from '@/components/chat/worktree-selector/BranchWorktreeSelector';
@@ -13,7 +14,13 @@ import { useUIStore } from '@/store/uiStore';
 import { useModelStore } from '@/store/modelStore';
 import { useChatSettingsStore, DEFAULT_CHAT_SETTINGS_KEY } from '@/store/chatSettingsStore';
 import { useCreateChatMutation } from '@/hooks/queries/useChatQueries';
-import { useWorkspacesList, useWorkspaceResourcesQuery } from '@/hooks/queries/useWorkspaceQueries';
+import {
+  fetchScratchWorkspace,
+  useScratchWorkspaceQuery,
+  useWorkspacesList,
+  useWorkspacesQuery,
+  useWorkspaceResourcesQuery,
+} from '@/hooks/queries/useWorkspaceQueries';
 import { useFilesMetadataQuery } from '@/hooks/queries/useSandboxQueries';
 import { useModelSelection } from '@/hooks/queries/useModelQueries';
 import { useProfileMap } from '@/hooks/queries/useProfileQueries';
@@ -32,6 +39,7 @@ import { PENDING_NEW_CHAT_KEY, type TileId } from '@/types/ui.types';
 import { tileIdToViewType } from '@/utils/tileHelpers';
 import { useCurrentUserQuery } from '@/hooks/queries/useAuthQueries';
 import { useSidebarChatLists } from '@/hooks/queries/useSidebarChatLists';
+import { defaultWorkspaceId } from '@/utils/defaultWorkspace';
 import { RecentChats } from './RecentChats';
 import iconDark from '/brand/icon-dark.svg';
 import iconLight from '/brand/icon-white.svg';
@@ -89,6 +97,8 @@ export function LandingPage() {
   });
 
   const workspaces = useWorkspacesList();
+  const { isSuccess: workspacesLoaded } = useWorkspacesQuery();
+  const queryClient = useQueryClient();
 
   const { data: currentUser } = useCurrentUserQuery();
   // Same list as the sidebar (empty → example prompts).
@@ -109,39 +119,51 @@ export function LandingPage() {
   const [isLoading, setIsLoading] = useState(false);
   const consumedInitialMessageRef = useRef(false);
   const routeState = location.state as {
-    workspaceId?: string;
+    // null = no project.
+    workspaceId?: string | null;
     initialMessage?: string;
   } | null;
-  const initialWorkspaceId = routeState?.workspaceId ?? null;
+  const initialWorkspaceId = routeState?.workspaceId;
   const initialMessage = routeState?.initialMessage ?? null;
   // location.key (not target id) so re-clicking the same "new thread" re-applies it.
   const consumedNavKeyRef = useRef<string | null>(null);
 
-  const [selectedWorkspaceId, setSelectedWorkspaceId] = useState<string | null>(null);
+  // null = no project; undefined until the default is picked.
+  const [selectedWorkspaceId, setSelectedWorkspaceId] = useState<string | null | undefined>();
 
   // Single entry points for selection changes: clear the workspace-scoped default
   // base only on a genuine switch (prior selection existed and differs) so
-  // auto-select (null -> first) and reload keep a persisted base for the same workspace.
+  // auto-select (undefined -> default) and reload keep a persisted base for the same workspace.
   const handleWorkspaceChange = useCallback(
     (id: string | null) => {
-      if (selectedWorkspaceId !== null && id !== selectedWorkspaceId) clearDefaultWorktreeBase();
+      if (selectedWorkspaceId !== undefined && id !== selectedWorkspaceId) {
+        clearDefaultWorktreeBase();
+      }
       setSelectedWorkspaceId(id);
     },
     [selectedWorkspaceId],
   );
 
-  // Default local workspace when list loads or current pick is gone.
+  // Default workspace once projects and threads load, or when the current pick is gone.
   useEffect(() => {
-    if (!workspaces.length) return;
+    if (!workspacesLoaded || isLoadingChats) return;
+    if (selectedWorkspaceId === null) return;
     if (selectedWorkspaceId && workspaces.some((ws) => ws.id === selectedWorkspaceId)) return;
-    handleWorkspaceChange(workspaces[0].id);
-  }, [workspaces, selectedWorkspaceId, handleWorkspaceChange]);
+    handleWorkspaceChange(defaultWorkspaceId(workspaces, recentChats));
+  }, [
+    workspacesLoaded,
+    isLoadingChats,
+    workspaces,
+    recentChats,
+    selectedWorkspaceId,
+    handleWorkspaceChange,
+  ]);
 
   // One-shot per navigation: preselect workspace.
   useEffect(() => {
     if (location.key === consumedNavKeyRef.current) return;
     consumedNavKeyRef.current = location.key;
-    if (initialWorkspaceId) handleWorkspaceChange(initialWorkspaceId);
+    if (initialWorkspaceId !== undefined) handleWorkspaceChange(initialWorkspaceId);
   }, [location.key, initialWorkspaceId, handleWorkspaceChange]);
 
   // An effect, not render: the draft is an external store.
@@ -151,17 +173,19 @@ export function LandingPage() {
     setMessage(initialMessage);
   }, [initialMessage, setMessage]);
 
-  const { data: workspaceResources } = useWorkspaceResourcesQuery(
-    selectedWorkspaceId ?? undefined,
-    {
-      enabled: !!selectedWorkspaceId,
-    },
-  );
+  const noProject = selectedWorkspaceId === null;
+  const { data: scratchWorkspace } = useScratchWorkspaceQuery(noProject);
+  // Where the new thread will run: the picked project or the scratch workspace.
+  const targetWorkspace = noProject
+    ? scratchWorkspace
+    : workspaces.find((ws) => ws.id === selectedWorkspaceId);
+
+  const { data: workspaceResources } = useWorkspaceResourcesQuery(targetWorkspace?.id);
 
   const { data: settings } = useSettingsQuery();
 
   // Sandbox for editor/@file/branch before a chat exists.
-  const selectedSandboxId = workspaces.find((ws) => ws.id === selectedWorkspaceId)?.sandbox_id;
+  const selectedSandboxId = targetWorkspace?.sandbox_id;
 
   const {
     data: filesMetadata = [],
@@ -213,22 +237,25 @@ export function LandingPage() {
 
       const title = trimmedPrompt.replace(/\s+/g, ' ').slice(0, 80) || 'New Chat';
 
-      if (!selectedWorkspaceId) {
+      if (selectedWorkspaceId === undefined) {
         toast.error('Choose a project first');
         return;
       }
 
       setIsLoading(true);
       try {
+        const workspaceId = selectedWorkspaceId ?? (await fetchScratchWorkspace(queryClient)).id;
         const newChat = await createChat.mutateAsync({
           title,
           model_id: selectedModelId,
-          workspace_id: selectedWorkspaceId,
+          workspace_id: workspaceId,
           // Unset while the list loads: the server picks the default.
           profile_id: landingProfile?.id,
         });
         useModelStore.getState().selectModel(newChat.id, selectedModelId);
         useChatSettingsStore.getState().initChatFromDefaults(newChat.id);
+        // No git repo to cut a worktree from.
+        if (newChat.no_project) useChatSettingsStore.getState().setWorktree(newChat.id, false);
         setMessage('');
         useChatStore.getState().promoteAttachedFiles(PENDING_NEW_CHAT_KEY, newChat.id);
         navigate(`/chat/${newChat.id}`, { state: { initialPrompt: trimmedPrompt } });
@@ -247,6 +274,7 @@ export function LandingPage() {
       selectedWorkspaceId,
       setMessage,
       landingProfile?.id,
+      queryClient,
     ],
   );
 
@@ -264,10 +292,10 @@ export function LandingPage() {
           selectedWorkspaceId={selectedWorkspaceId}
           onWorkspaceChange={handleWorkspaceChange}
         />
-        <BranchWorktreeSelector disabled={isLoading} />
+        {!noProject && <BranchWorktreeSelector disabled={isLoading} />}
       </div>
     ),
-    [selectedWorkspaceId, handleWorkspaceChange, isLoading],
+    [selectedWorkspaceId, handleWorkspaceChange, isLoading, noProject],
   );
 
   const renderView = useCallback(

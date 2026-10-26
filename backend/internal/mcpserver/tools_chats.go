@@ -28,7 +28,7 @@ func (m *Module) listWorkspaces(ctx context.Context, c *caller, _ json.RawMessag
 func (m *Module) workspaces(ctx context.Context, userID string, limit int) ([]map[string]any, error) {
 	rows, err := m.a.DB.QueryContext(ctx, `SELECT w.id, w.name FROM workspaces w
 		LEFT JOIN chats c ON c.workspace_id = w.id AND c.deleted_at IS NULL
-		WHERE w.user_id = ? AND w.deleted_at IS NULL
+		WHERE w.user_id = ? AND w.deleted_at IS NULL AND w.source_type IS NOT '`+models.ScratchSource+`'
 		GROUP BY w.id ORDER BY MAX(c.updated_at) IS NULL, MAX(c.updated_at) DESC, w.updated_at DESC LIMIT ?`, userID, limit)
 	if err != nil {
 		return nil, err

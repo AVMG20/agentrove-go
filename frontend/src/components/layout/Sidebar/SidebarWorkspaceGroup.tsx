@@ -8,7 +8,10 @@ import styles from './SidebarWorkspaceGroup.module.scss';
 interface SidebarWorkspaceGroupProps {
   workspaceId: string;
   name: string;
-  onNewThread: (e: MouseEvent, workspaceId: string) => void;
+  // Threads without a project: new threads start without one too, and the
+  // scratch workspace has no project menu.
+  noProject?: boolean;
+  onNewThread: (e: MouseEvent, workspaceId: string | null) => void;
   onOpenMenu: (e: MouseEvent<HTMLButtonElement>, workspaceId: string) => void;
   children: ReactNode;
 }
@@ -18,6 +21,7 @@ interface SidebarWorkspaceGroupProps {
 export function SidebarWorkspaceGroup({
   workspaceId,
   name,
+  noProject = false,
   onNewThread,
   onOpenMenu,
   children,
@@ -50,22 +54,24 @@ export function SidebarWorkspaceGroup({
           <Button
             variant="unstyled"
             type="button"
-            onClick={(e) => onNewThread(e, workspaceId)}
+            onClick={(e) => onNewThread(e, noProject ? null : workspaceId)}
             className={styles.action}
-            aria-label={`New thread in ${name}`}
+            aria-label={noProject ? 'New thread without a project' : `New thread in ${name}`}
           >
             <Plus className={styles['action-icon']} />
           </Button>
-          <Button
-            variant="unstyled"
-            type="button"
-            data-ws-dropdown-trigger
-            onClick={(e) => onOpenMenu(e, workspaceId)}
-            className={styles.action}
-            aria-label={`${name} project options`}
-          >
-            <MoreHorizontal className={styles['action-icon']} />
-          </Button>
+          {!noProject && (
+            <Button
+              variant="unstyled"
+              type="button"
+              data-ws-dropdown-trigger
+              onClick={(e) => onOpenMenu(e, workspaceId)}
+              className={styles.action}
+              aria-label={`${name} project options`}
+            >
+              <MoreHorizontal className={styles['action-icon']} />
+            </Button>
+          )}
         </div>
       </div>
       {!collapsed && <div className={styles.body}>{children}</div>}

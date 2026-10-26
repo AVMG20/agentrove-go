@@ -126,6 +126,15 @@
   }
 }
 
+.no-project {
+  padding: 0 var(--space-3) var(--space-2);
+
+  // No projects yet: nothing above it.
+  &:first-child {
+    padding-top: var(--space-3);
+  }
+}
+
 .list {
   max-height: var(--space-80);
   overflow-y: auto;

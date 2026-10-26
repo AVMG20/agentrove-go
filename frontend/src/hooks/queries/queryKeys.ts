@@ -72,6 +72,7 @@ export const queryKeys = {
   },
   workspaces: ['workspaces'] as const,
   workspaceDiskUsage: ['workspaces', 'disk-usage'] as const,
+  scratchWorkspace: ['workspaces', 'scratch'] as const,
   box: ['workspaces', 'box'] as const,
   workspaceResources: (workspaceId?: string) => ['workspaces', workspaceId, 'resources'] as const,
   automations: ['automations'] as const,

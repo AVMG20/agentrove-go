@@ -26,7 +26,7 @@ interface SidebarChatListProps {
   hasMore: boolean;
   isFetchingMore: boolean;
   onLoadMore: () => void;
-  onNewWorkspaceThread: (e: MouseEvent, workspaceId: string) => void;
+  onNewWorkspaceThread: (e: MouseEvent, workspaceId: string | null) => void;
 }
 
 export function SidebarChatList({
@@ -93,6 +93,7 @@ export function SidebarChatList({
                       key={section.key}
                       workspaceId={section.key}
                       name={section.label ?? 'Unknown project'}
+                      noProject={section.chats[0]?.no_project}
                       onNewThread={onNewWorkspaceThread}
                       onOpenMenu={rowProps.onOpenWorkspaceMenu}
                     >

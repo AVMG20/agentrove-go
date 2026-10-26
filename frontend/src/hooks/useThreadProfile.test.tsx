@@ -28,6 +28,7 @@ const chat = (over: Partial<Chat> = {}): Chat => ({
   title: 'Thread',
   workspace_id: 'ws1',
   sandbox_id: 'sb1',
+  no_project: false,
   created_at: '',
   updated_at: '',
   pinned_at: null,

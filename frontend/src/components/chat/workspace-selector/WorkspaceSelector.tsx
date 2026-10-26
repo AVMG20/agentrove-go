@@ -3,7 +3,8 @@ import { WorkspacePicker } from './WorkspacePicker';
 import { NewProject } from './NewProject';
 
 interface WorkspaceSelectorProps {
-  selectedWorkspaceId: string | null;
+  // null = no project; undefined = nothing picked yet.
+  selectedWorkspaceId: string | null | undefined;
   onWorkspaceChange: (workspaceId: string | null) => void;
 }
 

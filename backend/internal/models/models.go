@@ -90,6 +90,10 @@ type Workspace struct {
 	LastChatAt db.NullTime `json:"last_chat_at"`
 }
 
+// ScratchSource is the source_type of the user's hidden scratch workspace,
+// where threads started without a project run. Project lists leave it out.
+const ScratchSource = "scratch"
+
 const WorkspaceColumns = `id, name, user_id, sandbox_id, sandbox_provider, workspace_path, source_type, source_url, deleted_at, created_at, updated_at`
 
 func (w *Workspace) ScanFields() []any {
@@ -121,7 +125,9 @@ type Chat struct {
 	UpdatedAt       db.Time `json:"updated_at"`
 
 	// Joined/computed.
-	SandboxID        string  `json:"sandbox_id"`
+	SandboxID string `json:"sandbox_id"`
+	// NoProject: the chat runs in the scratch workspace.
+	NoProject        bool    `json:"no_project"`
 	SessionAgentKind *string `json:"session_agent_kind"`
 	Unread           bool    `json:"unread"`
 	// ProfileID is the profile the chat runs on ("" for none) and Provider
@@ -130,15 +136,18 @@ type Chat struct {
 	Provider  string `json:"provider"`
 }
 
-// ChatColumns selects chat columns joined with workspaces as w (for sandbox_id).
+// ChatColumns selects chat columns joined with workspaces as w (for sandbox_id
+// and no_project).
 const ChatColumns = `c.id, c.title, c.user_id, c.workspace_id, c.session_id, c.worktree_cwd,
 	c.context_token_usage, c.context_window, c.last_event_seq, c.deleted_at, c.pinned_at, c.last_viewed_at,
-	c.last_model_id, c.last_thinking_mode, c.last_persona_name, c.automation_id, c.profile_id, c.provider, c.created_at, c.updated_at, w.sandbox_id`
+	c.last_model_id, c.last_thinking_mode, c.last_persona_name, c.automation_id, c.profile_id, c.provider, c.created_at, c.updated_at,
+	w.sandbox_id, w.source_type IS '` + ScratchSource + `'`
 
 func (c *Chat) ScanFields() []any {
 	return []any{&c.ID, &c.Title, &c.UserID, &c.WorkspaceID, &c.SessionID, &c.WorktreeCwd,
 		&c.ContextTokenUsage, &c.ContextWindow, &c.LastEventSeq, &c.DeletedAt, &c.PinnedAt, &c.LastViewedAt,
-		&c.LastModelID, &c.LastThinkingMode, &c.LastPersonaName, &c.AutomationID, &c.StoredProfileID, &c.StoredProvider, &c.CreatedAt, &c.UpdatedAt, &c.SandboxID}
+		&c.LastModelID, &c.LastThinkingMode, &c.LastPersonaName, &c.AutomationID, &c.StoredProfileID, &c.StoredProvider, &c.CreatedAt, &c.UpdatedAt,
+		&c.SandboxID, &c.NoProject}
 }
 
 // Finish fills computed fields after a scan.

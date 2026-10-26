@@ -66,7 +66,8 @@ export function useSidebarWorkspaceActions({
   });
 
   const handleNewWorkspaceThread = useCallback(
-    (e: React.MouseEvent | null, workspaceId: string) => {
+    // null = a thread without a project.
+    (e: React.MouseEvent | null, workspaceId: string | null) => {
       e?.stopPropagation();
       navigate('/', { state: { workspaceId } });
       if (isMobile) {

@@ -1,6 +1,14 @@
 import { useState, useMemo } from 'react';
 import toast from 'react-hot-toast';
-import { GitBranch, Box, Loader2, ChevronDown, ChevronRight, Check } from 'lucide-react';
+import {
+  GitBranch,
+  Box,
+  Loader2,
+  ChevronDown,
+  ChevronRight,
+  Check,
+  MessageSquare,
+} from 'lucide-react';
 import clsx from 'clsx';
 import { Button } from '@/components/ui/primitives/Button/Button';
 import { FloatingTooltip } from '@/components/ui/FloatingTooltip/FloatingTooltip';
@@ -28,6 +36,36 @@ function sourceLabel(sourceType: string | null | undefined) {
     default:
       return 'Empty project';
   }
+}
+
+// Threads without a project: just a chat with the model, no files or git.
+export function NoProjectItem({
+  isSelected,
+  onSelect,
+}: {
+  isSelected: boolean;
+  onSelect: () => void;
+}) {
+  return (
+    <Button
+      variant="unstyled"
+      type="button"
+      onClick={onSelect}
+      aria-pressed={isSelected}
+      className={clsx(styles.item, styles[isSelected ? 'item--selected' : 'item--unselected'])}
+    >
+      <MessageSquare className={styles['source-icon']} aria-hidden="true" />
+      <div className={styles.content}>
+        <div className={styles['name-row']}>
+          <span className={styles.name}>No project</span>
+          {isSelected && <Check className={styles['selected-icon']} aria-hidden="true" />}
+        </div>
+        <div className={styles['meta-row']}>
+          <span>Just chat</span>
+        </div>
+      </div>
+    </Button>
+  );
 }
 
 export function WorkspaceItem({

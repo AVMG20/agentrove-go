@@ -86,6 +86,8 @@ export interface Chat {
   title: string;
   workspace_id: string;
   sandbox_id: string;
+  // Started without a project: runs in the hidden scratch workspace.
+  no_project: boolean;
   created_at: string;
   updated_at: string;
   context_token_usage?: number;

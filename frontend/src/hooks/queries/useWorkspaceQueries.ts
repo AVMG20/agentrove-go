@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import type { UseQueryOptions } from '@tanstack/react-query';
+import type { QueryClient, UseQueryOptions } from '@tanstack/react-query';
 import { workspaceService } from '@/services/workspaceService';
 import type {
   BoxInfo,
@@ -37,6 +37,21 @@ export const useWorkspacesQuery = (
     ...options,
   });
 };
+
+// The hidden workspace of threads without a project. Its id never changes.
+const scratchWorkspaceQuery = () => ({
+  queryKey: queryKeys.scratchWorkspace,
+  queryFn: () => workspaceService.getScratchWorkspace(),
+  staleTime: Infinity,
+});
+
+export const useScratchWorkspaceQuery = (enabled: boolean) => {
+  return useQuery({ ...scratchWorkspaceQuery(), enabled });
+};
+
+// At send time, which may come before the query above has loaded.
+export const fetchScratchWorkspace = (queryClient: QueryClient): Promise<Workspace> =>
+  queryClient.ensureQueryData(scratchWorkspaceQuery());
 
 // Sizing walks every workspace on disk, so the backend caches it for minutes too.
 export const useWorkspaceDiskUsageQuery = () => {

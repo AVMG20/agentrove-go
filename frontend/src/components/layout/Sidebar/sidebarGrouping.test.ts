@@ -11,6 +11,7 @@ function chat(id: string, updatedAt: Date, over: Partial<Chat> = {}): Chat {
     title: id,
     workspace_id: 'workspace',
     sandbox_id: 'sandbox',
+    no_project: false,
     created_at: updatedAt.toISOString(),
     updated_at: updatedAt.toISOString(),
     pinned_at: null,
@@ -120,6 +121,18 @@ describe('buildRecentChatSections workspace grouping', () => {
       completedChatIds: new Set(),
     });
     expect(sections.map(({ label }) => label)).toEqual(['Unknown project']);
+  });
+
+  it('labels threads without a project "No project"', () => {
+    const sections = buildRecentChatSections({
+      groupBy: 'workspace',
+      visibleRecentChats: [chat('a', DAY, { workspace_id: 'scratch', no_project: true })],
+      workspaceBadgeById: new Map(),
+      blockedChatIdSet: new Set(),
+      streamingChatIdSet: new Set(),
+      completedChatIds: new Set(),
+    });
+    expect(sections.map(({ label }) => label)).toEqual(['No project']);
   });
 });
 

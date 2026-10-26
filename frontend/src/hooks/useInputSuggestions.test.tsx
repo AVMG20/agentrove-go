@@ -17,6 +17,7 @@ function makeChat(id: string, title: string): Chat {
     title,
     workspace_id: 'w1',
     sandbox_id: 's1',
+    no_project: false,
     created_at: '2026-01-01T00:00:00Z',
     updated_at: '2026-01-01T00:00:00Z',
     pinned_at: null,

@@ -61,6 +61,14 @@ async function getDiskUsage(refresh = false): Promise<WorkspaceDiskUsage[]> {
   });
 }
 
+// Where threads without a project run; the server makes it on first use.
+async function getScratchWorkspace(): Promise<Workspace> {
+  return serviceCall(async () => {
+    const response = await apiClient.get<Workspace>('/workspaces/scratch');
+    return ensureResponse(response, 'Failed to prepare a thread without a project');
+  });
+}
+
 async function getBox(): Promise<BoxInfo> {
   return serviceCall(async () => {
     const response = await apiClient.get<BoxInfo>('/workspaces/box');
@@ -84,6 +92,7 @@ export const workspaceService = {
   stopBox,
   getDiskUsage,
   listWorkspaces,
+  getScratchWorkspace,
   createWorkspace,
   updateWorkspace,
   deleteWorkspace,
