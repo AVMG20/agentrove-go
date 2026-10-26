@@ -1,51 +1,26 @@
-import { memo, useEffect, useState } from 'react';
+import { memo, useMemo, useState } from 'react';
 import clsx from 'clsx';
-import { Bot, ChevronDown, Square, SquareTerminal } from 'lucide-react';
+import { Bot, ChevronDown, ChevronRight, Square, SquareTerminal } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { FloatingTooltip } from '@/components/ui/FloatingTooltip/FloatingTooltip';
 import { Spinner } from '@/components/ui/primitives/Spinner/Spinner';
 import { chatService } from '@/services/chatService';
+import { useChatSubagentsQuery } from '@/hooks/queries/useSubagentQueries';
+import { useSecondTick } from '@/hooks/useSecondTick';
 import { useChatBackgroundTasks } from '@/store/backgroundTasksStore';
-import type { BackgroundTask } from '@/types/chat.types';
+import { useUIStore } from '@/store/uiStore';
+import type { BackgroundTask, Subagent } from '@/types/chat.types';
 import { formatElapsed } from '@/utils/backgroundTasks';
 import styles from './BackgroundTasksTray.module.scss';
 
 interface BackgroundTasksTrayProps {
   chatId: string;
-  // A subagent runs inside the turn, so stopping it stops the turn.
-  onStopTurn: () => void;
 }
 
-function useSecondTick(active: boolean): number {
-  const [now, setNow] = useState(() => Date.now());
-  useEffect(() => {
-    if (!active) return;
-    setNow(Date.now());
-    const timer = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(timer);
-  }, [active]);
-  return now;
-}
-
-function TaskRow({
-  chatId,
-  task,
-  now,
-  onStopTurn,
-}: {
-  chatId: string;
-  task: BackgroundTask;
-  now: number;
-  onStopTurn: () => void;
-}) {
+function TaskRow({ chatId, task, now }: { chatId: string; task: BackgroundTask; now: number }) {
   const [stopping, setStopping] = useState(false);
-  const Icon = task.kind === 'shell' ? SquareTerminal : Bot;
 
   const handleStop = async () => {
-    if (!task.stoppable) {
-      onStopTurn();
-      return;
-    }
     setStopping(true);
     try {
       await chatService.stopBackgroundTask(chatId, task.id);
@@ -57,14 +32,12 @@ function TaskRow({
 
   return (
     <li className={styles.row}>
-      <Icon className={styles['row-icon']} aria-hidden="true" />
+      <SquareTerminal className={styles['row-icon']} aria-hidden="true" />
       <FloatingTooltip content={task.title} className={styles['row-title-wrap']}>
-        <span className={clsx(styles['row-title'], task.kind === 'shell' && styles.mono)}>
-          {task.title}
-        </span>
+        <span className={clsx(styles['row-title'], styles.mono)}>{task.title}</span>
       </FloatingTooltip>
       <span className={styles.elapsed}>{formatElapsed(now - task.started_at * 1000)}</span>
-      <FloatingTooltip content={task.stoppable ? 'Stop command' : 'Stop subagent (ends the turn)'}>
+      <FloatingTooltip content="Stop command">
         <button
           type="button"
           className={styles['stop-btn']}
@@ -83,21 +56,64 @@ function TaskRow({
   );
 }
 
+// Running subagents share one row: it says the thread is still at work (on a
+// phone the only sign of it) and opens the subagent pane, or with several, the
+// list of them. Their details and stop buttons live there.
+function SubagentsRow({
+  chatId,
+  subagents,
+  now,
+}: {
+  chatId: string;
+  subagents: Subagent[];
+  now: number;
+}) {
+  const single = subagents.length === 1 ? subagents[0] : undefined;
+  const title = single
+    ? single.description || single.subagent_type
+    : `${subagents.length} subagents`;
+  const startedAt = Math.min(...subagents.map((s) => s.started_at));
+  const detail = single?.last_activity ?? subagents.map((s) => s.description).join(', ');
+  return (
+    <li>
+      <button
+        type="button"
+        className={clsx(styles.row, styles['row--button'])}
+        onClick={() => useUIStore.getState().toggleSubagent(chatId, single?.id ?? null)}
+        aria-label={`Show ${single ? `subagent ${title}` : title}`}
+      >
+        <Bot className={styles['row-icon']} aria-hidden="true" />
+        <span className={styles['row-title-wrap']}>
+          <span className={styles['row-title']}>{title}</span>
+          {detail && <span className={styles['row-detail']}>{detail}</span>}
+        </span>
+        <span className={styles.elapsed}>{formatElapsed(now - startedAt * 1000)}</span>
+        <ChevronRight className={styles['open-glyph']} aria-hidden="true" />
+      </button>
+    </li>
+  );
+}
+
+// Background work above the composer: each shell, and running subagents.
 export const BackgroundTasksTray = memo(function BackgroundTasksTray({
   chatId,
-  onStopTurn,
 }: BackgroundTasksTrayProps) {
-  const tasks = useChatBackgroundTasks(chatId);
+  const allTasks = useChatBackgroundTasks(chatId);
+  const tasks = useMemo(() => allTasks.filter((task) => task.kind === 'shell'), [allTasks]);
+  const { data: allSubagents } = useChatSubagentsQuery(chatId);
+  const subagents = useMemo(
+    () => (allSubagents ?? []).filter((s) => s.status === 'running'),
+    [allSubagents],
+  );
   const [collapsed, setCollapsed] = useState(false);
-  const now = useSecondTick(tasks.length > 0);
+  const now = useSecondTick(tasks.length > 0 || subagents.length > 0);
 
-  if (tasks.length === 0) return null;
+  if (tasks.length === 0 && subagents.length === 0) return null;
 
-  const shells = tasks.filter((task) => task.kind === 'shell').length;
-  const agents = tasks.length - shells;
   const summary = [
-    shells > 0 && `${shells} ${shells === 1 ? 'command' : 'commands'}`,
-    agents > 0 && `${agents} ${agents === 1 ? 'subagent' : 'subagents'}`,
+    tasks.length > 0 && `${tasks.length} ${tasks.length === 1 ? 'command' : 'commands'}`,
+    subagents.length > 0 &&
+      `${subagents.length} ${subagents.length === 1 ? 'subagent' : 'subagents'}`,
   ]
     .filter(Boolean)
     .join(' · ');
@@ -122,14 +138,11 @@ export const BackgroundTasksTray = memo(function BackgroundTasksTray({
         {!collapsed && (
           <ul className={styles.list}>
             {tasks.map((task) => (
-              <TaskRow
-                key={task.id}
-                chatId={chatId}
-                task={task}
-                now={now}
-                onStopTurn={onStopTurn}
-              />
+              <TaskRow key={task.id} chatId={chatId} task={task} now={now} />
             ))}
+            {subagents.length > 0 && (
+              <SubagentsRow chatId={chatId} subagents={subagents} now={now} />
+            )}
           </ul>
         )}
       </div>

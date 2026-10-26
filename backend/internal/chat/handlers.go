@@ -34,6 +34,8 @@ func (m *Module) Routes(mux *http.ServeMux) {
 	mux.HandleFunc("GET "+p+"/messages/{message_id}/render", req(m.messageRender))
 	mux.HandleFunc("POST "+p+"/messages/{message_id}/checkpoint/restore-all", req(m.restoreCheckpoint))
 	mux.HandleFunc("POST "+p+"/chats/{chat_id}/background-tasks/{task_id}/stop", req(m.stopBackgroundTask))
+	mux.HandleFunc("GET "+p+"/chats/{chat_id}/subagents", req(m.listSubagents))
+	mux.HandleFunc("GET "+p+"/chats/{chat_id}/subagents/{subagent_id}", req(m.getSubagent))
 	mux.HandleFunc("DELETE "+p+"/chats/{chat_id}/stream", req(m.cancelStream))
 	mux.HandleFunc("POST "+p+"/chats/{chat_id}/permissions/{request_id}/respond", req(m.respondPermission))
 	mux.HandleFunc("POST "+p+"/chats/{chat_id}/elicitation/{request_id}/respond", req(m.respondElicitation))

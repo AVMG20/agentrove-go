@@ -117,6 +117,41 @@ export interface BackgroundTask {
   stoppable: boolean;
 }
 
+export type SubagentStatus = 'running' | 'completed' | 'failed' | 'stopped';
+
+// One step of a subagent's capped activity log: a tool call or a short text.
+export interface SubagentActivity {
+  kind: 'text' | 'tool';
+  id?: string;
+  name?: string;
+  title?: string;
+  text?: string;
+  status?: 'started' | 'completed' | 'failed';
+  // Unix seconds.
+  at: number;
+}
+
+// A subagent Claude spawned, keyed by the id of its Agent tool call. The list
+// and the chat event carry the summary; prompt and activity come with the detail.
+export interface Subagent {
+  id: string;
+  chat_id: string;
+  description: string;
+  subagent_type: string;
+  background: boolean;
+  status: SubagentStatus;
+  result?: string;
+  tool_count: number;
+  last_activity: string;
+  // Background task id, for stopping it; only while it runs.
+  task_id?: string;
+  // Unix seconds.
+  started_at: number;
+  finished_at: number | null;
+  prompt?: string;
+  activity?: SubagentActivity[];
+}
+
 export interface ChatBackgroundTasks {
   chat_id: string;
   tasks: BackgroundTask[];
@@ -127,7 +162,8 @@ export type ChatEvent =
   | { kind: 'chat_created'; chat: Chat }
   | { kind: 'stream_started'; chat_id: string; message_id: string }
   | { kind: 'title_updated'; chat_id: string; title: string }
-  | { kind: 'background_tasks'; chat_id: string; tasks: BackgroundTask[] };
+  | { kind: 'background_tasks'; chat_id: string; tasks: BackgroundTask[] }
+  | { kind: 'subagent'; chat_id: string; subagent: Subagent };
 
 export interface ChatRequest {
   prompt: string;

@@ -40,7 +40,7 @@ func newTestModule(t *testing.T) (*Module, *db.DB) {
 		}
 	}
 	m := &Module{
-		st: &store{db: d}, sessions: newSessions(),
+		st: &store{db: d}, sessions: newSessions(), subs: newSubagentTracker(),
 		turns: map[string]*turn{}, attached: map[string]*turn{}, starting: map[string]bool{}, stopStarting: map[string]bool{},
 		bgTasks: map[string][]backgroundTask{}, bgOwner: map[string]string{}, pending: map[string][]claude.Message{},
 		live: map[string]*claude.Session{},

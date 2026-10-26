@@ -30,6 +30,7 @@ beforeEach(() => {
     pendingFileOpen: null,
     fileOpenNonce: 0,
     composerSelectionsByChat: {},
+    subagentByChat: {},
   });
 });
 
@@ -385,5 +386,40 @@ describe('resetWorkspace', () => {
     expect(state().splitChatIds).toEqual([]);
     expect(state().currentWorkspaceChatId).toBeNull();
     expect(state().focusedTile).toBeNull();
+  });
+});
+
+describe('toggleSubagent', () => {
+  it('opens the subagent next to the chat and closes it on a second click', () => {
+    state().toggleSubagent('c1', 'a1');
+    expect(state().visibleLayout).toEqual([['agent:primary', 'subagent']]);
+    expect(state().subagentByChat).toEqual({ c1: 'a1' });
+    expect(state().focusedTile).toBe('subagent');
+
+    state().toggleSubagent('c1', 'a1');
+    expect(state().visibleLayout).toEqual([['agent:primary']]);
+    expect(state().openTabs).toEqual(['agent:primary']);
+  });
+
+  it('switches an open pane to another subagent instead of closing it', () => {
+    state().toggleSubagent('c1', 'a1');
+    state().toggleSubagent('c1', 'a2');
+    expect(state().visibleLayout).toEqual([['agent:primary', 'subagent']]);
+    expect(state().subagentByChat).toEqual({ c1: 'a2' });
+  });
+
+  it('opens and closes the list of subagents', () => {
+    state().toggleSubagent('c1', 'a1');
+    state().toggleSubagent('c1', null);
+    expect(state().subagentByChat).toEqual({});
+    expect(state().visibleLayout).toEqual([['agent:primary', 'subagent']]);
+    state().toggleSubagent('c1', null);
+    expect(state().visibleLayout).toEqual([['agent:primary']]);
+  });
+
+  it("opens a split chat's subagent in that chat's slot", () => {
+    useUIStore.setState({ splitChatIds: ['c2'] });
+    state().toggleSubagent('c2', 'a1');
+    expect(state().visibleLayout).toEqual([['agent:primary', 'subagent:split-1']]);
   });
 });

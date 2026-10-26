@@ -1,0 +1,85 @@
+@use '@/styles/globals/colors' as colors;
+@use '@/styles/globals/typography' as type;
+@use '@/styles/globals/animations' as anim;
+@use '@/styles/globals/responsive' as responsive;
+
+.row {
+  @include anim.transition-colors;
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  align-items: flex-start;
+  gap: var(--space-2);
+  border-radius: var(--radius-lg);
+  padding: var(--space-1);
+  text-align: left;
+  color: var(--theme-text-secondary);
+
+  @include responsive.hover {
+    background-color: colors.theme-color('surface-hover', 0.5);
+    color: var(--theme-text-primary);
+  }
+}
+
+.row--selected {
+  background-color: var(--theme-surface-hover);
+  color: var(--theme-text-primary);
+}
+
+.row-icon {
+  display: flex;
+  height: var(--space-5);
+  width: var(--space-4);
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+}
+
+.row-body {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+}
+
+.row-title {
+  @include type.type-default;
+  @include type.type-overflow;
+}
+
+.row-activity {
+  @include type.type-meta;
+  @include type.type-overflow;
+  color: var(--theme-text-quaternary);
+}
+
+.row-time {
+  @include type.type-meta;
+  flex-shrink: 0;
+  padding-top: var(--space-0-5);
+  font-variant-numeric: tabular-nums;
+  color: var(--theme-text-quaternary);
+}
+
+.status-icon {
+  height: var(--space-3);
+  width: var(--space-3);
+}
+
+.status-icon--running {
+  @include anim.pulse;
+  fill: var(--theme-accent);
+  color: var(--theme-accent);
+}
+
+.status-icon--completed {
+  color: var(--theme-success-text);
+}
+
+.status-icon--failed {
+  color: var(--theme-error-text);
+}
+
+.status-icon--stopped {
+  color: var(--theme-text-quaternary);
+}

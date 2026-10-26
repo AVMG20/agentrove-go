@@ -10,6 +10,8 @@ import { getToolComponent } from '../registry';
 import { AgentToolsContext } from '@/contexts/AgentToolsContext';
 import { extractResultText } from '@/utils/agentTool';
 import { useAgentToolsContext } from '@/hooks/useAgentToolsContext';
+import { useSubagentSummary } from '@/hooks/queries/useSubagentQueries';
+import { useUIStore } from '@/store/uiStore';
 import toolText from '../common/toolText.module.scss';
 import toolIcon from './toolIcon.module.scss';
 import styles from './AgentTool.module.scss';
@@ -21,9 +23,10 @@ const LazyExpandedModal = lazyNamed(
 
 interface AgentToolProps {
   tool: ToolAggregate;
+  chatId?: string;
 }
 
-export function AgentTool({ tool }: AgentToolProps) {
+export function AgentTool({ tool, chatId }: AgentToolProps) {
   const [promptExpanded, setPromptExpanded] = useState(false);
   const [resultExpanded, setResultExpanded] = useState(false);
   const [toolsExpanded, setToolsExpanded] = useState(false);
@@ -31,6 +34,10 @@ export function AgentTool({ tool }: AgentToolProps) {
   const prevToolIdRef = useRef(tool.id);
 
   const siblingAgents = useAgentToolsContext();
+  // Set once the session panel tracks this subagent (top-level spawns).
+  const subagent = useSubagentSummary(chatId, tool.id);
+  // A background subagent's call returns at launch; it's still working.
+  const inBackground = subagent?.status === 'running' && subagent.background;
 
   if (prevToolIdRef.current !== tool.id) {
     prevToolIdRef.current = tool.id;
@@ -51,17 +58,19 @@ export function AgentTool({ tool }: AgentToolProps) {
     [tool.children],
   );
 
+  const expandLabel = subagent ? 'Open subagent view' : 'Expand agent view';
   const expandAction = (
-    <FloatingTooltip content="Expand agent view" className={styles.tooltip}>
+    <FloatingTooltip content={expandLabel} className={styles.tooltip}>
       <Button
         variant="unstyled"
         type="button"
         onClick={(e) => {
           e.stopPropagation();
-          setModalOpen(true);
+          if (subagent && chatId) useUIStore.getState().toggleSubagent(chatId, tool.id);
+          else setModalOpen(true);
         }}
         className={styles['expand-button']}
-        aria-label="Expand agent view"
+        aria-label={expandLabel}
       >
         <Maximize2 className={styles['expand-icon']} />
       </Button>
@@ -72,9 +81,10 @@ export function AgentTool({ tool }: AgentToolProps) {
     <>
       <ToolCard
         icon={<Bot className={toolIcon.icon} />}
-        status={tool.status}
+        status={inBackground ? 'started' : tool.status}
         title={(status) => {
           const type = subagentType || 'general-purpose';
+          if (inBackground) return `Agent running in background (${type})`;
           switch (status) {
             case 'completed':
               return `Agent completed (${type})`;

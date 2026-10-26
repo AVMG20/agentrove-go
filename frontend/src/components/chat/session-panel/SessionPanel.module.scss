@@ -227,3 +227,16 @@
   height: var(--space-3);
   width: var(--space-3);
 }
+
+.more-button {
+  @include type.type-meta(500);
+  @include anim.transition-colors;
+  align-self: flex-start;
+  border-radius: var(--radius-md);
+  padding: var(--space-1);
+  color: var(--theme-text-tertiary);
+
+  @include responsive.hover {
+    color: var(--theme-text-primary);
+  }
+}

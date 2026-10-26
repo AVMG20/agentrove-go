@@ -20,6 +20,11 @@ const TerminalContainer = lazyNamed(
   () => import('@/components/sandbox/terminal/Container/Container'),
   'Container',
 );
+// Loaded on first open, like the browser: most sessions never open one.
+const SubagentPane = lazyNamed(
+  () => import('@/components/chat/subagents/SubagentPane'),
+  'SubagentPane',
+);
 // Loaded on first open: most sessions never look at the browser.
 const BrowserTab = lazyNamed(
   () => import('@/components/sandbox/browser/BrowserTab/BrowserTab'),
@@ -39,6 +44,7 @@ const CreatePRDialog = lazyNamed(
 );
 
 function renderPane(
+  tileId: TileId,
   view: ViewType,
   chatId: string | undefined,
   sandboxId: string | undefined,
@@ -64,6 +70,12 @@ function renderPane(
       return (
         <Suspense fallback={viewLoadingFallback}>
           <BrowserTab sandboxId={sandboxId} isVisible={isVisible} />
+        </Suspense>
+      );
+    case 'subagent':
+      return (
+        <Suspense fallback={viewLoadingFallback}>
+          <SubagentPane chatId={chatId} tileId={tileId} isVisible={isVisible} />
         </Suspense>
       );
     default:
@@ -103,7 +115,7 @@ export function WorkspaceTile({ tileId, isVisible, chatId, chat, agent }: Worksp
         </Suspense>
       </div>
       <div className={isTerminal ? styles.hidden : styles.fill}>
-        {renderPane(view, chatId, chat?.sandbox_id, isVisible, agent)}
+        {renderPane(tileId, view, chatId, chat?.sandbox_id, isVisible, agent)}
       </div>
     </div>
   );

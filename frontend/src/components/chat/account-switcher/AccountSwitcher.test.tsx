@@ -298,6 +298,14 @@ describe('AccountSwitcher', () => {
     expect(screen.queryByRole('dialog')).toBeNull();
   });
 
+  it('shows only the first window, its reset to the largest unit, on mobile', () => {
+    h.isMobile = true;
+    renderSwitcher();
+    expect(trigger().textContent).toContain('39% 4h');
+    expect(trigger().textContent).not.toContain('4h 18m');
+    expect(trigger().textContent).not.toContain('6%');
+  });
+
   it('opens as a sheet on mobile', () => {
     h.isMobile = true;
     renderSwitcher();

@@ -21,7 +21,8 @@ export function windowLabels(seconds: number): { short: string; long: string } {
   if (hours === 5) return { short: '5h', long: '5-hour limit' };
   if (hours === 24 * 7) return { short: 'wk', long: 'Weekly limit' };
   if (hours >= 24 * 28 && hours <= 24 * 31) return { short: 'mo', long: 'Monthly limit' };
-  if (hours >= 24 && hours % 24 === 0) return { short: `${hours / 24}d`, long: `${hours / 24}-day limit` };
+  if (hours >= 24 && hours % 24 === 0)
+    return { short: `${hours / 24}d`, long: `${hours / 24}-day limit` };
   if (hours >= 1) return { short: `${hours}h`, long: `${hours}-hour limit` };
   return { short: 'Limit', long: 'Usage limit' };
 }
@@ -57,6 +58,11 @@ export function formatResetIn(ms: number): string {
     return remHours > 0 ? `${days}d ${remHours}h` : `${days}d`;
   }
   return mins > 0 ? `${hours}h ${mins}m` : `${hours}h`;
+}
+
+// The largest unit only ("4h", "6d", "48m"), for a phone's composer footer.
+export function formatResetInShort(ms: number): string {
+  return formatResetIn(ms).split(' ')[0];
 }
 
 export function describeUsageWindow(
@@ -95,6 +101,7 @@ export function summarizeWindow(window: UsageWindow, now: number) {
   // The window rolled over since the last fetch; a refetch is already scheduled.
   const rolledOver = resetAt != null && resetAt <= now;
   const used = rolledOver ? 0 : clampPercent(window.used_percent);
-  const resetLabel = resetAt != null && !rolledOver ? formatResetIn(resetAt - now) : null;
-  return { used, rolledOver, resetLabel, tone: usageTone(used) };
+  const resetIn = resetAt != null && !rolledOver ? resetAt - now : null;
+  const resetLabel = resetIn != null ? formatResetIn(resetIn) : null;
+  return { used, rolledOver, resetIn, resetLabel, tone: usageTone(used) };
 }

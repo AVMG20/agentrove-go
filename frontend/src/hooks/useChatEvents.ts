@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { chatService } from '@/services/chatService';
 import { applyCreatedChat, patchChatInCache } from '@/hooks/queries/useChatQueries';
+import { applySubagentEvent } from '@/hooks/queries/useSubagentQueries';
 import { useStreamStore } from '@/store/streamStore';
 import { useBackgroundTasksStore } from '@/store/backgroundTasksStore';
 import { useMessageQueueStore } from '@/store/messageQueueStore';
@@ -68,6 +69,11 @@ export function useChatEvents(options?: { enabled?: boolean }) {
         return;
       }
 
+      if (parsed.kind === 'subagent') {
+        applySubagentEvent(queryClient, parsed.chat_id, parsed.subagent);
+        return;
+      }
+
       if (parsed.kind === 'stream_started') {
         // Server bumps updated_at — refetch so chats outside loaded pages surface.
         queryClient.invalidateQueries({ queryKey: [queryKeys.chats, 'infinite'] });
@@ -97,6 +103,7 @@ export function useChatEvents(options?: { enabled?: boolean }) {
         void queryClient.invalidateQueries({ queryKey: [queryKeys.chats, 'infinite'] });
         void queryClient.invalidateQueries({ queryKey: queryKeys.workspaces });
         void queryClient.invalidateQueries({ queryKey: ['chat'] });
+        void queryClient.invalidateQueries({ queryKey: queryKeys.subagentsAll });
         resyncActiveStreams(
           () => chatService.getActiveStreams(),
           () => cancelled,

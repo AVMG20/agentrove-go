@@ -11,6 +11,7 @@ import type {
   CreateChatRequest,
   ContextUsage,
   Message,
+  Subagent,
   UpdateChatRequest,
 } from '@/types/chat.types';
 import type { ActiveStreamSnapshot } from '@/types/stream.types';
@@ -115,6 +116,22 @@ async function getBackgroundTasks(): Promise<ChatBackgroundTasks[]> {
   return serviceCall(async () => {
     const entries = await apiClient.get<ChatBackgroundTasks[]>('/chat/chats/background-tasks');
     return entries ?? [];
+  });
+}
+
+async function getSubagents(chatId: string): Promise<Subagent[]> {
+  return serviceCall(async () => {
+    const subagents = await apiClient.get<Subagent[]>(`/chat/chats/${chatId}/subagents`);
+    return subagents ?? [];
+  });
+}
+
+async function getSubagent(chatId: string, subagentId: string): Promise<Subagent> {
+  return serviceCall(async () => {
+    const subagent = await apiClient.get<Subagent>(
+      `/chat/chats/${chatId}/subagents/${encodeURIComponent(subagentId)}`,
+    );
+    return ensureResponse(subagent, 'Failed to load the subagent');
   });
 }
 
@@ -363,6 +380,8 @@ export const chatService = {
   getActiveStreams,
   getBackgroundTasks,
   stopBackgroundTask,
+  getSubagents,
+  getSubagent,
   stopStream,
   getMessages,
   getMessageRender,
