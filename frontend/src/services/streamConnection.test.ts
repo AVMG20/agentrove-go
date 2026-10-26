@@ -8,13 +8,17 @@ const mocks = vi.hoisted(() => ({
     getBaseUrl: () => 'http://api.test',
   },
   activeStreams: new Map<string, { chatId: string; isActive: boolean }>(),
+  streamListeners: new Set<() => void>(),
 }));
 
 vi.mock('@/lib/api', () => ({ apiClient: mocks.client }));
 vi.mock('@/utils/storage', () => ({ chatStorage: { getEventId: () => null } }));
 vi.mock('@/store/streamStore', () => ({
   useStreamStore: {
-    subscribe: () => () => {},
+    subscribe: (listener: () => void) => {
+      mocks.streamListeners.add(listener);
+      return () => mocks.streamListeners.delete(listener);
+    },
     getState: () => ({ activeStreams: mocks.activeStreams }),
   },
 }));
@@ -52,20 +56,23 @@ class FakeEventSource {
 }
 
 let online = true;
-let release: () => void = () => {};
 let visibility: DocumentVisibilityState = 'visible';
+
+function notifyStreamStore() {
+  for (const listener of mocks.streamListeners) listener();
+}
 
 async function setup() {
   vi.resetModules();
+  mocks.streamListeners.clear();
   const { streamConnection } = await import('@/services/streamConnection');
   const onConnectionFailure = vi.fn();
   streamConnection.configure({
-    onOpen: () => {},
     onEnvelopeData: () => {},
     onConnectionFailure,
   });
   mocks.activeStreams.set('s1', { chatId: 'chat-1', isActive: true });
-  release = streamConnection.retain(mocks.client as never);
+  notifyStreamStore();
   await vi.advanceTimersByTimeAsync(0);
   return { onConnectionFailure };
 }
@@ -96,7 +103,7 @@ describe('streamConnection page resume', () => {
   afterEach(() => {
     // Tear down so this module instance's resume listener has nothing left to reopen.
     mocks.activeStreams.clear();
-    release();
+    notifyStreamStore();
     vi.restoreAllMocks();
     vi.unstubAllGlobals();
     vi.useRealTimers();

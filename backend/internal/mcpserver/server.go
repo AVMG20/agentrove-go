@@ -23,7 +23,6 @@ import (
 	"agentrove/internal/artifact"
 	"agentrove/internal/auth"
 	"agentrove/internal/automation"
-	"agentrove/internal/channel"
 	"agentrove/internal/httpx"
 	"agentrove/internal/models"
 )
@@ -40,7 +39,6 @@ var supportedVersions = map[string]bool{"2025-06-18": true, "2025-03-26": true, 
 
 type Module struct {
 	a           *app.App
-	channels    *channel.Service
 	automations *automation.Service
 	artifacts   *artifact.Service
 	tools       []*tool
@@ -53,8 +51,8 @@ const Instructions = "An artifact is an HTML page published with create_artifact
 	"use the artifacts skill and publish an artifact instead of writing an .html file. Artifacts are private until " +
 	"the user makes them public, so publishing needs no confirmation."
 
-func New(a *app.App, ch *channel.Service, au *automation.Service, ar *artifact.Service) *Module {
-	m := &Module{a: a, channels: ch, automations: au, artifacts: ar}
+func New(a *app.App, au *automation.Service, ar *artifact.Service) *Module {
+	m := &Module{a: a, automations: au, artifacts: ar}
 	m.tools = m.buildTools()
 	return m
 }

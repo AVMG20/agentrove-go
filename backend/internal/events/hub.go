@@ -9,7 +9,6 @@ import (
 // Topic helpers keep naming in one place.
 func UserStreams(userID string) string { return "streams:" + userID }
 func UserChats(userID string) string   { return "chats:" + userID }
-func Channel(channelID string) string  { return "channel:" + channelID }
 
 type Subscription struct {
 	C     <-chan []byte

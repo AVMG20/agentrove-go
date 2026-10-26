@@ -44,7 +44,7 @@ func escapeLike(s string) string {
 func (m *Module) search(ctx context.Context, userID, q string, limit, perChat int) (map[string]any, error) {
 	rows, err := m.a.DB.QueryContext(ctx, `SELECT m.id, m.chat_id, m.role, m.content_text, m.created_at, c.title, c.workspace_id, w.name
 		FROM messages m JOIN chats c ON c.id = m.chat_id JOIN workspaces w ON w.id = c.workspace_id
-		WHERE c.user_id = ? AND c.deleted_at IS NULL AND c.channel_id IS NULL AND m.deleted_at IS NULL
+		WHERE c.user_id = ? AND c.deleted_at IS NULL AND m.deleted_at IS NULL
 		AND m.content_text LIKE ? ESCAPE '\' ORDER BY m.created_at DESC LIMIT ?`,
 		userID, "%"+escapeLike(q)+"%", searchMaxRows)
 	if err != nil {

@@ -1,9 +1,8 @@
 import { useBackgroundTasksStore } from '@/store/backgroundTasksStore';
-import { useChannelStore } from '@/store/channelStore';
 import { useChatStore } from '@/store/chatStore';
 import { useComposerDraftStore } from '@/store/composerDraftStore';
 import { useElicitationStore } from '@/store/elicitationStore';
-import { useChannelQueueStore, useMessageQueueStore } from '@/store/messageQueueStore';
+import { useMessageQueueStore } from '@/store/messageQueueStore';
 import { usePermissionStore } from '@/store/permissionStore';
 import { useProfileStore } from '@/store/profileStore';
 import { useStreamStore } from '@/store/streamStore';
@@ -19,11 +18,9 @@ export function resetUserScopedStores(): void {
   }
   useStreamStore.setState(useStreamStore.getInitialState(), true);
   useMessageQueueStore.setState(useMessageQueueStore.getInitialState(), true);
-  useChannelQueueStore.setState(useChannelQueueStore.getInitialState(), true);
   usePermissionStore.setState(usePermissionStore.getInitialState(), true);
   useElicitationStore.setState(useElicitationStore.getInitialState(), true);
   useBackgroundTasksStore.setState(useBackgroundTasksStore.getInitialState(), true);
-  useChannelStore.setState(useChannelStore.getInitialState(), true);
   useChatStore.setState(useChatStore.getInitialState(), true);
   // Persisted, so the next account on this browser doesn't see unsent text.
   useComposerDraftStore.setState(useComposerDraftStore.getInitialState(), true);

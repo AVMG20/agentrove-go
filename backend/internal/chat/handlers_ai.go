@@ -52,7 +52,7 @@ func (m *Module) generateTitleHandler(w http.ResponseWriter, r *http.Request) er
 
 func (m *Module) askCode(w http.ResponseWriter, r *http.Request) error {
 	u := user(r)
-	if _, err := m.a.Store.GetMemberChat(r.Context(), u.ID, r.PathValue("chat_id")); err != nil {
+	if _, err := m.a.Store.GetChat(r.Context(), u.ID, r.PathValue("chat_id")); err != nil {
 		return err
 	}
 	var body struct {

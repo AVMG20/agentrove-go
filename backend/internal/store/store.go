@@ -51,25 +51,13 @@ func (s *Store) GetWorkspaceByID(ctx context.Context, id string) (*models.Worksp
 	return w, err
 }
 
-// GetChat returns a visible (non-channel) chat owned by userID.
+// GetChat returns a chat owned by userID.
 func (s *Store) GetChat(ctx context.Context, userID, id string) (*models.Chat, error) {
-	return s.getChat(ctx, userID, id, false)
-}
-
-// GetMemberChat also returns channel member chats (their terminal/editor views).
-func (s *Store) GetMemberChat(ctx context.Context, userID, id string) (*models.Chat, error) {
-	return s.getChat(ctx, userID, id, true)
-}
-
-func (s *Store) getChat(ctx context.Context, userID, id string, includeChannel bool) (*models.Chat, error) {
 	if _, err := uuid.Parse(id); err != nil {
 		return nil, httpx.NotFound("Chat not found")
 	}
 	q := `SELECT ` + models.ChatColumns + ` FROM chats c JOIN workspaces w ON w.id = c.workspace_id
 		WHERE c.id = ? AND c.user_id = ? AND c.deleted_at IS NULL`
-	if !includeChannel {
-		q += ` AND c.channel_id IS NULL`
-	}
 	c := &models.Chat{}
 	err := s.DB.QueryRowContext(ctx, q, id, userID).Scan(c.ScanFields()...)
 	if errors.Is(err, sql.ErrNoRows) {

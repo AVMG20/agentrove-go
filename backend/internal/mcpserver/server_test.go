@@ -13,7 +13,6 @@ import (
 	"agentrove/internal/artifact"
 	"agentrove/internal/auth"
 	"agentrove/internal/automation"
-	"agentrove/internal/channel"
 	"agentrove/internal/config"
 	"agentrove/internal/db"
 	"agentrove/internal/events"
@@ -38,7 +37,7 @@ func newModule(t *testing.T) *Module {
 	if _, err := d.Exec(`INSERT INTO users (id, email, username, hashed_password, is_active, created_at, updated_at) VALUES (?, 'a@b.c', 'a', 'x', 1, ?, ?)`, userID, now, now); err != nil {
 		t.Fatal(err)
 	}
-	return New(a, channel.NewService(a), automation.NewService(a), &artifact.Service{DB: d})
+	return New(a, automation.NewService(a), &artifact.Service{DB: d})
 }
 
 func rpc(t *testing.T, m *Module, c *caller, body string) map[string]any {

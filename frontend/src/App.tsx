@@ -26,7 +26,6 @@ import { ErrorBoundary } from '@/components/ui/ErrorBoundary/ErrorBoundary';
 
 const LandingPage = lazyNamed(() => import('@/pages/LandingPage/LandingPage'), 'LandingPage');
 const ChatPage = lazyNamed(() => import('@/pages/ChatPage/ChatPage'), 'ChatPage');
-const ChannelPage = lazyNamed(() => import('@/pages/ChannelPage/ChannelPage'), 'ChannelPage');
 const LoginPage = lazyNamed(() => import('@/pages/LoginPage/LoginPage'), 'LoginPage');
 const SignupPage = lazyNamed(() => import('@/pages/SignupPage/SignupPage'), 'SignupPage');
 const EmailVerificationPage = lazyNamed(
@@ -97,7 +96,6 @@ function AppContent() {
         >
           <Route path="/" element={<LandingPage />} />
           <Route path="/chat/:chatId" element={<ChatPage />} />
-          <Route path="/channels/:channelId" element={<ChannelPage />} />
           <Route path="/settings" element={<Navigate to={settingsPath()} replace />} />
           <Route path="/settings/:section" element={<SettingsPage />} />
           <Route path="*" element={<Navigate to="/" replace />} />

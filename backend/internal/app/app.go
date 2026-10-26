@@ -32,7 +32,7 @@ type App struct {
 // Hooks are cross-module entry points. A nil hook means the feature is absent.
 type Hooks struct {
 	// StartChatTurn starts an agent turn in a chat as if the user sent prompt.
-	// Used by automations, channels and the MCP server.
+	// Used by automations and the MCP server.
 	StartChatTurn func(req ChatTurnRequest) (ChatTurnResult, error)
 	// CancelChatTurn interrupts a running turn.
 	CancelChatTurn func(chatID string) error
@@ -59,8 +59,6 @@ type ChatTurnRequest struct {
 	BaseBranch          *string
 	SelectedPersonaName string
 	Attachments         []AttachmentInput
-	// MemberSink, when set, receives every stream event of the turn (channels).
-	MemberSink func(kind string, payload map[string]any)
 	// OnDone runs once the turn reaches a terminal state.
 	OnDone func(status string, content string)
 	// Unattended turns (automations, MCP workers) auto-approve and never ask.

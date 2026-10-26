@@ -13,7 +13,7 @@ interface InlinePermissionProps {
   header?: ReactNode;
 }
 
-export function InlinePermission({
+function InlinePermission({
   request,
   onApprove,
   onReject,

@@ -1,15 +1,12 @@
 import { memo, useMemo } from 'react';
 import clsx from 'clsx';
-import { AtSign, MessageSquare } from 'lucide-react';
+import { MessageSquare } from 'lucide-react';
 import { SuggestionPanel } from './SuggestionPanel';
 import { MentionIcon } from './MentionIcon';
 import type { MentionItem } from '@/types/ui.types';
 import styles from './MentionSuggestionsPanel.module.scss';
 
-const NO_MEMBERS: MentionItem[] = [];
-
 interface MentionSuggestionsPanelProps {
-  members?: MentionItem[];
   files: MentionItem[];
   chats: MentionItem[];
   highlightedIndex: number;
@@ -25,19 +22,6 @@ function renderFile(file: MentionItem, isActive: boolean) {
           {file.name}
         </span>
         <span className={styles['item-path']}>{file.path}</span>
-      </div>
-    </>
-  );
-}
-
-function renderMember(member: MentionItem, isActive: boolean) {
-  return (
-    <>
-      <AtSign className={styles['item-icon']} />
-      <div className={styles['item-row']}>
-        <span className={clsx(styles['item-name'], isActive && styles['item-name--active'])}>
-          {member.name}
-        </span>
       </div>
     </>
   );
@@ -59,7 +43,6 @@ function renderChat(chat: MentionItem, isActive: boolean) {
 const mentionItemKey = (item: MentionItem) => item.path;
 
 export const MentionSuggestionsPanel = memo(function MentionSuggestionsPanel({
-  members = NO_MEMBERS,
   files,
   chats,
   highlightedIndex,
@@ -67,12 +50,6 @@ export const MentionSuggestionsPanel = memo(function MentionSuggestionsPanel({
 }: MentionSuggestionsPanelProps) {
   const sections = useMemo(
     () => [
-      {
-        label: 'Members',
-        items: members,
-        itemKey: mentionItemKey,
-        renderItem: renderMember,
-      },
       {
         label: 'Files',
         items: files,
@@ -86,7 +63,7 @@ export const MentionSuggestionsPanel = memo(function MentionSuggestionsPanel({
         renderItem: renderChat,
       },
     ],
-    [members, files, chats],
+    [files, chats],
   );
 
   return (

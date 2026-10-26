@@ -81,7 +81,7 @@ func (m *Module) listChats(w http.ResponseWriter, r *http.Request) error {
 	q := r.URL.Query()
 	page := httpx.QueryInt(r, "page", 1, 1, 0)
 	perPage := httpx.QueryInt(r, "per_page", 10, 1, 100)
-	where := []string{"c.user_id = ?", "c.deleted_at IS NULL", "c.channel_id IS NULL"}
+	where := []string{"c.user_id = ?", "c.deleted_at IS NULL"}
 	args := []any{u.ID}
 	if ws := q.Get("workspace_id"); ws != "" {
 		where = append(where, "c.workspace_id = ?")
@@ -121,7 +121,7 @@ func (m *Module) listChats(w http.ResponseWriter, r *http.Request) error {
 
 func (m *Module) getChat(w http.ResponseWriter, r *http.Request) error {
 	u := user(r)
-	c, err := m.a.Store.GetMemberChat(r.Context(), u.ID, r.PathValue("chat_id"))
+	c, err := m.a.Store.GetChat(r.Context(), u.ID, r.PathValue("chat_id"))
 	if err != nil {
 		return err
 	}
@@ -257,7 +257,7 @@ func (m *Module) deleteChat(w http.ResponseWriter, r *http.Request) error {
 
 func (m *Module) deleteAllChats(w http.ResponseWriter, r *http.Request) error {
 	u := user(r)
-	rows, err := m.a.DB.QueryContext(r.Context(), `SELECT id FROM chats WHERE user_id = ? AND deleted_at IS NULL AND channel_id IS NULL`, u.ID)
+	rows, err := m.a.DB.QueryContext(r.Context(), `SELECT id FROM chats WHERE user_id = ? AND deleted_at IS NULL`, u.ID)
 	if err != nil {
 		return err
 	}
@@ -293,7 +293,7 @@ func (m *Module) DeleteChats(ctx context.Context, userID string, ids []string) e
 		args = append(args, userID)
 		ph := db.Placeholders(len(ids))
 		rows, err := tx.QueryContext(ctx, `SELECT id, workspace_id, COALESCE(worktree_cwd, '') FROM chats
-			WHERE id IN (`+ph+`) AND user_id = ? AND deleted_at IS NULL AND channel_id IS NULL`, args...)
+			WHERE id IN (`+ph+`) AND user_id = ? AND deleted_at IS NULL`, args...)
 		if err != nil {
 			return err
 		}

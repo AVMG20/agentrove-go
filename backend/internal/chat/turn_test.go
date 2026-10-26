@@ -48,12 +48,11 @@ func newTestModule(t *testing.T) (*Module, *db.DB) {
 	return m, d
 }
 
-// newTestTurn builds a channel-member turn so emits never publish to the hub.
+// newTestTurn builds a turn whose emits never publish to the hub.
 func newTestTurn(m *Module) *turn {
-	return newTurn(m, &turnRequest{
-		chat: &models.Chat{ID: testChat}, userID: testUser, messageID: testMsg,
-		member: func(string, map[string]any) {},
-	})
+	t := newTurn(m, &turnRequest{chat: &models.Chat{ID: testChat}, userID: testUser, messageID: testMsg})
+	t.publish = ""
+	return t
 }
 
 func storedKinds(t *testing.T, d *db.DB) []string {

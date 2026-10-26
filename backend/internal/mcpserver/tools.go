@@ -289,63 +289,6 @@ func (m *Module) buildTools() []*tool {
 			handler: m.getMessages,
 		},
 		{
-			name: "list_channels",
-			description: "List multi-agent channels, optionally filtered by workspace_id.\n\nReturns channel settings and members, " +
-				"including each member's chat_id. Use a channel's id with post_channel_message to continue its discussion and " +
-				"with get_channel_messages to read replies. Omit workspace_id to list channels across all workspaces.",
-			schema:  object(props{"workspace_id": optStr()}),
-			handler: m.listChannels,
-		},
-		{
-			name: "create_channel",
-			description: "Create a multi-agent channel for a discussion or debate.\n\nSupply at least one member, each with a " +
-				"model_id from list_models and optional display_name, persona (a name from list_personas), and thinking_mode (as " +
-				"in send_message). Display names must match [A-Za-z0-9][A-Za-z0-9._-]{0,31}. Members run unattended with " +
-				"bypassPermissions. Omit workspace_id to use the most recently active workspace. Set worktree=true for an isolated " +
-				"git worktree. branch selects the checkout or worktree base branch.\n\nReturns the channel summary, including its " +
-				"id and each member's chat_id. Creating the channel does not start the discussion: call post_channel_message with " +
-				"its id. Members reply asynchronously; read the discussion with get_channel_messages.",
-			schema: object(props{
-				"name": str(""),
-				"members": map[string]any{"type": "array", "minItems": 1, "items": object(props{
-					"model_id":      str(""),
-					"display_name":  map[string]any{"type": []string{"string", "null"}, "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,31}$"},
-					"persona":       optStr(),
-					"thinking_mode": effort(),
-				}, "model_id")},
-				"workspace_id": optStr(), "worktree": boolean(), "branch": optStr(),
-			}, "name", "members"),
-			handler: m.createChannel,
-		},
-		{
-			name: "post_channel_message",
-			description: "Post a message as the user to a channel, triggering its members' replies.\n\nMembers reply " +
-				"asynchronously; use get_channel_messages with the channel_id to read the discussion and members' replies.\n" +
-				"Returns the posted message_id, channel_id, seq and status, not the members' replies.",
-			schema:  object(props{"channel_id": str(""), "content": str("")}, "channel_id", "content"),
-			handler: m.postChannelMessage,
-		},
-		{
-			name: "get_channel_messages",
-			description: "Read a channel's conversation oldest-first, ordered by seq.\n\nPass the highest seq seen as after_seq to " +
-				"get only newer messages. Each message includes its author's display name (or \"user\"), member_id, content and " +
-				"status. Status is \"streaming\" while a member is replying and content is partial, then \"completed\" when done; " +
-				"\"cancelled\" and \"deleted\" also occur.\n\nUse this to follow a debate in one call instead of reading each " +
-				"member's chat.",
-			schema:  object(props{"channel_id": str(""), "after_seq": integer(0)}, "channel_id"),
-			handler: m.getChannelMessages,
-		},
-		{
-			name: "stop_channel",
-			description: "Stop a channel's members' in-progress replies and drop queued, undelivered messages.\n\nPartial replies " +
-				"stay with status \"cancelled\" in get_channel_messages. Members won't answer the queued messages. The channel " +
-				"stays open; post_channel_message resumes the discussion. Stopping an idle channel is a no-op. A chat cannot stop " +
-				"a channel it belongs to from within its own turn, since that would cancel the calling turn. Returns " +
-				"{\"stopped\": true}.",
-			schema:  object(props{"channel_id": str("")}, "channel_id"),
-			handler: m.stopChannel,
-		},
-		{
 			name: "list_automations",
 			description: "List your scheduled automations.\n\nEach automation runs its prompt on a cron schedule, starting a new " +
 				"unattended chat every time it fires. Returns id, name, cron_expression, timezone, enabled, model_id, " +

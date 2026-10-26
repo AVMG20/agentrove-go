@@ -44,7 +44,6 @@ const (
 	checkpointMaxInterval = time.Minute
 	checkpointMaxLag      = 2000
 	interruptGrace        = 20 * time.Second
-	memberPermTimeout     = 5 * time.Minute
 )
 
 // Prompt suggestions were retired, but resumed sessions may still end replies
@@ -67,7 +66,6 @@ type turnRequest struct {
 	isNewChat      bool
 	rawPrompt      string // for titling
 	followup       bool   // continue a cycle Claude started on its own
-	member         func(kind string, payload map[string]any)
 	onDone         func(status, content string)
 	unattended     bool
 	// profile is the provider account the turn runs on.
@@ -77,7 +75,6 @@ type turnRequest struct {
 type pendingPerm struct {
 	controlID string
 	req       claude.CanUseTool
-	timer     *time.Timer
 }
 
 type pendingElicit struct {
@@ -96,7 +93,7 @@ type turn struct {
 	req      *turnRequest
 	chatID   string
 	streamID string
-	publish  string // user id to publish envelopes to; "" for channel members
+	publish  string // user id to publish envelopes to
 
 	ctx       context.Context
 	cancel    context.CancelFunc
@@ -143,10 +140,7 @@ func newTurn(m *Module, req *turnRequest) *turn {
 		ctx: ctx, cancel: cancel, done: make(chan struct{}),
 		in: newInbox(), tr: claude.NewTranslator(),
 		perms: map[string]*pendingPerm{}, elicits: map[string]*pendingElicit{},
-		lastFlush: time.Now(), lastCheckpoint: time.Now(),
-	}
-	if req.member == nil {
-		t.publish = req.userID
+		lastFlush: time.Now(), lastCheckpoint: time.Now(), publish: req.userID,
 	}
 	t.tr.SetContextWindow(models.ModelContextWindow(reqProvider(req), req.modelID))
 	return t
@@ -156,9 +150,6 @@ func newTurn(m *Module, req *turnRequest) *turn {
 // batches (at the latest flushInterval later); everything else is persisted
 // and published immediately.
 func (t *turn) emit(kind string, payload map[string]any) int64 {
-	if t.req.member != nil {
-		t.req.member(kind, payload)
-	}
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	defer t.scheduleFlushLocked()
@@ -289,7 +280,7 @@ func (t *turn) contentText() string {
 	return strings.TrimSpace(promptSuggestionsRE.ReplaceAllString(raw, ""))
 }
 
-// withErrorText is the content_text of a failed turn: channels, MCP readers
+// withErrorText is the content_text of a failed turn: MCP readers
 // and search see why it failed, as they did when the error was in the render.
 func withErrorText(content, errText string) string {
 	switch {
@@ -341,7 +332,7 @@ func (t *turn) run() {
 	if wt := db.Deref(t.req.chat.WorktreeCwd); wt != "" {
 		t.emit("system", map[string]any{"data": map[string]any{"worktree_cwd": wt}})
 	}
-	if t.req.isNewChat && t.req.member == nil && t.req.rawPrompt != "" && !t.cancelled.Load() {
+	if t.req.isNewChat && t.req.rawPrompt != "" && !t.cancelled.Load() {
 		go t.m.generateTitle(t.req.userID, t.req.chat, t.req.rawPrompt)
 	}
 
@@ -603,7 +594,7 @@ func (t *turn) handleControl(controlID string, raw json.RawMessage) {
 		return
 	}
 	if req.ToolName == "AskUserQuestion" {
-		if t.req.unattended || t.req.member != nil {
+		if t.req.unattended {
 			t.sess.RespondControl(controlID, map[string]any{"behavior": "deny", "message": "No user is available to answer questions. Proceed with your best judgment and state your assumptions.", "interrupt": false})
 			return
 		}
@@ -622,9 +613,6 @@ func (t *turn) handleControl(controlID string, raw json.RawMessage) {
 	t.mu.Lock()
 	t.perms[requestID] = p
 	t.mu.Unlock()
-	if t.req.member != nil {
-		p.timer = time.AfterFunc(memberPermTimeout, func() { t.resolvePermission(requestID, "") })
-	}
 	t.emit("permission_request", map[string]any{
 		"request_id": requestID, "tool_name": req.ToolName, "tool_input": orEmpty(req.Input),
 		"data": map[string]any{"options": claude.PermissionOptions(req.ToolName)},
@@ -646,9 +634,6 @@ func (t *turn) resolvePermission(requestID, optionID string) bool {
 	if p == nil {
 		return false
 	}
-	if p.timer != nil {
-		p.timer.Stop()
-	}
 	resp, mode := claude.PermissionDecision(p.req, optionID)
 	if mode != "" {
 		t.sess.NoteMode(mode)
@@ -657,9 +642,6 @@ func (t *turn) resolvePermission(requestID, optionID string) bool {
 		}
 	}
 	t.sess.RespondControl(p.controlID, resp)
-	if t.req.member != nil {
-		t.emit("permission_resolved", map[string]any{"request_id": requestID})
-	}
 	return true
 }
 
@@ -731,9 +713,6 @@ func (t *turn) denyPending(msg string) {
 		return
 	}
 	for _, p := range perms {
-		if p.timer != nil {
-			p.timer.Stop()
-		}
 		t.sess.RespondControl(p.controlID, map[string]any{"behavior": "deny", "message": msg, "interrupt": true})
 	}
 	for id, e := range elicits {
@@ -749,9 +728,6 @@ func (t *turn) dismissControl(controlID string) {
 	for id, p := range t.perms {
 		if p.controlID == controlID {
 			permID = id
-			if p.timer != nil {
-				p.timer.Stop()
-			}
 			delete(t.perms, id)
 		}
 	}
@@ -793,22 +769,20 @@ func (t *turn) finish(status, errText string) {
 	if t.req.onDone != nil {
 		defer t.req.onDone(status, content)
 	}
-	if t.req.member == nil {
-		switch status {
-		case StatusCompleted:
-			t.queueMode = queueAll
-		case StatusInterrupted:
-			t.queueMode = queueSendNow
-		}
+	switch status {
+	case StatusCompleted:
+		t.queueMode = queueAll
+	case StatusInterrupted:
+		t.queueMode = queueSendNow
 	}
 	switch status {
 	case StatusCompleted:
-		if t.req.member == nil && t.m.startQueued(t, false, dur) {
+		if t.m.startQueued(t, false, dur) {
 			return
 		}
 		t.emit("complete", map[string]any{"status": "completed", "duration_ms": dur})
 	case StatusInterrupted:
-		if t.req.member == nil && t.m.startQueued(t, true, dur) {
+		if t.m.startQueued(t, true, dur) {
 			return
 		}
 		t.emit("cancelled", map[string]any{"status": StatusInterrupted, "duration_ms": dur})

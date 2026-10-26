@@ -41,15 +41,10 @@ func newMCPConfigs(a *app.App) *mcpConfigs {
 	return &mcpConfigs{a: a, cache: map[string]cachedMCP{}}
 }
 
-func (c *mcpConfigs) forChat(userID, chatID, kind string, member bool) map[string]any {
-	// Channel members only get the artifact tools; their chat is hidden, so
-	// artifacts aren't linked to it.
-	full := c.a.Cfg.MCPEnabled && !member
+func (c *mcpConfigs) forChat(userID, chatID, kind string) map[string]any {
+	full := c.a.Cfg.MCPEnabled
 	if !full && !c.a.Cfg.ArtifactsEnabled {
 		return nil
-	}
-	if member {
-		chatID = ""
 	}
 	key := fmt.Sprintf("%s|%s|%s|%t", userID, chatID, kind, full)
 	c.mu.Lock()

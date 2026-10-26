@@ -55,11 +55,10 @@ function useSidebarToggleTransition() {
 export function Layout({ children }: { children: ReactNode }) {
   const sidebarOpen = useUIStore((state) => state.sidebarOpen);
   const isMobile = useIsMobile();
-  // Pages with workspace views (chat, channel, new thread) get the phone tab bar.
+  // Pages with workspace views (chat, new thread) get the phone tab bar.
   const isChat = useMatch('/chat/:chatId') != null;
-  const isChannel = useMatch('/channels/:channelId') != null;
   const isLanding = useMatch('/') != null;
-  const showTabBar = isMobile && (isChat || isChannel || isLanding);
+  const showTabBar = isMobile && (isChat || isLanding);
 
   useSidebarWidthVar();
   useSidebarToggleTransition();

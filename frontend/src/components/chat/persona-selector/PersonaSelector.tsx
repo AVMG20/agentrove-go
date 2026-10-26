@@ -24,13 +24,13 @@ interface PersonaDropdownControlProps {
   dropdownAlign?: 'left' | 'right';
 }
 
-export interface PersonaDropdownProps extends PersonaDropdownControlProps {
+interface PersonaDropdownProps extends PersonaDropdownControlProps {
   personas: Persona[];
   value: string;
   onChange: (persona: string) => void;
 }
 
-export const PersonaDropdown = memo(function PersonaDropdown({
+const PersonaDropdown = memo(function PersonaDropdown({
   personas,
   value,
   onChange,

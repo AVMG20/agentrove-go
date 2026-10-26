@@ -98,10 +98,6 @@ func (m *Module) attachmentFile(r *http.Request) (string, string, error) {
 	err := m.a.DB.QueryRowContext(r.Context(), `SELECT a.file_path, a.filename, c.user_id FROM message_attachments a
 		JOIN messages msg ON msg.id = a.message_id JOIN chats c ON c.id = msg.chat_id WHERE a.id = ?`, id).Scan(&rel, &name, &owner)
 	if errors.Is(err, sql.ErrNoRows) {
-		err = m.a.DB.QueryRowContext(r.Context(), `SELECT a.file_path, a.filename, ch.user_id FROM channel_message_attachments a
-			JOIN channel_messages cm ON cm.id = a.message_id JOIN channels ch ON ch.id = cm.channel_id WHERE a.id = ?`, id).Scan(&rel, &name, &owner)
-	}
-	if errors.Is(err, sql.ErrNoRows) {
 		return "", "", httpx.NotFound("Attachment not found")
 	}
 	if err != nil {

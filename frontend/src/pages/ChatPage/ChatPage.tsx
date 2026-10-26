@@ -1,5 +1,5 @@
 import { useEffect, useCallback, useRef, ReactNode } from 'react';
-import { useParams, Navigate, useNavigate } from 'react-router-dom';
+import { useParams, Navigate } from 'react-router-dom';
 import { useUIStore } from '@/store/uiStore';
 import { useChatStore } from '@/store/chatStore';
 import { useCommandMenu } from '@/hooks/useCommandMenu';
@@ -26,7 +26,6 @@ import {
 
 export function ChatPage() {
   const { chatId } = useParams();
-  const navigate = useNavigate();
   useCommandMenu();
 
   const activeViews = useActiveViews();
@@ -131,13 +130,6 @@ export function ChatPage() {
     useChatStore.getState().setCurrentChat(currentChat || null);
   }, [currentChat]);
 
-  // Channel member chats are only shown through their channel.
-  const channelId = currentChat?.channel_id;
-  useEffect(() => {
-    if (!channelId || !chatId) return;
-    navigate(`/channels/${channelId}`, { replace: true });
-  }, [channelId, chatId, navigate]);
-
   if (prevChatIdForResetRef.current !== chatId) {
     prevChatIdForResetRef.current = chatId;
     const ui = useUIStore.getState();
@@ -184,7 +176,6 @@ export function ChatPage() {
   );
 
   if (!chatId) return <Navigate to="/" />;
-  if (channelId) return null;
 
   return (
     <ChatProvider

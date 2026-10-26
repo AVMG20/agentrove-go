@@ -174,8 +174,8 @@ func (s *Service) migrateUser(ctx context.Context, userID string, global map[str
 				p.ID, userID, p.Provider, p.Name, p.AuthMode, p.BaseURL, p.UsageURL, enc, p.TokenEnv, p.configDir, now, now); err != nil {
 				return err
 			}
-			// The user's chats ran on these vars, channel members included:
-			// keep them all on the same account.
+			// The user's chats ran on these vars: keep them all on the same
+			// account.
 			if _, err := tx.ExecContext(ctx, `UPDATE chats SET profile_id = ?, provider = ? WHERE user_id = ? AND profile_id IS NULL`,
 				p.ID, p.Provider, userID); err != nil {
 				return err

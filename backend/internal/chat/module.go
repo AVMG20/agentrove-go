@@ -67,7 +67,7 @@ type Module struct {
 
 	// MCPConfig returns the mcpServers map for a chat's Claude session. It
 	// must be stable across turns: the session fingerprint includes it.
-	MCPConfig func(userID, chatID, sandboxKind string, channelMember bool) map[string]any
+	MCPConfig func(userID, chatID, sandboxKind string) map[string]any
 }
 
 func New(a *app.App) *Module {
@@ -563,7 +563,7 @@ func (m *Module) sessionConfig(sb *sandbox.Sandbox, req *turnRequest) claude.Con
 	}
 	var allow []string
 	if m.MCPConfig != nil {
-		cfg.MCPServers = m.MCPConfig(req.userID, req.chat.ID, sb.Kind, req.member != nil)
+		cfg.MCPServers = m.MCPConfig(req.userID, req.chat.ID, sb.Kind)
 		if len(cfg.MCPServers) > 0 {
 			// Publishing a (private) artifact never needs a permission prompt.
 			allow = append(allow, artifactTools...)
@@ -714,7 +714,7 @@ func prepareUserPrompt(prompt string, custom *string) string {
 
 // systemPromptFor returns the session system prompt and whether it replaces
 // Claude Code's own (custom personas do).
-func systemPromptFor(st *models.UserSettings, persona string, member bool) (string, bool) {
+func systemPromptFor(st *models.UserSettings, persona string) (string, bool) {
 	content := ""
 	if persona != "" && persona != DefaultPersona && st.Personas.Valid {
 		for _, p := range st.Personas.V {
@@ -723,9 +723,6 @@ func systemPromptFor(st *models.UserSettings, persona string, member bool) (stri
 				break
 			}
 		}
-	}
-	if member {
-		return content, false
 	}
 	return content + "\n" + prompts.ChatMentionsInstructions, content != ""
 }
@@ -742,10 +739,8 @@ type startInput struct {
 	baseBranch     *string
 	persona        string
 	attachments    []models.Attachment
-	member         func(string, map[string]any)
 	onDone         func(string, string)
 	unattended     bool
-	includeChannel bool
 	// coerceModel replaces a model of another provider with the chat
 	// provider's default (automations and MCP send Claude model ids).
 	coerceModel bool
@@ -826,20 +821,12 @@ func (m *Module) startTurn(ctx context.Context, in startInput) (app.ChatTurnResu
 	defer func() {
 		if !launched && !in.reserved {
 			m.unreserve(in.chatID)
-			if in.member == nil {
-				// A message queued while we held the chat was left to us.
-				go func() { _ = m.runQueued(in.chatID, in.userID, false) }()
-			}
+			// A message queued while we held the chat was left to us.
+			go func() { _ = m.runQueued(in.chatID, in.userID, false) }()
 		}
 	}()
 
-	var chat *models.Chat
-	var err error
-	if in.includeChannel {
-		chat, err = m.a.Store.GetMemberChat(ctx, in.userID, in.chatID)
-	} else {
-		chat, err = m.a.Store.GetChat(ctx, in.userID, in.chatID)
-	}
+	chat, err := m.a.Store.GetChat(ctx, in.userID, in.chatID)
 	if err != nil {
 		return res, err
 	}
@@ -892,17 +879,14 @@ func (m *Module) startTurn(ctx context.Context, in startInput) (app.ChatTurnResu
 	if err != nil {
 		return res, err
 	}
-	var checkpointID *string
-	if in.member == nil {
-		checkpointID = m.createCheckpoint(ctx, sb, chat, asstMsg.ID)
-	}
+	checkpointID := m.createCheckpoint(ctx, sb, chat, asstMsg.ID)
 
-	system, full := systemPromptFor(settings, in.persona, in.member != nil)
+	system, full := systemPromptFor(settings, in.persona)
 	req := &turnRequest{
 		chat: chat, ws: ws, userID: in.userID, prompt: prepareUserPrompt(in.prompt, settings.CustomInstructions),
 		modelID: in.modelID, permissionMode: in.permissionMode, effort: effort, personaName: in.persona,
 		systemPrompt: system, fullReplace: full, attachments: in.attachments, messageID: asstMsg.ID,
-		isNewChat: chat.SessionID == nil, rawPrompt: in.prompt, member: in.member, onDone: in.onDone, unattended: in.unattended,
+		isNewChat: chat.SessionID == nil, rawPrompt: in.prompt, onDone: in.onDone, unattended: in.unattended,
 		profile: profile,
 	}
 	if in.beforeLaunch != nil {
@@ -919,9 +903,7 @@ func (m *Module) startTurn(ctx context.Context, in startInput) (app.ChatTurnResu
 	}
 	m.launch(t)
 	launched = true
-	if in.member == nil {
-		m.publishChatEvent(in.userID, map[string]any{"kind": "stream_started", "chat_id": chat.ID, "message_id": asstMsg.ID})
-	}
+	m.publishChatEvent(in.userID, map[string]any{"kind": "stream_started", "chat_id": chat.ID, "message_id": asstMsg.ID})
 	res = app.ChatTurnResult{ChatID: chat.ID, MessageID: asstMsg.ID, LastSeq: chat.LastEventSeq, CheckpointID: checkpointID, WorktreeCwd: chat.WorktreeCwd}
 	return res, nil
 }
@@ -1106,7 +1088,7 @@ func (m *Module) startFollowup(chatID string) {
 	m.publishChatEvent(chat.UserID, map[string]any{"kind": "stream_started", "chat_id": chatID, "message_id": asst.ID})
 }
 
-// hookStartTurn serves automations, channels and the MCP server.
+// hookStartTurn serves automations and the MCP server.
 func (m *Module) hookStartTurn(r app.ChatTurnRequest) (app.ChatTurnResult, error) {
 	atts := make([]models.Attachment, 0, len(r.Attachments))
 	for _, a := range r.Attachments {
@@ -1115,7 +1097,7 @@ func (m *Module) hookStartTurn(r app.ChatTurnRequest) (app.ChatTurnResult, error
 	return m.startTurn(context.Background(), startInput{
 		userID: r.UserID, chatID: r.ChatID, prompt: r.Prompt, modelID: r.ModelID, permissionMode: r.PermissionMode,
 		thinkingMode: r.ThinkingMode, worktree: r.Worktree, baseBranch: r.BaseBranch, persona: r.SelectedPersonaName,
-		attachments: atts, member: r.MemberSink, onDone: r.OnDone, unattended: r.Unattended, includeChannel: r.MemberSink != nil,
+		attachments: atts, onDone: r.OnDone, unattended: r.Unattended,
 		coerceModel: true,
 	})
 }

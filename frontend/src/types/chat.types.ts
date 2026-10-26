@@ -91,8 +91,6 @@ export interface Chat {
   context_token_usage?: number;
   pinned_at: string | null;
   worktree_cwd: string | null;
-  // Member chats belong to a channel and are only shown through it.
-  channel_id: string | null;
   session_agent_kind: AgentKind | null;
   unread: boolean;
   last_model_id: string | null;

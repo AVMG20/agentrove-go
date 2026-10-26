@@ -101,7 +101,6 @@ type Chat struct {
 	Title             string      `json:"title"`
 	UserID            string      `json:"user_id"`
 	WorkspaceID       string      `json:"workspace_id"`
-	ChannelID         *string     `json:"channel_id"`
 	SessionID         *string     `json:"-"`
 	WorktreeCwd       *string     `json:"worktree_cwd"`
 	ContextTokenUsage int         `json:"context_token_usage"`
@@ -132,12 +131,12 @@ type Chat struct {
 }
 
 // ChatColumns selects chat columns joined with workspaces as w (for sandbox_id).
-const ChatColumns = `c.id, c.title, c.user_id, c.workspace_id, c.channel_id, c.session_id, c.worktree_cwd,
+const ChatColumns = `c.id, c.title, c.user_id, c.workspace_id, c.session_id, c.worktree_cwd,
 	c.context_token_usage, c.context_window, c.last_event_seq, c.deleted_at, c.pinned_at, c.last_viewed_at,
 	c.last_model_id, c.last_thinking_mode, c.last_persona_name, c.automation_id, c.profile_id, c.provider, c.created_at, c.updated_at, w.sandbox_id`
 
 func (c *Chat) ScanFields() []any {
-	return []any{&c.ID, &c.Title, &c.UserID, &c.WorkspaceID, &c.ChannelID, &c.SessionID, &c.WorktreeCwd,
+	return []any{&c.ID, &c.Title, &c.UserID, &c.WorkspaceID, &c.SessionID, &c.WorktreeCwd,
 		&c.ContextTokenUsage, &c.ContextWindow, &c.LastEventSeq, &c.DeletedAt, &c.PinnedAt, &c.LastViewedAt,
 		&c.LastModelID, &c.LastThinkingMode, &c.LastPersonaName, &c.AutomationID, &c.StoredProfileID, &c.StoredProvider, &c.CreatedAt, &c.UpdatedAt, &c.SandboxID}
 }
@@ -201,7 +200,7 @@ func (p CursorPaginated[T]) MarshalJSON() ([]byte, error) {
 	return json.Marshal(plain(p))
 }
 
-// Attachment is the persisted shape of an uploaded file (message, queue, channel).
+// Attachment is the persisted shape of an uploaded file (message, queue).
 type Attachment struct {
 	FileURL  string  `json:"file_url"`
 	FilePath *string `json:"file_path"`

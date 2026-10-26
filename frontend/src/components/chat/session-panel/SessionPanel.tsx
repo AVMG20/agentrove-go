@@ -3,7 +3,6 @@ import { AppWindow, Box, ExternalLink, Folder, GitBranch } from 'lucide-react';
 import clsx from 'clsx';
 import { Button } from '@/components/ui/primitives/Button/Button';
 import { FloatingTooltip } from '@/components/ui/FloatingTooltip/FloatingTooltip';
-import { ClaudeIcon } from '@/components/ui/icons/ClaudeIcon';
 import { ProviderIcon } from '@/components/ui/icons/ProviderIcon';
 import { useChatArtifactsQuery } from '@/hooks/queries/useArtifactQueries';
 import { useModelMap } from '@/hooks/queries/useModelQueries';
@@ -18,7 +17,6 @@ import { useChatAgentKind } from '@/hooks/useChatAgentKind';
 import { useChatSessionState } from '@/hooks/useChatSessionContext';
 import { useUIStore } from '@/store/uiStore';
 import type { Chat } from '@/types/chat.types';
-import type { Channel } from '@/types/channel.types';
 import type { DiffMode, GitDiffTotals } from '@/types/sandbox.types';
 import type { Workspace } from '@/types/workspace.types';
 import { getRelativeTime } from '@/utils/date';
@@ -119,33 +117,6 @@ function EnvironmentCard({
         </Row>
       )}
       {children}
-    </Card>
-  );
-}
-
-function MembersCard({ channel }: { channel: Channel }) {
-  const modelMap = useModelMap();
-  return (
-    <Card title="Members">
-      {channel.members.map((member) => {
-        const details = [
-          modelMap.get(member.model_id)?.name ?? member.model_id,
-          member.persona,
-          member.thinking_mode,
-        ]
-          .filter(Boolean)
-          .join(' · ');
-        return (
-          <Row
-            key={member.id}
-            icon={<ClaudeIcon aria-hidden className={styles.glyph} />}
-            hint={details}
-          >
-            {member.display_name}
-            <span className={styles.secondary}>{` · ${details}`}</span>
-          </Row>
-        );
-      })}
     </Card>
   );
 }
@@ -340,37 +311,23 @@ function ChangesCard({
 interface SessionPanelProps {
   chat: Chat;
   workspace: Workspace | undefined;
-  // A channel's panel describes its shared workspace through `chat`, one of its member chats.
-  channel?: Channel;
 }
 
-export const SessionPanel = memo(function SessionPanel({
-  chat,
-  workspace,
-  channel,
-}: SessionPanelProps) {
+export const SessionPanel = memo(function SessionPanel({ chat, workspace }: SessionPanelProps) {
   const worktreeCwd = chat.worktree_cwd ?? undefined;
   const { data: branches } = useGitBranchesQuery(chat.sandbox_id, true, worktreeCwd);
   const branch = branches?.is_git_repo ? branches.current_branch : null;
   return (
     <aside className={styles.panel} aria-label="Session details">
       <EnvironmentCard chat={chat} workspace={workspace} branch={branch}>
-        {!channel && (
-          <ModelRow
-            chatId={chat.id}
-            sessionAgentKind={chat.session_agent_kind}
-            provider={chat.provider}
-          />
-        )}
+        <ModelRow
+          chatId={chat.id}
+          sessionAgentKind={chat.session_agent_kind}
+          provider={chat.provider}
+        />
       </EnvironmentCard>
-      {channel ? (
-        <MembersCard channel={channel} />
-      ) : (
-        <>
-          <ContextCard chat={chat} />
-          <ArtifactsCard chatId={chat.id} />
-        </>
-      )}
+      <ContextCard chat={chat} />
+      <ArtifactsCard chatId={chat.id} />
       {branch && (
         <ChangesCard
           chatId={chat.id}

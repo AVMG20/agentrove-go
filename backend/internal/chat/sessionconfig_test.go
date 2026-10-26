@@ -18,7 +18,7 @@ func TestSessionConfigBrowserTools(t *testing.T) {
 	m, d := newTestModule(t)
 	m.a = &app.App{Cfg: &config.Config{BrowserEnabled: true, BrowserIdleTTL: 10 * time.Minute}, DB: d, Store: &appstore.Store{DB: d}}
 	agentrove := map[string]any{"agentrove": map[string]any{"type": "http"}}
-	m.MCPConfig = func(string, string, string, bool) map[string]any { return agentrove }
+	m.MCPConfig = func(string, string, string) map[string]any { return agentrove }
 	sb := &sandbox.Sandbox{Kind: sandbox.KindDocker, Root: "/home/user/projects/p"}
 	req := &turnRequest{chat: &models.Chat{ID: testChat}, userID: testUser}
 

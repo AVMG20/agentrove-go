@@ -465,12 +465,8 @@ export const useUIStore = create<UIStoreState>()(
         }),
 
       loadWorkspaceForChat: (chatId) => {
-        get().loadWorkspace(chatId);
-      },
-
-      loadWorkspace: (workspaceId) => {
         const state = get();
-        if (state.currentWorkspaceChatId === workspaceId) return;
+        if (state.currentWorkspaceChatId === chatId) return;
         const layoutsByChat = { ...state.layoutsByChat };
         if (state.currentWorkspaceChatId) {
           layoutsByChat[state.currentWorkspaceChatId] = ownTabs(
@@ -478,13 +474,13 @@ export const useUIStore = create<UIStoreState>()(
             state.visibleLayout,
           );
         }
-        const restored = layoutsByChat[workspaceId] ?? {
+        const restored = layoutsByChat[chatId] ?? {
           openTabs: ['agent:primary'],
           visibleLayout: [['agent:primary']],
         };
         set({
           layoutsByChat,
-          currentWorkspaceChatId: workspaceId,
+          currentWorkspaceChatId: chatId,
           openTabs: restored.openTabs,
           visibleLayout: restored.visibleLayout,
         });

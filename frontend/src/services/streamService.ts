@@ -1,9 +1,5 @@
-import { queryKeys } from '@/hooks/queries/queryKeys';
-import { queryClient } from '@/lib/queryClient';
 import { useStreamStore } from '@/store/streamStore';
-import { useChannelQueueStore, useMessageQueueStore } from '@/store/messageQueueStore';
-import { useChannelStore } from '@/store/channelStore';
-import { isChannelEnvelope, type ChannelEnvelope } from '@/types/channel.types';
+import { useMessageQueueStore } from '@/store/messageQueueStore';
 import type { ChatRequest } from '@/types/chat.types';
 import type { ToolEventPayload } from '@/types/tools.types';
 import type {
@@ -54,10 +50,6 @@ class StreamService {
 
   constructor() {
     streamConnection.configure({
-      onOpen: () => {
-        useChannelStore.getState().bumpStreamEpoch();
-        void queryClient.invalidateQueries({ queryKey: queryKeys.channelsAll });
-      },
       onEnvelopeData: (raw) => this.handleEnvelopeData(raw),
       onConnectionFailure: (chatIds) => this.failStreamsForChats(chatIds),
     });
@@ -174,15 +166,7 @@ class StreamService {
   }
 
   private handleEnvelopeData(raw: string): void {
-    const parsed = this.parseStreamEvent<StreamEnvelope | ChannelEnvelope>(raw);
-    if (isChannelEnvelope(parsed)) {
-      if (parsed.kind === 'channel_queue_sent') {
-        useChannelQueueStore.getState().removeLocalOnly(parsed.channelId, parsed.payload.id);
-      } else {
-        useChannelStore.getState().applyEnvelope(parsed);
-      }
-      return;
-    }
+    const parsed = this.parseStreamEvent<StreamEnvelope>(raw);
     if (!parsed?.chatId) return;
     const chatId = parsed.chatId;
 

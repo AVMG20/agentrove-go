@@ -2,7 +2,6 @@
 import { describe, it, expect, vi } from 'vitest';
 
 vi.mock('@/services/queueService', () => ({ queueService: {} }));
-vi.mock('@/services/channelService', () => ({ channelService: {} }));
 
 import { resetUserScopedStores } from './resetUserStores';
 import { useStreamStore } from './streamStore';

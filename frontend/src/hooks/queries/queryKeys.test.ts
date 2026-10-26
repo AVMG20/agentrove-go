@@ -43,7 +43,6 @@ const CONTRACT: ReadonlyArray<readonly [string, readonly unknown[], readonly unk
   ],
   ['sandbox.search', queryKeys.sandbox.searchAll(SB), queryKeys.sandbox.search(SB, 'q', '/cwd')],
   ['github.pulls', queryKeys.github.pullsAll('o', 'r'), queryKeys.github.pulls('o', 'r')],
-  ['channels', queryKeys.channelsAll, queryKeys.channels('ws1')],
 ];
 
 describe('queryKeys prefix-invalidation contract', () => {
@@ -67,7 +66,6 @@ describe('queryKeys prefix-invalidation contract', () => {
     const allKeyNames = collectAllKeys(queryKeys).sort();
     expect(allKeyNames).toEqual(
       [
-        'channelsAll',
         'chatsSearchAll',
         'fileContentAll',
         'filesMetadataAll',

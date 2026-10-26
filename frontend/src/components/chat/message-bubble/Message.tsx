@@ -12,7 +12,7 @@ import { useChatContext } from '@/hooks/useChatContext';
 import { useCheckpointRestore } from '@/hooks/useCheckpointRestore';
 import styles from './Message.module.scss';
 
-export function MessageRow({ children, mine }: { children: ReactNode; mine?: boolean }) {
+function MessageRow({ children, mine }: { children: ReactNode; mine?: boolean }) {
   return (
     <div className={mine ? `${styles.message} ${styles.mine}` : styles.message}>
       <div className={styles['message-row']}>
@@ -22,7 +22,7 @@ export function MessageRow({ children, mine }: { children: ReactNode; mine?: boo
   );
 }
 
-export function MessageText({ children }: { children: ReactNode }) {
+function MessageText({ children }: { children: ReactNode }) {
   return <div className={styles['message-text']}>{children}</div>;
 }
 

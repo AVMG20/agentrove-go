@@ -6,7 +6,6 @@ import { ToggleButton } from '@/components/ui/ToggleButton/ToggleButton';
 import { FloatingTooltip } from '@/components/ui/FloatingTooltip/FloatingTooltip';
 import { ViewSwitcher } from '@/components/layout/ViewSwitcher/ViewSwitcher';
 import { ChatTitle } from '@/components/layout/ChatTitle/ChatTitle';
-import { ChannelHeader } from '@/components/channels/ChannelHeader';
 import { findSettingsSection } from '@/components/settings/settingsSections';
 import styles from './TitleBar.module.scss';
 
@@ -27,12 +26,11 @@ function SettingsTitle({ sectionId }: { sectionId: string | undefined }) {
 
 // The bar above the page. With the sidebar closed (or on mobile) it carries
 // the sidebar toggle plus search/new thread, so they're never more than a
-// click away; the rest is per-route: the chat title, the channel header or the
-// settings breadcrumb.
+// click away; the rest is per-route: the chat title or the settings
+// breadcrumb.
 export function TitleBar() {
   const navigate = useNavigate();
   const isChatPage = useMatch('/chat/:chatId');
-  const isChannelPage = useMatch('/channels/:channelId');
   const settingsMatch = useMatch('/settings/:section');
   const sidebarOpen = useUIStore((state) => state.sidebarOpen);
 
@@ -73,7 +71,6 @@ export function TitleBar() {
 
       <div className={styles.content}>
         {isChatPage && <ChatTitle />}
-        {isChannelPage && <ChannelHeader />}
         {settingsMatch && <SettingsTitle sectionId={settingsMatch.params.section} />}
       </div>
       {!settingsMatch && <ViewSwitcher />}

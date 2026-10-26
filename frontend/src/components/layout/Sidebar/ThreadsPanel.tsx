@@ -8,10 +8,8 @@ import { useBlockedChatIds } from '@/hooks/useBlockedChatIds';
 import { useWorkingChatIds } from '@/hooks/useWorkingChatIds';
 import { useIsMobile } from '@/hooks/useIsMobile';
 import { useChatQuery } from '@/hooks/queries/useChatQueries';
-import { useChannelQuery } from '@/hooks/queries/useChannelQueries';
 import { useWorkspacesList, useWorkspacesQuery } from '@/hooks/queries/useWorkspaceQueries';
 import { SidebarActions } from './SidebarActions';
-import { SidebarChannels } from './SidebarChannels';
 import { SidebarChatList } from './SidebarChatList';
 import { SidebarOverlays } from './SidebarOverlays';
 import { type ChatRowProps } from './SidebarChatRow';
@@ -21,18 +19,16 @@ import { useSidebarWorkspaceActions } from './useSidebarWorkspaceActions';
 import { countActiveSidebarFilters, dropMissingWorkspaceFilter } from '@/store/sidebarFilters';
 import styles from './ThreadsPanel.module.scss';
 
-// The sidebar's thread browser: primary actions, channels and the chat list.
-// Selection comes from the route; the open chat/channel records are read from
+// The sidebar's thread browser: primary actions and the chat list.
+// Selection comes from the route; the open chat record is read from
 // the same query cache the page uses, so this adds no requests.
 export function ThreadsPanel({ hidden = false }: { hidden?: boolean }) {
   const navigate = useNavigate();
   const isMobile = useIsMobile();
   const selectedChatId = useMatch('/chat/:chatId')?.params.chatId ?? null;
-  const selectedChannelId = useMatch('/channels/:channelId')?.params.channelId ?? null;
   const workspaces = useWorkspacesList();
   const { data: selectedChat } = useChatQuery(selectedChatId ?? undefined);
-  const { data: selectedChannel } = useChannelQuery(selectedChannelId ?? undefined);
-  const selectedChatWorkspaceId = selectedChat?.workspace_id ?? selectedChannel?.workspace_id;
+  const selectedChatWorkspaceId = selectedChat?.workspace_id;
   // Chats whose stream finished successfully since last viewed — drives the "Done" badge
   const completedChatIds = useStreamStore((state) => state.completedChatIds);
   const splitChatIds = useUIStore((state) => state.splitChatIds);
@@ -73,7 +69,6 @@ export function ThreadsPanel({ hidden = false }: { hidden?: boolean }) {
   });
   const workspaceActions = useSidebarWorkspaceActions({
     selectedChatId,
-    selectedChannelId,
     selectedChatWorkspaceId,
     isMobile,
     navigate,
@@ -174,13 +169,6 @@ export function ThreadsPanel({ hidden = false }: { hidden?: boolean }) {
   return (
     <div className={styles.panel} hidden={hidden}>
       <SidebarActions onNewChat={handleNewChat} onOpenSearch={handleOpenSearch} />
-
-      <SidebarChannels
-        workspaces={workspaces}
-        workspaceId={selectedChatWorkspaceId ?? undefined}
-        filterWorkspaceId={filters.workspaceId}
-        selectedChannelId={selectedChannelId}
-      />
 
       <SidebarChatList
         scrollContainerRef={scrollContainerRef}

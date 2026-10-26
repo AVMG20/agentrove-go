@@ -144,7 +144,7 @@ func (s *Service) DefaultID(ctx context.Context, userID string) string {
 }
 
 // DefaultFor is the profile for work on a provider's models outside a chat's
-// own profile (automations, channel members, titles): the default profile
+// own profile (automations, titles): the default profile
 // when it is that provider's, else the provider's oldest. nil when the user
 // has no account of the provider.
 func (s *Service) DefaultFor(ctx context.Context, userID, provider string) *Profile {

@@ -27,7 +27,7 @@ func (m *Module) listWorkspaces(ctx context.Context, c *caller, _ json.RawMessag
 // workspaces lists the user's workspaces, most recently active first.
 func (m *Module) workspaces(ctx context.Context, userID string, limit int) ([]map[string]any, error) {
 	rows, err := m.a.DB.QueryContext(ctx, `SELECT w.id, w.name FROM workspaces w
-		LEFT JOIN chats c ON c.workspace_id = w.id AND c.deleted_at IS NULL AND c.channel_id IS NULL
+		LEFT JOIN chats c ON c.workspace_id = w.id AND c.deleted_at IS NULL
 		WHERE w.user_id = ? AND w.deleted_at IS NULL
 		GROUP BY w.id ORDER BY MAX(c.updated_at) IS NULL, MAX(c.updated_at) DESC, w.updated_at DESC LIMIT ?`, userID, limit)
 	if err != nil {
@@ -86,7 +86,7 @@ func (m *Module) listChats(ctx context.Context, c *caller, args json.RawMessage)
 	}
 	a.Page = max(a.Page, 1)
 	a.PerPage = min(max(a.PerPage, 1), 100)
-	where := `c.user_id = ? AND c.deleted_at IS NULL AND c.channel_id IS NULL`
+	where := `c.user_id = ? AND c.deleted_at IS NULL`
 	params := []any{c.userID}
 	if a.WorkspaceID != nil && *a.WorkspaceID != "" {
 		where += ` AND c.workspace_id = ?`
@@ -275,7 +275,7 @@ func (m *Module) getMessages(ctx context.Context, c *caller, args json.RawMessag
 		return nil, err
 	}
 	a.Limit = min(max(a.Limit, 1), 100)
-	chat, err := m.a.Store.GetMemberChat(ctx, c.userID, a.ChatID)
+	chat, err := m.a.Store.GetChat(ctx, c.userID, a.ChatID)
 	if err != nil {
 		return nil, err
 	}

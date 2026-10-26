@@ -16,15 +16,13 @@ const secondsSince = (start: number) => Math.max(1, Math.ceil((Date.now() - star
 interface StatusIndicatorProps {
   text: string;
   caretBlinking: boolean;
-  leading?: ReactNode;
   trailing?: ReactNode;
 }
 
-export function StatusIndicator({ text, caretBlinking, leading, trailing }: StatusIndicatorProps) {
+export function StatusIndicator({ text, caretBlinking, trailing }: StatusIndicatorProps) {
   return (
     <div className={styles['status-typewriter']}>
       <div className={styles['status-row']}>
-        {leading}
         <span className={styles['status-verb']}>
           {text}
           <span

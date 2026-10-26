@@ -292,11 +292,8 @@ func seedMigration(t *testing.T, d *db.DB, vars string) {
 	if _, err := d.Exec(`INSERT INTO workspaces (id, name, user_id, sandbox_id, workspace_path, created_at, updated_at) VALUES ('w', 'w', ?, 'sb', '/tmp', ?, ?)`, testUser, now, now); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := d.Exec(`INSERT INTO channels (id, user_id, workspace_id, name, created_at, updated_at) VALUES ('ch', ?, 'w', 'team', ?, ?)`, testUser, now, now); err != nil {
-		t.Fatal(err)
-	}
-	for _, c := range [][2]any{{"c", nil}, {"member", "ch"}} {
-		if _, err := d.Exec(`INSERT INTO chats (id, title, user_id, workspace_id, channel_id, created_at, updated_at) VALUES (?, 'c', ?, 'w', ?, ?, ?)`, c[0], testUser, c[1], now, now); err != nil {
+	for _, id := range []string{"c", "c2"} {
+		if _, err := d.Exec(`INSERT INTO chats (id, title, user_id, workspace_id, created_at, updated_at) VALUES (?, 'c', ?, 'w', ?, ?)`, id, testUser, now, now); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -335,8 +332,8 @@ func TestMigrateEnvVars(t *testing.T) {
 	if vars := storedVars(t, d); vars != `[{"key":"DATABASE_URL","value":"pg://"}]` {
 		t.Fatalf("env vars left = %s", vars)
 	}
-	// Every chat ran on these vars, channel members too.
-	for _, id := range []string{"c", "member"} {
+	// Every chat ran on these vars.
+	for _, id := range []string{"c", "c2"} {
 		var chatProfile string
 		if err := d.QueryRow(`SELECT profile_id FROM chats WHERE id = ?`, id).Scan(&chatProfile); err != nil || chatProfile != p.ID {
 			t.Fatalf("chat %s profile = %q %v", id, chatProfile, err)
@@ -471,7 +468,7 @@ func TestDeleteKeepsChatsOnTheProfile(t *testing.T) {
 	if err := s.Delete(ctx, testUser, migrated.ID); err != nil {
 		t.Fatal(err)
 	}
-	for _, id := range []string{"c", "member"} {
+	for _, id := range []string{"c", "c2"} {
 		var profileID, provider *string
 		if err := d.QueryRow(`SELECT profile_id, provider FROM chats WHERE id = ?`, id).Scan(&profileID, &provider); err != nil {
 			t.Fatal(err)
@@ -670,7 +667,7 @@ func TestMigrateServerLogin(t *testing.T) {
 		if list, _ := s.List(ctx, testUser); len(list) != 0 {
 			t.Fatalf("profiles = %v, want none", list)
 		}
-		if got := chatProfiles(t, d); got["c"] != "/" || got["member"] != "/" {
+		if got := chatProfiles(t, d); got["c"] != "/" || got["c2"] != "/" {
 			t.Fatalf("chats = %v, want them left without an account", got)
 		}
 	})
@@ -688,7 +685,7 @@ func TestMigrateServerLogin(t *testing.T) {
 		if p.Provider != models.ProviderClaude || p.AuthMode != AuthLogin || p.Name != "Claude" || p.Token != "" || p.ConfigDir() != "/home/user/claude" {
 			t.Fatalf("profile = %+v (dir %s)", p, p.ConfigDir())
 		}
-		if got := chatProfiles(t, d); got["c"] != p.ID+"/claude" || got["member"] != p.ID+"/claude" {
+		if got := chatProfiles(t, d); got["c"] != p.ID+"/claude" || got["c2"] != p.ID+"/claude" {
 			t.Fatalf("chats = %v", got)
 		}
 		if s.DefaultID(ctx, testUser) != p.ID {
@@ -719,7 +716,7 @@ func TestMigrateServerLogin(t *testing.T) {
 			t.Fatalf("profiles = %+v", list)
 		}
 		box := list[1]
-		if got := chatProfiles(t, d); got["c"] != box.ID+"/claude" || got["member"] != box.ID+"/claude" || got["w"] != work.ID+"/claude" {
+		if got := chatProfiles(t, d); got["c"] != box.ID+"/claude" || got["c2"] != box.ID+"/claude" || got["w"] != work.ID+"/claude" {
 			t.Fatalf("chats = %v", got)
 		}
 		if s.DefaultID(ctx, testUser) != work.ID {

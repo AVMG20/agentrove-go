@@ -21,7 +21,6 @@ function makeChat(id: string, title: string): Chat {
     updated_at: '2026-01-01T00:00:00Z',
     pinned_at: null,
     worktree_cwd: null,
-    channel_id: null,
     session_agent_kind: null,
     unread: false,
     last_model_id: null,

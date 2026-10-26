@@ -32,7 +32,7 @@ const setWorktree = (enabled: boolean) =>
 const setBase = (branch: string | undefined) =>
   useChatSettingsStore.getState().setWorktreeBaseBranch(DEFAULT_CHAT_SETTINGS_KEY, branch);
 
-export interface BranchWorktreeDropdownProps {
+interface BranchWorktreeDropdownProps {
   branchesData: GitBranchesData | undefined;
   worktree: boolean;
   onWorktreeChange: (enabled: boolean) => void;
@@ -43,7 +43,7 @@ export interface BranchWorktreeDropdownProps {
   dropdownPosition?: DropdownPosition;
 }
 
-export const BranchWorktreeDropdown = memo(function BranchWorktreeDropdown({
+const BranchWorktreeDropdown = memo(function BranchWorktreeDropdown({
   branchesData,
   worktree,
   onWorktreeChange,

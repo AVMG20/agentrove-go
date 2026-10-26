@@ -32,7 +32,6 @@ const chat = (over: Partial<Chat> = {}): Chat => ({
   updated_at: '',
   pinned_at: null,
   worktree_cwd: null,
-  channel_id: null,
   session_agent_kind: null,
   unread: false,
   last_model_id: null,

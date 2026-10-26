@@ -11,7 +11,7 @@ Bitbox (formerly Agentrove) is a Go rewrite of the Agentrove backend, as a web a
 - **Reads don't wake containers.** Workspaces live on a host dir that is bind-mounted into the sandbox. File browsing, diffs, git status and search read the host copy directly, so they work while the container is stopped.
 - **Claude login per user.** The login is stored under `STORAGE_PATH/agent-homes/<user>/claude` and mounted into every sandbox of that user. Title, commit-message and PR generation use the same login.
 - **A browser in every box.** Agents get Playwright MCP tools (navigate, click, type, hover, dropdowns, dialogs, scrolling, snapshots, screenshots, console and network) for one shared headless Chromium in the box, which reaches the dev servers they start on `localhost`. The Browser view (globe button, top right) shows the same browser live and lets you use it (tabs, URL bar, window size, reset). The browser profile persists in the box and is shared with the agent, so anything you log into in the Browser view is usable by the agent; Reset wipes it. Chromium starts on first use and stops after `SANDBOX_BROWSER_IDLE_SECONDS` (default 10m) with no agent or viewer attached; turn the agent tools off per user in Settings, or for everyone with `SANDBOX_BROWSER_ENABLED=false`.
-- **MCP over HTTP.** The agentrove MCP server (chats, channels, automations, artifacts) is served by the API at `/api/v1/mcp`. Each session gets it automatically, so there is no stdio sidecar.
+- **MCP over HTTP.** The agentrove MCP server (chats, automations, artifacts) is served by the API at `/api/v1/mcp`. Each session gets it automatically, so there is no stdio sidecar.
 
 ## Run with Docker
 
@@ -74,7 +74,6 @@ backend/
     browserview        live viewer of the box browser (CDP over docker exec)
     workspace          workspace lifecycle
     gitops             worktrees, checkpoints, host-side git
-    channel            multi-agent channels
     automation         cron + GitHub-triggered automations
     artifact           published HTML artifacts
     mcpserver          agentrove MCP tools over HTTP

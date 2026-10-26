@@ -20,12 +20,12 @@ interface ThinkingModeControlProps {
   dropdownAlign?: 'left' | 'right';
 }
 
-export interface ThinkingModeDropdownProps extends ThinkingModeControlProps {
+interface ThinkingModeDropdownProps extends ThinkingModeControlProps {
   value: string;
   onChange: (mode: string) => void;
 }
 
-export const ThinkingModeDropdown = memo(function ThinkingModeDropdown({
+const ThinkingModeDropdown = memo(function ThinkingModeDropdown({
   value,
   onChange,
   model,

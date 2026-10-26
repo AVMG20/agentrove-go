@@ -67,21 +67,6 @@ const DESCRIPTORS: Record<string, AgentRoveDescriptor> = {
   },
   stop_chat: { label: 'Stop Chat', summary: (i) => labeled(i, 'chat_id', 'chat') },
   get_messages: { label: 'Get Messages', summary: (i) => labeled(i, 'chat_id', 'chat') },
-  list_channels: {
-    label: 'List Channels',
-    summary: (i) => labeled(i, 'workspace_id', 'project'),
-  },
-  create_channel: { label: 'Create Channel', summary: (i) => value(i, 'name') },
-  post_channel_message: {
-    label: 'Post Channel Message',
-    summary: (i) => labeled(i, 'channel_id', 'channel'),
-    longFields: ['content'],
-  },
-  get_channel_messages: {
-    label: 'Get Channel Messages',
-    summary: (i) => labeled(i, 'channel_id', 'channel'),
-  },
-  stop_channel: { label: 'Stop Channel', summary: (i) => labeled(i, 'channel_id', 'channel') },
   list_automations: { label: 'List Automations' },
   create_automation: {
     label: 'Create Automation',

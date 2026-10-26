@@ -5,7 +5,6 @@ import type {
   QueuedItem,
   QueueMessageOptions,
 } from '@/types/queue.types';
-import { channelService } from '@/services/channelService';
 import { queueService } from '@/services/queueService';
 import { NetworkError } from '@/types/errors.types';
 
@@ -313,13 +312,4 @@ export const useMessageQueueStore = createQueueStore<
 >({
   ...queueService,
   filesOf: (_modelId, options) => options?.files,
-});
-
-export const useChannelQueueStore = createQueueStore<[files: File[]]>({
-  queueMessage: channelService.queueMessage,
-  getQueue: channelService.getQueue,
-  updateQueuedMessage: channelService.updateQueuedMessage,
-  deleteQueuedMessage: channelService.deleteQueuedMessage,
-  sendNow: channelService.sendQueuedNow,
-  filesOf: (files) => files,
 });

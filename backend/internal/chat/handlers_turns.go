@@ -121,7 +121,7 @@ func (m *Module) respondPermission(w http.ResponseWriter, r *http.Request) error
 	if err := httpx.ParseForm(r, 1<<20); err != nil {
 		return err
 	}
-	c, err := m.a.Store.GetMemberChat(r.Context(), user(r).ID, r.PathValue("chat_id"))
+	c, err := m.a.Store.GetChat(r.Context(), user(r).ID, r.PathValue("chat_id"))
 	if err != nil {
 		return err
 	}

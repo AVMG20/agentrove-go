@@ -37,7 +37,7 @@ function TextSegment({
   );
 }
 
-export function ToolLoadingFallback() {
+function ToolLoadingFallback() {
   return (
     <div className={styles['tool-fallback']}>
       <Spinner size="sm" className={styles['tool-fallback-spinner']} />

@@ -11,7 +11,6 @@ import { mutateWithToast, calculateDropdownPosition } from './sidebarHelpers';
 
 interface UseSidebarWorkspaceActionsParams {
   selectedChatId: string | null;
-  selectedChannelId: string | null;
   selectedChatWorkspaceId?: string | null;
   isMobile: boolean;
   navigate: NavigateFunction;
@@ -20,7 +19,6 @@ interface UseSidebarWorkspaceActionsParams {
 
 export function useSidebarWorkspaceActions({
   selectedChatId,
-  selectedChannelId,
   selectedChatWorkspaceId,
   isMobile,
   navigate,
@@ -132,7 +130,7 @@ export function useSidebarWorkspaceActions({
         'Project deleted',
         'Failed to delete project',
       );
-      if ((selectedChatId || selectedChannelId) && selectedChatWorkspaceId === id) {
+      if (selectedChatId && selectedChatWorkspaceId === id) {
         navigate('/');
       }
     } catch {
@@ -140,14 +138,7 @@ export function useSidebarWorkspaceActions({
     } finally {
       setWorkspaceToDelete(null);
     }
-  }, [
-    workspaceToDelete,
-    deleteWorkspace,
-    selectedChatId,
-    selectedChannelId,
-    selectedChatWorkspaceId,
-    navigate,
-  ]);
+  }, [workspaceToDelete, deleteWorkspace, selectedChatId, selectedChatWorkspaceId, navigate]);
 
   return {
     workspaceDropdown,

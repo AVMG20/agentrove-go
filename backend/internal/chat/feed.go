@@ -86,7 +86,7 @@ func (m *Module) streamsFeed(w http.ResponseWriter, r *http.Request) error {
 	ctx := r.Context()
 	last := map[string]int64{}
 	for id, seq := range requested {
-		if _, err := m.a.Store.GetMemberChat(ctx, u.ID, id); err == nil {
+		if _, err := m.a.Store.GetChat(ctx, u.ID, id); err == nil {
 			last[id] = seq
 		}
 	}
@@ -118,17 +118,10 @@ func (m *Module) streamsFeed(w http.ResponseWriter, r *http.Request) error {
 			}
 		case raw := <-sub.C:
 			var env struct {
-				ChatID    string `json:"chatId"`
-				ChannelID string `json:"channelId"`
-				Seq       *int64 `json:"seq"`
+				ChatID string `json:"chatId"`
+				Seq    *int64 `json:"seq"`
 			}
 			if json.Unmarshal(raw, &env) != nil {
-				continue
-			}
-			if env.ChannelID != "" {
-				if sse.Send("stream", "", string(raw)) != nil {
-					return nil
-				}
 				continue
 			}
 			if env.ChatID == "" || env.Seq == nil {

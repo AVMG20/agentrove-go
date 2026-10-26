@@ -37,12 +37,12 @@ interface PermissionModeControlProps {
   dropdownAlign?: 'left' | 'right';
 }
 
-export interface PermissionModeDropdownProps extends PermissionModeControlProps {
+interface PermissionModeDropdownProps extends PermissionModeControlProps {
   value: PermissionMode;
   onChange: (mode: PermissionMode) => void;
 }
 
-export const PermissionModeDropdown = memo(function PermissionModeDropdown({
+const PermissionModeDropdown = memo(function PermissionModeDropdown({
   value,
   onChange,
   dropdownPosition = 'bottom',
