@@ -259,11 +259,14 @@ func TestFailedCommandFailsTheCard(t *testing.T) {
 	}
 }
 
-func TestMapToolAgentroveMCP(t *testing.T) {
-	if got := mapTool("x", "mcp_agentrove_create_artifact", nil).Name; got != "mcp__agentrove__create_artifact" {
-		t.Fatalf("name = %q", got)
+func TestMapToolMCPCall(t *testing.T) {
+	tool := mapTool("x", "call_mcp_tool", map[string]any{"ServerName": "agentrove", "ToolName": "create_artifact",
+		"Arguments": `{"title": "Hi", "html": "<p>hi</p>"}`})
+	if tool.Name != "mcp__agentrove__create_artifact" || tool.Input["title"] != "Hi" {
+		t.Fatalf("tool = %+v", tool)
 	}
-	if got := mapTool("x", "mcp_github_list_issues", nil).Name; got != "mcp_github_list_issues" {
-		t.Fatalf("other server renamed: %q", got)
+	py := mapTool("x", "call_mcp_tool", map[string]any{"ServerName": "agentrove", "ToolName": "create_artifact", "Arguments": `{'title': 'Hi'}`})
+	if py.Name != "mcp__agentrove__create_artifact" || py.Input["arguments"] != `{'title': 'Hi'}` {
+		t.Fatalf("python-style args = %+v", py)
 	}
 }
