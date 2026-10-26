@@ -258,3 +258,12 @@ func TestFailedCommandFailsTheCard(t *testing.T) {
 		t.Fatalf("got %q", got)
 	}
 }
+
+func TestMapToolAgentroveMCP(t *testing.T) {
+	if got := mapTool("x", "mcp_agentrove_create_artifact", nil).Name; got != "mcp__agentrove__create_artifact" {
+		t.Fatalf("name = %q", got)
+	}
+	if got := mapTool("x", "mcp_github_list_issues", nil).Name; got != "mcp_github_list_issues" {
+		t.Fatalf("other server renamed: %q", got)
+	}
+}

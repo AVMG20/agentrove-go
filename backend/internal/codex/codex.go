@@ -10,6 +10,7 @@ package codex
 
 import (
 	"encoding/json"
+	"sort"
 	"strings"
 )
 
@@ -22,6 +23,16 @@ type Config struct {
 	Images []string
 	// Instructions are appended to Codex's own developer instructions.
 	Instructions string
+	// MCP are HTTP MCP servers added for the turn.
+	MCP []MCPServer
+}
+
+// MCPServer is a streamable-HTTP MCP server. HeaderEnv maps each header to
+// the env var holding its value, so tokens stay out of argv.
+type MCPServer struct {
+	Name      string
+	URL       string
+	HeaderEnv map[string]string
 }
 
 // Args returns the argv after the binary. The prompt is read from stdin
@@ -47,6 +58,21 @@ func (c Config) Args() []string {
 	}
 	if c.Instructions != "" {
 		args = append(args, "-c", "developer_instructions="+tomlString(c.Instructions))
+	}
+	for _, m := range c.MCP {
+		key := "mcp_servers." + m.Name
+		args = append(args, "-c", key+".url="+tomlString(m.URL))
+		if len(m.HeaderEnv) > 0 {
+			headers := make([]string, 0, len(m.HeaderEnv))
+			for h := range m.HeaderEnv {
+				headers = append(headers, h)
+			}
+			sort.Strings(headers)
+			for i, h := range headers {
+				headers[i] = tomlString(h) + "=" + tomlString(m.HeaderEnv[h])
+			}
+			args = append(args, "-c", key+".env_http_headers={"+strings.Join(headers, ",")+"}")
+		}
 	}
 	if c.ResumeID != "" {
 		args = append(args, c.ResumeID)

@@ -551,12 +551,7 @@ func (m *Module) sessionConfig(sb *sandbox.Sandbox, req *turnRequest) claude.Con
 	}
 	if sb.Kind == sandbox.KindDocker {
 		cfg.Binary = "claude"
-		if m.a.Cfg.ArtifactsEnabled {
-			claudeDir := filepath.Join(m.a.Cfg.AgentHomeDir(req.userID), "claude")
-			if err := artifact.InstallSkill(claudeDir, m.a.Cfg.FrontendURL); err != nil {
-				slog.Warn("install artifacts skill", "user", req.userID, "err", err)
-			}
-		}
+		m.installArtifactSkill(sb, req.userID)
 		if !req.fullReplace {
 			cfg.SystemPrompt += boxPrompt
 		}
@@ -586,6 +581,19 @@ func (m *Module) sessionConfig(sb *sandbox.Sandbox, req *turnRequest) claude.Con
 		cfg.Settings["permissions"] = map[string]any{"allow": allow}
 	}
 	return cfg
+}
+
+// installArtifactSkill writes the artifacts skill into the box's ~/claude,
+// where Claude profiles link to it and ChatSetup copies it for Codex and
+// Antigravity.
+func (m *Module) installArtifactSkill(sb *sandbox.Sandbox, userID string) {
+	if sb.Kind != sandbox.KindDocker || !m.a.Cfg.ArtifactsEnabled {
+		return
+	}
+	claudeDir := filepath.Join(m.a.Cfg.AgentHomeDir(userID), "claude")
+	if err := artifact.InstallSkill(claudeDir, m.a.Cfg.FrontendURL); err != nil {
+		slog.Warn("install artifacts skill", "user", userID, "err", err)
+	}
 }
 
 // browserServer is the MCP server name of the box's browser tools.

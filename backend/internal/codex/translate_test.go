@@ -93,8 +93,11 @@ func TestArgs(t *testing.T) {
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("args\n got %q\nwant %q", got, want)
 	}
-	resumed := Config{Model: "gpt-6-luna", ResumeID: "thread-1"}.Args()
-	want = []string{"exec", "resume", "--json", "--skip-git-repo-check", "--dangerously-bypass-approvals-and-sandbox", "-m", "gpt-6-luna", "thread-1", "-"}
+	mcp := []MCPServer{{Name: "agentrove", URL: "https://x/mcp", HeaderEnv: map[string]string{"X-Chat": "CHAT", "Authorization": "AUTH"}}}
+	resumed := Config{Model: "gpt-6-luna", ResumeID: "thread-1", MCP: mcp}.Args()
+	want = []string{"exec", "resume", "--json", "--skip-git-repo-check", "--dangerously-bypass-approvals-and-sandbox", "-m", "gpt-6-luna",
+		"-c", `mcp_servers.agentrove.url="https://x/mcp"`, "-c", `mcp_servers.agentrove.env_http_headers={"Authorization"="AUTH","X-Chat"="CHAT"}`,
+		"thread-1", "-"}
 	if !reflect.DeepEqual(resumed, want) {
 		t.Fatalf("resume args\n got %q\nwant %q", resumed, want)
 	}

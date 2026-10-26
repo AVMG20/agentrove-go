@@ -2,6 +2,7 @@ package chat
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"log/slog"
@@ -16,6 +17,7 @@ import (
 	"agentrove/internal/antigravity"
 	"agentrove/internal/codex"
 	"agentrove/internal/db"
+	"agentrove/internal/mcpserver"
 	"agentrove/internal/models"
 	"agentrove/internal/profiles"
 	"agentrove/internal/sandbox"
@@ -143,12 +145,23 @@ func (m *Module) cliPrompt(sb *sandbox.Sandbox, req *turnRequest, attachImages b
 type cliRun struct {
 	cmd   []string
 	stdin string
-	tr    agentstream.LineTranslator
+	// env is added to the turn's env (the agentrove MCP server).
+	env map[string]string
+	tr  agentstream.LineTranslator
 }
 
 func (t *turn) cliRun(sb *sandbox.Sandbox, resumeID string) (*cliRun, error) {
 	p := t.req.profile
 	launch := p.Launch()
+	mcp, env := t.m.cliMCP(sb, t.req)
+	rules := ""
+	if mcp != nil {
+		rules = mcpserver.Instructions
+	}
+	setup := launch.Setup
+	if s := p.ChatSetup(rules); s != "" {
+		setup = strings.TrimPrefix(setup+" && "+s, " && ")
+	}
 	switch p.Provider {
 	case models.ProviderCodex:
 		prompt, images, err := t.m.cliPrompt(sb, t.req, true)
@@ -156,7 +169,11 @@ func (t *turn) cliRun(sb *sandbox.Sandbox, resumeID string) (*cliRun, error) {
 			return nil, err
 		}
 		cfg := codex.Config{Model: t.req.modelID, Effort: t.req.effort, ResumeID: resumeID, Images: images, Instructions: strings.TrimSpace(boxPrompt)}
-		return &cliRun{cmd: profileShell(launch.Setup, "codex", cfg.Args()), stdin: prompt, tr: codex.NewTranslator()}, nil
+		if mcp != nil {
+			cfg.Instructions += "\n\n" + rules
+			cfg.MCP = []codex.MCPServer{{Name: agentroveServer, URL: mcp.URL, HeaderEnv: mcp.headerEnv}}
+		}
+		return &cliRun{cmd: profileShell(setup, "codex", cfg.Args()), stdin: prompt, env: env, tr: codex.NewTranslator()}, nil
 	case models.ProviderAntigravity:
 		prompt, _, err := t.m.cliPrompt(sb, t.req, false)
 		if err != nil {
@@ -166,9 +183,55 @@ func (t *turn) cliRun(sb *sandbox.Sandbox, resumeID string) (*cliRun, error) {
 		if err != nil {
 			return nil, err
 		}
-		return &cliRun{cmd: profileShell(launch.Setup, "agy", args), tr: antigravity.NewTranslator()}, nil
+		return &cliRun{cmd: profileShell(setup, "agy", args), env: env, tr: antigravity.NewTranslator()}, nil
 	}
 	return nil, fmt.Errorf("unsupported provider %q", p.Provider)
+}
+
+// agentroveServer is the MCP server name of the app's own tools (artifacts,
+// and with MCP enabled, orchestration); tool names are mcp__agentrove__*.
+const agentroveServer = "agentrove"
+
+// cliMCPServer is the agentrove MCP server for a Codex or Antigravity turn.
+type cliMCPServer struct {
+	URL     string            `json:"url"`
+	Headers map[string]string `json:"headers"`
+	// headerEnv names the env var carrying each header, for Codex.
+	headerEnv map[string]string
+}
+
+// cliMCP returns the agentrove MCP server for a per-turn CLI and the env
+// that carries it (nil when there is none): Codex reads each header from
+// its own var, Antigravity's setup writes the whole server
+// (profiles.AgentroveMCPEnv) into its config. It also installs the artifacts
+// skill that ChatSetup copies into the CLI's config.
+func (m *Module) cliMCP(sb *sandbox.Sandbox, req *turnRequest) (*cliMCPServer, map[string]string) {
+	if m.MCPConfig == nil {
+		return nil, nil
+	}
+	cfg, _ := m.MCPConfig(req.userID, req.chat.ID, sb.Kind)[agentroveServer].(map[string]any)
+	url, _ := cfg["url"].(string)
+	if url == "" {
+		return nil, nil
+	}
+	m.installArtifactSkill(sb, req.userID)
+	s := &cliMCPServer{URL: url, Headers: map[string]string{}, headerEnv: map[string]string{}}
+	env := map[string]string{}
+	headers, _ := cfg["headers"].(map[string]any)
+	for h, v := range headers {
+		val, ok := v.(string)
+		if !ok {
+			continue
+		}
+		name := "AGENTROVE_MCP_HEADER_" + strings.ToUpper(strings.NewReplacer("-", "_", " ", "_").Replace(h))
+		s.Headers[h], s.headerEnv[h], env[name] = val, name, val
+	}
+	b, err := json.Marshal(s)
+	if err != nil {
+		return nil, nil
+	}
+	env[profiles.AgentroveMCPEnv] = string(b)
+	return s, env
 }
 
 // executeCLI runs a Codex or Antigravity turn: one process, its stdout
@@ -214,6 +277,9 @@ func (t *turn) runCLI(sb *sandbox.Sandbox, resumeID string) (*agentstream.Result
 		if _, own := launch.Env[k]; !own {
 			delete(env, k)
 		}
+	}
+	for k, v := range run.env {
+		env[k] = v
 	}
 	if t.cancelled.Load() {
 		return nil, false, nil

@@ -251,6 +251,12 @@ func mapTool(id, name string, params map[string]any) agentstream.Tool {
 		if u := get("Url", "url", "URL"); u != "" {
 			tool.Name, tool.Title, tool.Input = "WebFetch", "Fetch "+u, map[string]any{"url": u}
 		}
+	default:
+		// agy names MCP tools mcp_<server>_<tool>; the app's own server gets
+		// Claude's mcp__agentrove__<tool> so its cards (artifacts) render.
+		if rest, ok := strings.CutPrefix(name, "mcp_agentrove_"); ok {
+			tool.Name = "mcp__agentrove__" + rest
+		}
 	}
 	if tool.Title == "" {
 		tool.Title = strings.ReplaceAll(name, "_", " ")
