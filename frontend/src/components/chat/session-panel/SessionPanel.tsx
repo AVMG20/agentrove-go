@@ -313,6 +313,12 @@ interface SessionPanelProps {
   workspace: Workspace | undefined;
 }
 
+// Holds the panel's place while the chat loads, so the chat doesn't shift
+// sideways when the panel fills in.
+export function SessionPanelPlaceholder() {
+  return <aside className={styles.panel} aria-label="Session details" aria-busy />;
+}
+
 export const SessionPanel = memo(function SessionPanel({ chat, workspace }: SessionPanelProps) {
   const worktreeCwd = chat.worktree_cwd ?? undefined;
   const { data: branches } = useGitBranchesQuery(chat.sandbox_id, true, worktreeCwd);

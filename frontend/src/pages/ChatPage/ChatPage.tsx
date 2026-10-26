@@ -18,7 +18,10 @@ import { useSandboxFiles } from '@/hooks/useSandboxFiles';
 import { useWorkspacesList, useWorkspaceResourcesQuery } from '@/hooks/queries/useWorkspaceQueries';
 import { useSettingsQuery } from '@/hooks/queries/useSettingsQueries';
 import { ChatProvider } from '@/contexts/ChatContext';
-import { SessionPanel } from '@/components/chat/session-panel/SessionPanel';
+import {
+  SessionPanel,
+  SessionPanelPlaceholder,
+} from '@/components/chat/session-panel/SessionPanel';
 import {
   WorkspaceSurface,
   WorkspaceTile,
@@ -198,7 +201,11 @@ export function ChatPage() {
         <WorkspaceSurface
           renderView={renderView}
           sessionPanel={
-            currentChat && <SessionPanel chat={currentChat} workspace={currentWorkspace} />
+            currentChat ? (
+              <SessionPanel chat={currentChat} workspace={currentWorkspace} />
+            ) : (
+              <SessionPanelPlaceholder />
+            )
           }
         />
       </ChatSessionOrchestrator>
