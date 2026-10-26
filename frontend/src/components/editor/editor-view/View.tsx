@@ -389,11 +389,14 @@ export const View = memo(function View({
   // While the listing is still pending (sandbox unresolved or metadata fetching),
   // keep the file rendering so its content (fetched in parallel) shows without
   // waiting. Once loaded — including a genuinely empty workspace — tree
-  // membership decides, so stale/deleted selections fall to EmptyState.
+  // membership decides, so stale/deleted selections fall to EmptyState. Absolute
+  // paths are box files outside the project, never in the tree.
   const isTreePending = fileStructure.length === 0 && (!sandboxId || isSandboxSyncing);
   const isValidFile =
     selectedFile &&
-    (isTreePending || findFileInStructure(fileStructure, selectedFile.path) !== undefined);
+    (isTreePending ||
+      selectedFile.path.startsWith('/') ||
+      findFileInStructure(fileStructure, selectedFile.path) !== undefined);
 
   const isPreviewable = selectedFile ? isPreviewableFile(selectedFile) : false;
   const isPreviewActive = isPreviewable && viewMode === 'preview';
