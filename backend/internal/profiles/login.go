@@ -57,6 +57,7 @@ type loginSession struct {
 	state    LoginState
 	raw      strings.Builder
 	finished time.Time
+	picked   bool // agy's login-method menu was answered
 }
 
 func (l *loginSession) snapshot() LoginState {
@@ -256,12 +257,21 @@ func (s *Service) loginOutput(p *Profile, l *loginSession, chunk []byte) {
 			token = m[1]
 		}
 	}
+	// agy opens on a login-method menu; its first entry is the Google
+	// sign-in, so take it and go straight to the URL.
+	pick := p.Provider == models.ProviderAntigravity && !l.picked && strings.Contains(text, "Select login method")
+	if pick {
+		l.picked = true
+	}
 	tail := secretRE.ReplaceAllString(text, "sk-ant-…")
 	if len(tail) > outputTail {
 		tail = tail[len(tail)-outputTail:]
 	}
 	l.state.Output = strings.TrimSpace(tail)
 	l.mu.Unlock()
+	if pick {
+		_, _ = l.pty.Write([]byte("\r"))
+	}
 	if token != "" && l.snapshot().Status == LoginRunning {
 		if err := s.saveLoginToken(p, token); err != nil {
 			l.finish(LoginFailed, "Could not save the token: "+err.Error())
