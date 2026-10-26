@@ -16,11 +16,12 @@ FROM ubuntu:24.04
 
 ARG CLAUDE_VERSION=2.1.308
 ARG CODEX_VERSION=0.163.0
-# Antigravity's CLI (agy) has no public package to pin: set AGY_URL to a
-# Linux build of it (the binary, or a .tar.gz/.zip holding `agy`) to bake
-# it in. Without it, Antigravity profiles show "CLI not found"; installing
-# agy into the box's ~/.local/bin (on PATH, persistent) also works.
-ARG AGY_URL=
+# Antigravity's CLI (agy): a build from Google's release bucket, as listed by
+# https://antigravity-cli-auto-updater-974169037036.us-central1.run.app/manifests/linux_<amd64|arm64>.json
+# (what https://antigravity.google/cli/install.sh installs).
+ARG AGY_VERSION=1.4.7-5900205422411776
+ARG AGY_SHA512_AMD64=beda760587589f5827b0b516c3ec2c5bd5cd2e91eb0e2533807ba1e990a27dcd63aef0191e0b76fb60feab0d16eaa8210fb79842c34dd4809e257e1712edd152
+ARG AGY_SHA512_ARM64=6a9fa0df6300633404571f66ec7924098cc70a9f23ac55c3659139bbcbdd2ea5301fe1ef728d4c064fac65104ea14a2b74421f320a82e5bcf218c482b58e3a16
 ARG NODE_MAJOR=22
 ARG PLAYWRIGHT_MCP_VERSION=0.0.83
 
@@ -73,21 +74,23 @@ RUN curl -fsSL https://claude.ai/install.sh | bash -s ${CLAUDE_VERSION} \
     && printf '#!/bin/sh\nexec echo "$GITHUB_TOKEN"\n' > /usr/local/bin/git-askpass \
     && chmod 755 /usr/local/bin/git-askpass
 
-# The other providers' CLIs (provider profiles): OpenAI Codex, and
-# Antigravity when AGY_URL names a build.
+# The other providers' CLIs (provider profiles): OpenAI Codex and
+# Antigravity.
 RUN npm install -g --no-fund --no-audit @openai/codex@${CODEX_VERSION} \
     && codex --version \
     && npm cache clean --force && rm -rf /root/.npm \
-    && if [ -n "$AGY_URL" ]; then \
-        tmp=$(mktemp -d) && curl -fsSL "$AGY_URL" -o "$tmp/agy.dl" \
-        && case "$AGY_URL" in \
-            *.zip) unzip -q "$tmp/agy.dl" -d "$tmp/x" ;; \
-            *.tar.gz|*.tgz) mkdir -p "$tmp/x" && tar -xzf "$tmp/agy.dl" -C "$tmp/x" ;; \
-            *) mkdir -p "$tmp/x" && mv "$tmp/agy.dl" "$tmp/x/agy" ;; \
-        esac \
-        && install -m 755 "$(find "$tmp/x" -type f -name agy | head -n 1)" /usr/local/bin/agy \
-        && agy --version && rm -rf "$tmp"; \
-    fi
+    && case "$(dpkg --print-architecture)" in \
+        amd64) agy_dir=linux-x64 agy_file=cli_linux_x64.tar.gz agy_sha=$AGY_SHA512_AMD64 ;; \
+        arm64) agy_dir=linux-arm agy_file=cli_linux_arm64.tar.gz agy_sha=$AGY_SHA512_ARM64 ;; \
+        *) echo "agy: unsupported architecture" >&2; exit 1 ;; \
+    esac \
+    && tmp=$(mktemp -d) \
+    && curl -fsSL "https://storage.googleapis.com/antigravity-public/antigravity-cli/${AGY_VERSION}/${agy_dir}/${agy_file}" -o "$tmp/agy.tar.gz" \
+    && echo "$agy_sha  $tmp/agy.tar.gz" | sha512sum -c - \
+    && tar -xzf "$tmp/agy.tar.gz" -C "$tmp" antigravity \
+    && install -m 755 "$tmp/antigravity" /usr/local/bin/agy \
+    && rm -rf "$tmp" \
+    && agy --version
 
 # ubuntu:24.04 ships an "ubuntu" user at uid 1000; the sandbox user must own
 # that uid.
