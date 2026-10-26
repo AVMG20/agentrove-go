@@ -211,7 +211,7 @@ func (t *Translator) toolStarted(id, name string, input map[string]any, parent *
 	t.sawOutput = true
 	p, ok := t.tools[id]
 	if !ok {
-		p = map[string]any{"id": id, "name": name, "title": toolTitle(name, input), "status": "started", "parent_id": nil, "input": nil}
+		p = map[string]any{"id": id, "name": name, "title": ToolTitle(name, input), "status": "started", "parent_id": nil, "input": nil}
 		t.tools[id] = p
 		t.toolOrder = append(t.toolOrder, id)
 	}
@@ -220,7 +220,7 @@ func (t *Translator) toolStarted(id, name string, input map[string]any, parent *
 	}
 	if input != nil {
 		p["input"] = input
-		p["title"] = toolTitle(name, input)
+		p["title"] = ToolTitle(name, input)
 	}
 	return Event{Kind: "tool_started", Payload: map[string]any{"tool": clone(p)}}
 }
@@ -242,7 +242,7 @@ func (t *Translator) user(m Message) []Event {
 		}
 		if input, ok := t.pendingTask[b.ToolUseID]; ok {
 			delete(t.pendingTask, b.ToolUseID)
-			if match := taskIDRE.FindStringSubmatch(resultText(b.Content)); match != nil {
+			if match := taskIDRE.FindStringSubmatch(ResultText(b.Content)); match != nil {
 				out = append(out, t.taskCreate(match[1], input)...)
 			}
 			continue
@@ -260,7 +260,7 @@ func (t *Translator) user(m Message) []Event {
 		t.modesMu.Unlock()
 		if b.IsError {
 			p["status"] = "failed"
-			p["error"] = strings.TrimSpace(resultText(b.Content))
+			p["error"] = strings.TrimSpace(ResultText(b.Content))
 			if p["error"] == "" {
 				p["error"] = "Tool execution failed"
 			}
@@ -430,7 +430,8 @@ func resultValue(raw json.RawMessage) any {
 	return v
 }
 
-func resultText(raw json.RawMessage) string {
+// ResultText flattens tool_result content to text.
+func ResultText(raw json.RawMessage) string {
 	switch v := resultValue(raw).(type) {
 	case string:
 		return v
@@ -470,8 +471,8 @@ func firstString(m map[string]any, keys ...string) string {
 	return ""
 }
 
-// toolTitle is the loading label shown before a card renders its own title.
-func toolTitle(name string, input map[string]any) string {
+// ToolTitle is the loading label shown before a card renders its own title.
+func ToolTitle(name string, input map[string]any) string {
 	str := func(k string) string { s, _ := input[k].(string); return s }
 	switch name {
 	case "Bash":

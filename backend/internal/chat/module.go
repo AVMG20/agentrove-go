@@ -39,6 +39,7 @@ type Module struct {
 	a        *app.App
 	st       *store
 	sessions *sessions
+	subs     *subagentTracker
 
 	mu       sync.Mutex
 	turns    map[string]*turn // running (or handing off) turn per chat
@@ -72,7 +73,7 @@ type Module struct {
 
 func New(a *app.App) *Module {
 	m := &Module{
-		a: a, st: &store{db: a.DB}, sessions: newSessions(),
+		a: a, st: &store{db: a.DB}, sessions: newSessions(), subs: newSubagentTracker(),
 		turns: map[string]*turn{}, attached: map[string]*turn{}, starting: map[string]bool{}, stopStarting: map[string]bool{},
 		bgTasks: map[string][]backgroundTask{}, bgOwner: map[string]string{}, pending: map[string][]claude.Message{},
 		live: map[string]*claude.Session{},
@@ -95,6 +96,8 @@ func New(a *app.App) *Module {
 
 func (m *Module) Start(ctx context.Context) {
 	m.reconcileOrphans(ctx)
+	m.reconcileSubagents(ctx)
+	go m.runSubagentFlush(ctx)
 	t := time.NewTicker(time.Minute)
 	defer t.Stop()
 	for {
@@ -344,6 +347,7 @@ func (m *Module) wireSession(s *claude.Session) {
 	chatID := s.ChatID
 	// A new process starts without background tasks; any listed belonged to
 	// the one it replaces and would keep the chat (and box) awake forever.
+	m.subs.stopAll(chatID)
 	m.mu.Lock()
 	m.live[chatID] = s
 	had := len(m.bgTasks[chatID]) > 0
@@ -395,7 +399,8 @@ func (m *Module) sessionClosed(s *claude.Session) {
 		return
 	}
 	delete(m.live, chatID)
-	// Its background tasks died with it.
+	// Its background tasks (and subagents) died with it.
+	m.subs.stopAll(chatID)
 	had := len(m.bgTasks[chatID]) > 0
 	delete(m.bgTasks, chatID)
 	m.mu.Unlock()
@@ -406,6 +411,7 @@ func (m *Module) sessionClosed(s *claude.Session) {
 }
 
 func (m *Module) onSessionMessage(chatID string, msg claude.Message) {
+	m.subs.handle(chatID, msg)
 	if msg.Type == "system" {
 		switch msg.Subtype {
 		case "background_tasks_changed":
@@ -484,6 +490,7 @@ func (m *Module) publishBackgroundTasks(chatID string) {
 	tasks := append([]backgroundTask{}, m.bgTasks[chatID]...)
 	user := m.bgOwner[chatID]
 	m.mu.Unlock()
+	m.subs.syncTasks(chatID, tasks)
 	if user != "" {
 		m.publishChatEvent(user, map[string]any{"kind": "background_tasks", "chat_id": chatID, "tasks": tasks})
 	}

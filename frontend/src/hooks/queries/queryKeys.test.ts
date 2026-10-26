@@ -43,6 +43,7 @@ const CONTRACT: ReadonlyArray<readonly [string, readonly unknown[], readonly unk
   ],
   ['sandbox.search', queryKeys.sandbox.searchAll(SB), queryKeys.sandbox.search(SB, 'q', '/cwd')],
   ['github.pulls', queryKeys.github.pullsAll('o', 'r'), queryKeys.github.pulls('o', 'r')],
+  ['subagents', queryKeys.subagentsAll, queryKeys.subagents('c1')],
 ];
 
 describe('queryKeys prefix-invalidation contract', () => {
@@ -75,6 +76,7 @@ describe('queryKeys prefix-invalidation contract', () => {
         'gitFileBaselineAll',
         'pullsAll',
         'searchAll',
+        'subagentsAll',
       ].sort(),
     );
     expect(CONTRACT).toHaveLength(allKeyNames.length);

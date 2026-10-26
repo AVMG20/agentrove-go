@@ -1,10 +1,14 @@
-import { memo, useEffect, type ReactNode } from 'react';
+import { memo, useEffect, useState, type ReactNode } from 'react';
 import { AppWindow, Box, ExternalLink, Folder, GitBranch } from 'lucide-react';
 import clsx from 'clsx';
 import { Button } from '@/components/ui/primitives/Button/Button';
 import { FloatingTooltip } from '@/components/ui/FloatingTooltip/FloatingTooltip';
 import { ProviderIcon } from '@/components/ui/icons/ProviderIcon';
 import { useChatArtifactsQuery } from '@/hooks/queries/useArtifactQueries';
+import { useChatSubagentsQuery } from '@/hooks/queries/useSubagentQueries';
+import { useOpenSubagentId } from '@/hooks/useOpenSubagent';
+import { useSecondTick } from '@/hooks/useSecondTick';
+import { SubagentRow } from '@/components/chat/subagents/SubagentRow';
 import { useModelMap } from '@/hooks/queries/useModelQueries';
 import {
   useGitBranchesQuery,
@@ -177,6 +181,51 @@ function ArtifactsCard({ chatId }: { chatId: string }) {
   );
 }
 
+// Rows past this fold behind "Show N more"; a busy thread can run dozens.
+const SUBAGENTS_SHOWN = 5;
+
+// Only shown once Claude has spawned a subagent in this chat. A row opens the
+// subagent's pane next to the chat; clicking it again closes it.
+function SubagentsCard({ chatId }: { chatId: string }) {
+  const { data: subagents } = useChatSubagentsQuery(chatId);
+  const openId = useOpenSubagentId(chatId);
+  const [showAll, setShowAll] = useState(false);
+  const running = subagents?.filter((s) => s.status === 'running').length ?? 0;
+  const now = useSecondTick(running > 0);
+  if (!subagents || subagents.length === 0) return null;
+  const shown = showAll ? subagents : subagents.slice(0, SUBAGENTS_SHOWN);
+  const hidden = subagents.length - shown.length;
+  return (
+    <Card
+      title="Subagents"
+      action={running > 0 ? <span className={styles.secondary}>{running} running</span> : undefined}
+    >
+      {shown.map((subagent) => (
+        <SubagentRow
+          key={subagent.id}
+          subagent={subagent}
+          now={now}
+          selected={subagent.id === openId}
+          onSelect={() => {
+            useUIStore.getState().setSessionSheetOpen(false);
+            useUIStore.getState().toggleSubagent(chatId, subagent.id);
+          }}
+        />
+      ))}
+      {subagents.length > SUBAGENTS_SHOWN && (
+        <Button
+          variant="unstyled"
+          type="button"
+          className={styles['more-button']}
+          onClick={() => setShowAll((value) => !value)}
+        >
+          {showAll ? 'Show less' : `Show ${hidden} more`}
+        </Button>
+      )}
+    </Card>
+  );
+}
+
 function openDiff(chatId: string, mode: DiffMode) {
   focusPrimaryAgent();
   useUIStore.setState({ pendingDiffMode: { chatId, mode } });
@@ -333,6 +382,7 @@ export const SessionPanel = memo(function SessionPanel({ chat, workspace }: Sess
         />
       </EnvironmentCard>
       <ContextCard chat={chat} />
+      <SubagentsCard chatId={chat.id} />
       <ArtifactsCard chatId={chat.id} />
       {branch && (
         <ChangesCard

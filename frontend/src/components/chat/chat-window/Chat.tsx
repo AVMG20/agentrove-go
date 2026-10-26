@@ -443,7 +443,7 @@ export const Chat = memo(function Chat() {
       onScrollToBottom={scrollToBottom}
       composerBanner={
         <>
-          {chatId && <BackgroundTasksTray chatId={chatId} onStopTurn={onStopStream} />}
+          {chatId && <BackgroundTasksTray chatId={chatId} />}
           <ChatQueueBanner
             messages={pendingMessages}
             onCancel={handleCancelMessage}

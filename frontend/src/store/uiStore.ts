@@ -17,6 +17,7 @@ import { isMobileViewport } from '@/hooks/useIsMobile';
 import {
   activeSplitSlot,
   isSplitTile,
+  paintedLayout,
   splitSlotOfTile,
   tileIdToViewType,
   viewTypeToTileId,
@@ -105,6 +106,12 @@ type UIStoreState = ThemeState &
     addComposerSelection: (chatId: string, selection: ComposerSelection) => void;
     removeComposerSelection: (chatId: string, index: number) => void;
     clearComposerSelections: (chatId: string) => void;
+    // Subagent shown in each chat's subagent pane; session-only (an open pane
+    // without one lists the chat's subagents).
+    subagentByChat: Record<string, string>;
+    // Opens the subagent's pane next to the chat (null: the list of them), or
+    // closes it when it's already showing that.
+    toggleSubagent: (chatId: string, subagentId: string | null) => void;
     // Landing workspace sandbox for git shortcuts before a chat exists.
     workspaceSandboxId: string | null;
     setWorkspaceSandboxId: (sandboxId: string | null) => void;
@@ -317,6 +324,37 @@ export const useUIStore = create<UIStoreState>()(
 
       workspaceSandboxId: null,
       setWorkspaceSandboxId: (sandboxId) => set({ workspaceSandboxId: sandboxId }),
+
+      subagentByChat: {},
+      toggleSubagent: (chatId, subagentId) => {
+        const state = get();
+        const splitIndex = state.splitChatIds.indexOf(chatId);
+        const slot = splitIndex >= 0 ? splitSlotAt(splitIndex) : null;
+        const tileId = viewTypeToTileId('subagent', slot);
+        // On a phone only the painted pane counts as showing.
+        const visible = paintedLayout(state.visibleLayout, state.focusedTile, !isDesktop())
+          .flat()
+          .includes(tileId);
+        if (visible && (state.subagentByChat[chatId] ?? null) === subagentId) {
+          get().removeTab(tileId);
+          return;
+        }
+        const subagentByChat = { ...state.subagentByChat };
+        if (subagentId) subagentByChat[chatId] = subagentId;
+        else delete subagentByChat[chatId];
+        set({
+          subagentByChat,
+          openTabs: state.openTabs.includes(tileId) ? state.openTabs : [...state.openTabs, tileId],
+        });
+        if (visible) {
+          get().focusTile(tileId);
+        } else if (isDesktop()) {
+          set({ visibleLayout: appendToLastRow(state.visibleLayout, tileId) });
+          get().focusTile(tileId);
+        } else {
+          get().activateTab(tileId);
+        }
+      },
 
       pendingFileOpen: null,
       fileOpenNonce: 0,

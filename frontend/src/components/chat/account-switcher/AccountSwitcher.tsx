@@ -20,7 +20,7 @@ import {
   noUsageReason,
   profileStatusLabel,
 } from '@/utils/profiles';
-import { summarizeWindow, windowLabels } from '@/utils/planUsage';
+import { formatResetInShort, summarizeWindow, windowLabels } from '@/utils/planUsage';
 import type { Profile, ProviderKind } from '@/types/profile.types';
 import type { AccountUsage, UsageWindow } from '@/types/usage.types';
 import { UsageBar } from './UsageBar';
@@ -116,6 +116,12 @@ export function AccountSwitcher({
   const showUsage = !!selected && hasWindows(usage);
   const first = showUsage ? summarizeWindow(usage.windows[0], now) : null;
   const usageText = showUsage ? usage.windows.map((w) => windowText(w, now)).join(' · ') : '';
+  // Phones have room for the first window only, its reset to the hour: "5% 4h".
+  const compactUsage = first
+    ? [`${Math.round(first.used)}%`, first.resetIn != null && formatResetInShort(first.resetIn)]
+        .filter(Boolean)
+        .join(' ')
+    : '';
 
   const open = () => {
     // Without an account there's no usage to show: go straight to the list.
@@ -316,7 +322,10 @@ export function AccountSwitcher({
         {first && (
           <UsageBar used={first.used} tone={first.tone} className={styles['trigger-bar']} />
         )}
-        {usageText && !isSplitMode && <span className={styles['trigger-usage']}>{usageText}</span>}
+        {isMobile
+          ? compactUsage && <span className={styles['trigger-usage-compact']}>{compactUsage}</span>
+          : usageText &&
+            !isSplitMode && <span className={styles['trigger-usage']}>{usageText}</span>}
       </button>
 
       {isOpen &&

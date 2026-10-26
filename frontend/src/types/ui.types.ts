@@ -62,7 +62,8 @@ export interface ModelSelectionState {
   toggleFavoriteModel: (modelId: string) => void;
 }
 
-export type ViewType = 'agent' | 'diff' | 'editor' | 'terminal' | 'browser';
+// subagent: one subagent's prompt and activity, opened from the session panel.
+export type ViewType = 'agent' | 'diff' | 'editor' | 'terminal' | 'browser' | 'subagent';
 
 export const MAX_CHAT_PANES = 4;
 export type SplitSlot = 1 | 2 | 3;

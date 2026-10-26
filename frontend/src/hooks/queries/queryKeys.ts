@@ -10,6 +10,10 @@ export const queryKeys = {
   messages: (chatId?: string) => ['messages', chatId] as const,
   messageRender: (messageId: string) => ['message-render', messageId] as const,
   contextUsage: (chatId?: string) => ['chat', chatId, 'context-usage'] as const,
+  subagentsAll: ['subagents'] as const,
+  subagents: (chatId?: string) => ['subagents', chatId] as const,
+  subagent: (chatId?: string, subagentId?: string) =>
+    ['subagents', chatId, 'detail', subagentId] as const,
   auth: {
     user: 'auth-user',
     config: ['auth-config'] as const,

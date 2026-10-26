@@ -84,8 +84,15 @@
   color: var(--theme-text-quaternary);
   font-variant-numeric: tabular-nums;
 
-  // Phones: the bar says enough; the numbers are a tap away.
+  // Phones get the compact form below; the full numbers are a tap away.
   @include responsive.hide('mobile');
+}
+
+.trigger-usage-compact {
+  flex-shrink: 0;
+  white-space: nowrap;
+  color: var(--theme-text-quaternary);
+  font-variant-numeric: tabular-nums;
 }
 
 .loading {

@@ -1,0 +1,181 @@
+@use '@/styles/globals/colors' as colors;
+@use '@/styles/globals/typography' as type;
+@use '@/styles/globals/animations' as anim;
+@use '@/styles/globals/responsive' as responsive;
+
+.pane {
+  display: flex;
+  height: 100%;
+  // Fill the workspace pane, which lays its view out as a flex row.
+  width: 100%;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+  background-color: var(--theme-surface);
+}
+
+.header {
+  display: flex;
+  min-height: var(--space-12);
+  flex-shrink: 0;
+  align-items: center;
+  gap: var(--space-1);
+  border-bottom: 1px solid colors.theme-color('border', 0.3);
+  padding: var(--space-1-5) var(--space-2) var(--space-1-5) var(--space-4);
+}
+
+.header-text {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+}
+
+.title {
+  @include type.type-default(500);
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--theme-text-primary);
+}
+
+.title-text {
+  @include type.type-overflow;
+}
+
+.meta {
+  @include type.type-meta;
+  @include type.type-overflow;
+  color: var(--theme-text-quaternary);
+}
+
+.icon-button {
+  @include anim.transition-colors;
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-md);
+  padding: var(--space-1-5);
+  color: var(--theme-text-tertiary);
+
+  @include responsive.hover {
+    background-color: var(--theme-surface-hover);
+    color: var(--theme-text-primary);
+  }
+
+  &:disabled {
+    cursor: default;
+    opacity: 0.6;
+  }
+}
+
+.glyph {
+  height: var(--space-4);
+  width: var(--space-4);
+}
+
+.stop-glyph {
+  height: var(--space-3);
+  width: var(--space-3);
+  fill: currentColor;
+}
+
+.body {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+  gap: var(--space-5);
+  overflow-y: auto;
+  padding: var(--space-4);
+}
+
+.section {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.section-title {
+  @include type.type-meta(500);
+  color: var(--theme-text-tertiary);
+}
+
+.prompt {
+  @include type.type-default;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+  border-radius: var(--radius-lg);
+  background-color: var(--theme-surface-secondary);
+  padding: var(--space-2) var(--space-3);
+  color: var(--theme-text-secondary);
+}
+
+.prompt--clamped {
+  @include type.type-lineclamp(8);
+}
+
+.more-button {
+  @include type.type-meta(500);
+  align-self: flex-start;
+  color: var(--theme-text-tertiary);
+
+  @include responsive.hover {
+    color: var(--theme-text-primary);
+  }
+}
+
+.activity {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1-5);
+}
+
+.tool {
+  @include type.type-meta;
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--theme-text-secondary);
+}
+
+.tool-icon {
+  display: flex;
+  width: var(--space-3);
+  flex-shrink: 0;
+  justify-content: center;
+}
+
+.tool-title {
+  @include type.type-overflow;
+}
+
+.text {
+  @include type.type-default;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+  padding-block: var(--space-0-5);
+  color: var(--theme-text-primary);
+}
+
+.working {
+  @include type.type-meta(500);
+  @include anim.text-shimmer;
+}
+
+.result {
+  @include type.type-default;
+  border-radius: var(--radius-lg);
+  border: 1px solid colors.theme-color('border', 0.5);
+  padding: var(--space-2) var(--space-3);
+}
+
+.empty {
+  @include type.type-meta;
+  color: var(--theme-text-quaternary);
+}
