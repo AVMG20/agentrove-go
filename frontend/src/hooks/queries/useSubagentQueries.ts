@@ -35,11 +35,17 @@ export const useSubagentQuery = (
 // open pane refetches the detail (the server sends at most one event per
 // subagent per flush, so this stays cheap).
 export function applySubagentEvent(queryClient: QueryClient, chatId: string, subagent: Subagent) {
-  queryClient.setQueryData<Subagent[]>(queryKeys.subagents(chatId), (current) => {
-    if (!current) return current;
-    const rest = current.filter((s) => s.id !== subagent.id);
-    return sortSubagents([subagent, ...rest]);
-  });
+  const listKey = queryKeys.subagents(chatId);
+  if (queryClient.getQueryData<Subagent[]>(listKey)) {
+    queryClient.setQueryData<Subagent[]>(listKey, (current) => {
+      const rest = (current ?? []).filter((s) => s.id !== subagent.id);
+      return sortSubagents([subagent, ...rest]);
+    });
+  } else {
+    // The list may be fetching from before this event; never-stale data won't
+    // catch up on its own.
+    void queryClient.invalidateQueries({ queryKey: listKey });
+  }
   void queryClient.invalidateQueries({
     queryKey: queryKeys.subagent(chatId, subagent.id),
     refetchType: 'active',

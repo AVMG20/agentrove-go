@@ -249,12 +249,14 @@ function Activity({
     scroller.addEventListener('scroll', onScroll, { passive: true });
     return () => scroller.removeEventListener('scroll', onScroll);
   }, [scrollerRef]);
+  // Keyed on the array, not its length: the log is capped, so the length stops
+  // changing while new entries still arrive.
   useEffect(() => {
     const scroller = scrollerRef.current;
     if (scroller && isVisible && running && followRef.current) {
       scroller.scrollTop = scroller.scrollHeight;
     }
-  }, [entries.length, running, isVisible, scrollerRef]);
+  }, [entries, running, isVisible, scrollerRef]);
 
   return (
     <section className={styles.section}>

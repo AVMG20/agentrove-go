@@ -110,6 +110,40 @@ func TestBackgroundSubagentFollowsTaskList(t *testing.T) {
 	}
 }
 
+func TestRemoteSubagentLaunchKeepsItsTaskID(t *testing.T) {
+	r := newSubagentTracker()
+	r.handle(testChat, cliMsg("assistant", "", agentCall("a1", false)))
+	launched := cliMsg("user", "", toolResult("a1", "Remote agent launched", false))
+	launched.ToolUseResult = json.RawMessage(`{"status":"remote_launched","taskId":"rt1"}`)
+	r.handle(testChat, launched)
+	r.handle(testChat, claude.Message{Type: "result"})
+	s, _ := r.get(testChat, "a1")
+	if s.Status != subagentRunning || !s.Background || s.TaskID != "rt1" {
+		t.Fatalf("remote subagent = %+v", s)
+	}
+}
+
+func TestLateAnswerReplacesInferredResult(t *testing.T) {
+	r := newSubagentTracker()
+	r.handle(testChat, cliMsg("assistant", "", agentCall("a1", false)))
+	r.handle(testChat, cliMsg("assistant", "a1", map[string]any{"type": "text", "text": "Checking"}))
+	r.syncTasks(testChat, []backgroundTask{{ID: "task9", Kind: "agent", ToolID: "a1"}})
+	r.syncTasks(testChat, nil)
+	if s, _ := r.get(testChat, "a1"); s.Status != subagentCompleted || s.Result != "Checking" {
+		t.Fatalf("inferred subagent = %+v", s)
+	}
+	r.handle(testChat, cliMsg("user", "", toolResult("a1", "All fixed", false)))
+	s, _ := r.get(testChat, "a1")
+	if s.Status != subagentCompleted || s.Result != "All fixed" {
+		t.Fatalf("answered subagent = %+v", s)
+	}
+	// A failed result doesn't replace it, nor bring it back to running.
+	r.handle(testChat, cliMsg("user", "", toolResult("a1", "boom", true)))
+	if s, _ = r.get(testChat, "a1"); s.Status != subagentCompleted || s.Result != "All fixed" {
+		t.Fatalf("after error result = %+v", s)
+	}
+}
+
 func TestSubagentsStopWithTurnOrProcess(t *testing.T) {
 	r := newSubagentTracker()
 	r.handle(testChat, cliMsg("assistant", "", agentCall("fg", false), agentCall("bg", true)))

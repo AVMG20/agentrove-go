@@ -19,25 +19,28 @@ interface BackgroundTasksTrayProps {
 
 function TaskRow({ chatId, task, now }: { chatId: string; task: BackgroundTask; now: number }) {
   const [stopping, setStopping] = useState(false);
+  const shell = task.kind === 'shell';
+  const Icon = shell ? SquareTerminal : Bot;
+  const noun = shell ? 'command' : 'task';
 
   const handleStop = async () => {
     setStopping(true);
     try {
       await chatService.stopBackgroundTask(chatId, task.id);
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Failed to stop the command');
+      toast.error(error instanceof Error ? error.message : `Failed to stop the ${noun}`);
       setStopping(false);
     }
   };
 
   return (
     <li className={styles.row}>
-      <SquareTerminal className={styles['row-icon']} aria-hidden="true" />
+      <Icon className={styles['row-icon']} aria-hidden="true" />
       <FloatingTooltip content={task.title} className={styles['row-title-wrap']}>
-        <span className={clsx(styles['row-title'], styles.mono)}>{task.title}</span>
+        <span className={clsx(styles['row-title'], shell && styles.mono)}>{task.title}</span>
       </FloatingTooltip>
       <span className={styles.elapsed}>{formatElapsed(now - task.started_at * 1000)}</span>
-      <FloatingTooltip content="Stop command">
+      <FloatingTooltip content={`Stop ${noun}`}>
         <button
           type="button"
           className={styles['stop-btn']}
@@ -94,13 +97,22 @@ function SubagentsRow({
   );
 }
 
-// Background work above the composer: each shell, and running subagents.
+function plural(count: number, noun: string): string | false {
+  return count > 0 && `${count} ${noun}${count === 1 ? '' : 's'}`;
+}
+
+// Background work above the composer: each background task, and running
+// subagents. A task that belongs to a tracked subagent is shown as that subagent.
 export const BackgroundTasksTray = memo(function BackgroundTasksTray({
   chatId,
 }: BackgroundTasksTrayProps) {
   const allTasks = useChatBackgroundTasks(chatId);
-  const tasks = useMemo(() => allTasks.filter((task) => task.kind === 'shell'), [allTasks]);
   const { data: allSubagents } = useChatSubagentsQuery(chatId);
+  const tasks = useMemo(() => {
+    const toolIds = new Set((allSubagents ?? []).map((s) => s.id));
+    const taskIds = new Set((allSubagents ?? []).flatMap((s) => (s.task_id ? [s.task_id] : [])));
+    return allTasks.filter((task) => !taskIds.has(task.id) && !toolIds.has(task.tool_id));
+  }, [allTasks, allSubagents]);
   const subagents = useMemo(
     () => (allSubagents ?? []).filter((s) => s.status === 'running'),
     [allSubagents],
@@ -110,10 +122,11 @@ export const BackgroundTasksTray = memo(function BackgroundTasksTray({
 
   if (tasks.length === 0 && subagents.length === 0) return null;
 
+  const commands = tasks.filter((task) => task.kind === 'shell').length;
   const summary = [
-    tasks.length > 0 && `${tasks.length} ${tasks.length === 1 ? 'command' : 'commands'}`,
-    subagents.length > 0 &&
-      `${subagents.length} ${subagents.length === 1 ? 'subagent' : 'subagents'}`,
+    plural(commands, 'command'),
+    plural(tasks.length - commands, 'task'),
+    plural(subagents.length, 'subagent'),
   ]
     .filter(Boolean)
     .join(' · ');

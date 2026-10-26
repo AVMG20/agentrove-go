@@ -93,7 +93,9 @@ describe('BackgroundTasksTray', () => {
     subagentsByChat.c1 = [subagent(), subagent({ id: 'a0', status: 'completed' })];
     useBackgroundTasksStore
       .getState()
-      .setChatTasks('c1', [task({ id: 't1', kind: 'agent', title: 'Review the diff' })]);
+      .setChatTasks('c1', [
+        task({ id: 't1', kind: 'agent', title: 'Review the diff', tool_id: 'a1' }),
+      ]);
     render(<BackgroundTasksTray chatId="c1" />);
 
     expect(screen.getByText('1 subagent')).toBeTruthy();
@@ -113,15 +115,33 @@ describe('BackgroundTasksTray', () => {
   });
 
   it('stops a command', () => {
-    useBackgroundTasksStore
-      .getState()
-      .setChatTasks('c1', [task(), task({ id: 'a1', kind: 'agent', title: 'Review the diff' })]);
+    useBackgroundTasksStore.getState().setChatTasks('c1', [task()]);
     render(<BackgroundTasksTray chatId="c1" />);
 
     expect(screen.getByText('1 command')).toBeTruthy();
-    expect(screen.queryByText('Review the diff')).toBeNull();
     fireEvent.click(screen.getByLabelText('Stop ./gradlew build'));
     expect(stopBackgroundTask).toHaveBeenCalledWith('c1', 'b1');
+  });
+
+  it('keeps tasks no subagent accounts for, folding the rest into the subagent row', () => {
+    subagentsByChat.c1 = [
+      subagent({ task_id: 't1' }),
+      subagent({ id: 'a2', description: 'Audit' }),
+    ];
+    useBackgroundTasksStore
+      .getState()
+      .setChatTasks('c1', [
+        task({ id: 't1', kind: 'agent', title: 'Review the diff', tool_id: 'a1' }),
+        task({ id: 't2', kind: 'agent', title: 'Audit', tool_id: 'a2' }),
+        task({ id: 'm1', kind: 'agent', title: 'Watch the deploy', tool_id: 'tool-9' }),
+      ]);
+    render(<BackgroundTasksTray chatId="c1" />);
+
+    expect(screen.getByText('1 task · 2 subagents')).toBeTruthy();
+    expect(screen.queryByLabelText('Stop Review the diff')).toBeNull();
+    expect(screen.queryByLabelText('Stop Audit')).toBeNull();
+    fireEvent.click(screen.getByLabelText('Stop Watch the deploy'));
+    expect(stopBackgroundTask).toHaveBeenCalledWith('c1', 'm1');
   });
 
   it('collapses to the summary line', () => {

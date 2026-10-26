@@ -207,7 +207,6 @@ function SubagentsCard({ chatId }: { chatId: string }) {
           now={now}
           selected={subagent.id === openId}
           onSelect={() => {
-            focusPrimaryAgent();
             useUIStore.getState().setSessionSheetOpen(false);
             useUIStore.getState().toggleSubagent(chatId, subagent.id);
           }}

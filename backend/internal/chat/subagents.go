@@ -275,18 +275,25 @@ func (r *subagentTracker) spawn(chatID string, b cliBlock, now float64) {
 // returned handles the spawning tool call's result: the subagent's answer,
 // or for a background subagent only the news that it was launched.
 func (r *subagentTracker) returned(s *liveSubagent, b cliBlock, toolUseResult json.RawMessage, now float64) {
-	if s.Status != subagentRunning {
-		return
-	}
 	var res struct {
 		Status  string `json:"status"`
 		AgentID string `json:"agentId"`
+		TaskID  string `json:"taskId"` // remote agents
 	}
 	_ = json.Unmarshal(toolUseResult, &res)
-	if !b.IsError && (res.Status == "async_launched" || s.Background) {
+	launched := res.Status == "async_launched" || res.Status == "remote_launched"
+	if s.Status != subagentRunning {
+		// A notification or the task list settled it first; the answer itself
+		// is still the better result.
+		if text := strings.TrimSpace(claude.ResultText(b.Content)); !b.IsError && !launched && text != "" {
+			s.Result, s.dirty = clipRunes(text, maxSubagentResult), true
+		}
+		return
+	}
+	if !b.IsError && (launched || s.Background) {
 		s.Background = true
 		if s.TaskID == "" {
-			s.TaskID = res.AgentID
+			s.TaskID = firstNonEmpty(res.AgentID, res.TaskID)
 		}
 		s.dirty = true
 		return
