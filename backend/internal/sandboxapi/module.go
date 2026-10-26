@@ -12,7 +12,9 @@ import (
 	"io/fs"
 	"net/http"
 	"os"
+	"path"
 	"strconv"
+	"strings"
 
 	"agentrove/internal/app"
 	"agentrove/internal/auth"
@@ -51,6 +53,7 @@ func (m *Module) Routes(mux *http.ServeMux) {
 	req := m.a.Auth.Require
 	mux.HandleFunc("GET "+p+"/files/metadata", req(m.filesMetadata))
 	mux.HandleFunc("GET "+p+"/files/content/{file_path...}", req(m.fileContent))
+	mux.HandleFunc("GET "+p+"/files/box", req(m.boxFileContent))
 	mux.HandleFunc("PUT "+p+"/files", req(m.updateFile))
 	mux.HandleFunc("GET "+p+"/download-zip", req(m.downloadZip))
 	mux.HandleFunc("GET "+p+"/git/diff", req(m.gitDiff))
@@ -187,6 +190,62 @@ func (m *Module) fileContent(w http.ResponseWriter, r *http.Request) error {
 		return httpx.NotFound(fmt.Sprintf("Failed to read file %s: %s", rel, reason))
 	}
 	return httpx.OK(w, fc)
+}
+
+// boxFileContent reads a file by its absolute path in the box (?path=), for
+// links agents write to files outside the project, such as their own plan
+// and scratch dirs under HOME. It is read-only.
+func (m *Module) boxFileContent(w http.ResponseWriter, r *http.Request) error {
+	_, sb, err := m.sandboxFor(r)
+	if err != nil {
+		return err
+	}
+	raw := r.URL.Query().Get("path")
+	fc, err := readBoxFile(sb, m.a.Cfg.AgentHomeDir(sb.UserID), raw)
+	switch {
+	case errors.Is(err, errNotAbsolute):
+		return httpx.BadRequest(err.Error())
+	case errors.Is(err, errTooLarge):
+		return httpx.Errorf(http.StatusRequestEntityTooLarge, "Failed to read file %s: %s", raw, err)
+	case errors.Is(err, fs.ErrNotExist) || errors.Is(err, errNotAFile):
+		return httpx.NotFound(fmt.Sprintf("Failed to read file %s: file not found", raw))
+	case err != nil:
+		return httpx.NotFound(fmt.Sprintf("Failed to read file %s: %s", raw, err))
+	}
+	return httpx.OK(w, fc)
+}
+
+var (
+	errNotAbsolute = errors.New("path must be absolute")
+	errOutsideHome = errors.New("only files in the box's home folder can be opened")
+)
+
+// readBoxFile reads the box file at the absolute path p: from the project
+// when it is inside it, else from the box HOME on the host (agentHome),
+// through an os.Root so a symlink can't lead out of it.
+func readBoxFile(sb *sandbox.Sandbox, agentHome, p string) (FileContent, error) {
+	clean := path.Clean(p)
+	if !path.IsAbs(clean) || strings.ContainsRune(clean, 0) {
+		return FileContent{}, errNotAbsolute
+	}
+	var data []byte
+	var err error
+	if rel, ok := strings.CutPrefix(clean, sb.Root+"/"); ok {
+		data, err = readRaw(sb, rel)
+	} else if rel, ok := strings.CutPrefix(clean, sb.Home+"/"); ok && sb.Home != "" {
+		var root *os.Root
+		if root, err = os.OpenRoot(agentHome); err == nil {
+			data, err = readFrom(root, rel)
+			root.Close()
+		}
+	} else {
+		err = errOutsideHome
+	}
+	if err != nil {
+		return FileContent{}, err
+	}
+	content, binary, lossy := EncodeContent(clean, data)
+	return FileContent{Content: content, Path: p, Type: "file", IsBinary: binary, Lossy: lossy, Version: fileVersion(data)}, nil
 }
 
 func (m *Module) updateFile(w http.ResponseWriter, r *http.Request) error {

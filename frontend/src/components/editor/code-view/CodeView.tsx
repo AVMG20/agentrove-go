@@ -128,7 +128,9 @@ export const CodeView = memo(function CodeView({
   const pendingFileOpen = useUIStore((s) => s.pendingFileOpen);
   useEffect(() => {
     if (!pendingFileOpen || pendingFileOpen.chatId !== chatId) return;
-    if (files.length === 0) return;
+    // Wait for the tree to map a path onto a project file; an absolute path
+    // can open without it (a no-project chat's tree may stay empty).
+    if (files.length === 0 && !pendingFileOpen.path.startsWith('/')) return;
     const file = findFileByToolPath(filesRef.current, pendingFileOpen.path);
     const path = file?.path ?? pendingFileOpen.path;
     onFileSelect(file ?? { path, type: 'file', content: '' });

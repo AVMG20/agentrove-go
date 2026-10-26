@@ -185,6 +185,11 @@ func readRaw(sb *sandbox.Sandbox, rel string) ([]byte, error) {
 		return nil, err
 	}
 	defer root.Close()
+	return readFrom(root, rel)
+}
+
+// readFrom reads a regular file of at most maxReadBytes inside root.
+func readFrom(root *os.Root, rel string) ([]byte, error) {
 	fi, err := root.Stat(rel)
 	if err != nil {
 		return nil, err

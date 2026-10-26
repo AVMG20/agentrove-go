@@ -115,7 +115,9 @@ export const View = memo(function View({
   // Saving these back would write base64 text or replacement characters to disk.
   const readOnlyReason = loadedFile?.is_binary
     ? 'Binary file — shown read-only.'
-    : loadedFile?.lossy
+    : loadedFile?.path.startsWith('/')
+      ? 'Outside the project — shown read-only.'
+      : loadedFile?.lossy
       ? "This file isn't valid UTF-8 — shown with replacement characters, read-only."
       : null;
   const queryClient = useQueryClient();

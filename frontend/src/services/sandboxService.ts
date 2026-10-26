@@ -43,7 +43,11 @@ async function getFileContent(sandboxId: string, filePath: string): Promise<File
   validateRequired(filePath, 'File path');
 
   return serviceCall(async () => {
-    const url = `/sandbox/${sandboxId}/files/content/${filePath}`;
+    // Absolute paths are box files outside the project (agents link their own
+    // scratch and plan dirs); the backend serves those read-only.
+    const url = filePath.startsWith('/')
+      ? `/sandbox/${sandboxId}/files/box?path=${encodeURIComponent(filePath)}`
+      : `/sandbox/${sandboxId}/files/content/${filePath}`;
     const response = await apiClient.get<FileContent>(url);
 
     if (!response) {
