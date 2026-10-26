@@ -290,7 +290,9 @@ func (r *subagentTracker) returned(s *liveSubagent, b cliBlock, toolUseResult js
 		}
 		return
 	}
-	if !b.IsError && (launched || s.Background) {
+	// The result's own status decides when it has one: a foreground call the
+	// task list showed (so marked background) still returns its answer here.
+	if !b.IsError && (launched || (res.Status == "" && s.Background)) {
 		s.Background = true
 		if s.TaskID == "" {
 			s.TaskID = firstNonEmpty(res.AgentID, res.TaskID)

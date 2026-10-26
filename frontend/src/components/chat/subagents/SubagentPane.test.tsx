@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useUIStore } from '@/store/uiStore';
 import type { Subagent } from '@/types/chat.types';
@@ -13,6 +13,9 @@ const h = vi.hoisted(() => ({
 vi.mock('@/hooks/queries/useSubagentQueries', () => ({
   useChatSubagentsQuery: () => ({ data: h.list, isLoading: false }),
   useSubagentQuery: () => ({ data: h.detail, isError: false }),
+}));
+vi.mock('@/services/chatService', () => ({
+  chatService: { stopBackgroundTask: () => new Promise<void>(() => {}) },
 }));
 vi.mock('@/components/ui/markdown/MarkDown', () => ({
   MarkDown: ({ content }: { content: string }) => <div>{content}</div>,
@@ -80,6 +83,16 @@ describe('SubagentPane', () => {
     expect(screen.getByText('All four fixed')).toBeTruthy();
     expect(screen.queryByText('Working…')).toBeNull();
     expect(screen.queryByLabelText('Stop subagent')).toBeNull();
+  });
+
+  it("doesn't carry a pending stop over to the next subagent", () => {
+    h.list = [subagent(), subagent({ id: 'a2', description: 'Audit', task_id: 'task2' })];
+    render(<SubagentPane chatId="c1" tileId="subagent" isVisible />);
+    fireEvent.click(screen.getByLabelText('Stop subagent'));
+    expect(screen.getByLabelText<HTMLButtonElement>('Stop subagent').disabled).toBe(true);
+    act(() => useUIStore.setState({ subagentByChat: { c1: 'a2' } }));
+    expect(screen.getByText('Audit')).toBeTruthy();
+    expect(screen.getByLabelText<HTMLButtonElement>('Stop subagent').disabled).toBe(false);
   });
 
   it('goes back to the list and closes', () => {

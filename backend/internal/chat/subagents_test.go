@@ -123,6 +123,26 @@ func TestRemoteSubagentLaunchKeepsItsTaskID(t *testing.T) {
 	}
 }
 
+func TestListedForegroundSubagentFinishesWithItsAnswer(t *testing.T) {
+	r := newSubagentTracker()
+	r.handle(testChat, cliMsg("assistant", "", agentCall("a1", false)))
+	r.handle(testChat, cliMsg("assistant", "a1", map[string]any{"type": "text", "text": "Checking"}))
+	// The task list shows foreground agents too.
+	r.syncTasks(testChat, []backgroundTask{{ID: "task9", Kind: "agent", ToolID: "a1"}})
+	answered := cliMsg("user", "", toolResult("a1", "Real answer", false))
+	answered.ToolUseResult = json.RawMessage(`{"status":"completed"}`)
+	r.handle(testChat, answered)
+	s, _ := r.get(testChat, "a1")
+	if s.Status != subagentCompleted || s.Result != "Real answer" || s.FinishedAt == nil {
+		t.Fatalf("answered subagent = %+v", s)
+	}
+	// Leaving the list afterwards doesn't touch it.
+	r.syncTasks(testChat, nil)
+	if s, _ = r.get(testChat, "a1"); s.Status != subagentCompleted || s.Result != "Real answer" {
+		t.Fatalf("after leaving the list = %+v", s)
+	}
+}
+
 func TestLateAnswerReplacesInferredResult(t *testing.T) {
 	r := newSubagentTracker()
 	r.handle(testChat, cliMsg("assistant", "", agentCall("a1", false)))

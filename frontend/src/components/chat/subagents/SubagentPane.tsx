@@ -30,8 +30,16 @@ export function SubagentPane({ chatId, tileId, isVisible }: SubagentPaneProps) {
   const subagentId = useUIStore((s) => s.subagentByChat[chatId]);
   const close = () => useUIStore.getState().removeTab(tileId);
   if (!subagentId) return <SubagentPicker chatId={chatId} onClose={close} />;
+  // Keyed so switching subagents starts fresh: no stop spinner, expanded
+  // prompt or scroll-follow state carried over from the previous one.
   return (
-    <SubagentDetail chatId={chatId} subagentId={subagentId} isVisible={isVisible} onClose={close} />
+    <SubagentDetail
+      key={subagentId}
+      chatId={chatId}
+      subagentId={subagentId}
+      isVisible={isVisible}
+      onClose={close}
+    />
   );
 }
 
