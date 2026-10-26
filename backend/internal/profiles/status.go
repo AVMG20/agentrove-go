@@ -206,7 +206,10 @@ func planName(s string) string {
 
 // probes remembers which CLIs a user's box lacks. It is filled when the box
 // runs anyway (a sign-in, a turn that found no CLI, or Settings while the box
-// is up), so checking never starts a stopped box.
+// is up), so checking never starts a stopped box. A miss expires after
+// probeTTL, since the box may since have been rebuilt on a newer image.
+const probeTTL = 5 * time.Minute
+
 type probes struct {
 	mu      sync.Mutex
 	absent  map[string]map[string]bool // user -> binary -> missing
@@ -220,7 +223,7 @@ func newProbes() *probes {
 func (p *probes) missing(userID, bin string) bool {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	return p.absent[userID][bin]
+	return p.absent[userID][bin] && time.Since(p.checked[userID]) < probeTTL
 }
 
 func (p *probes) set(userID string, absent map[string]bool) {
@@ -230,10 +233,17 @@ func (p *probes) set(userID string, absent map[string]bool) {
 	p.mu.Unlock()
 }
 
+// fresh reports a recent check that found every CLI. A miss is rechecked
+// on every look while the box runs, so installing one shows up at once.
 func (p *probes) fresh(userID string) bool {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	return time.Since(p.checked[userID]) < 5*time.Minute
+	for _, missing := range p.absent[userID] {
+		if missing {
+			return false
+		}
+	}
+	return time.Since(p.checked[userID]) < probeTTL
 }
 
 // NoteMissing records that a turn found bin missing in the user's box.
@@ -243,6 +253,7 @@ func (s *Service) NoteMissing(userID, bin string) {
 		s.probes.absent[userID] = map[string]bool{}
 	}
 	s.probes.absent[userID][bin] = true
+	s.probes.checked[userID] = time.Now()
 	s.probes.mu.Unlock()
 }
 

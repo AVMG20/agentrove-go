@@ -11,6 +11,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"agentrove/internal/auth"
 	"agentrove/internal/config"
@@ -589,6 +590,14 @@ func TestStatusReadsHostLogins(t *testing.T) {
 	s.NoteMissing(testUser, "codex")
 	if st := s.Status(ctx, cx); st.State != StatusCLIMissing {
 		t.Fatalf("missing CLI = %+v", st)
+	}
+	if s.probes.fresh(testUser) {
+		t.Fatal("a miss should be rechecked while the box runs")
+	}
+	// The box may since have been rebuilt with the CLI, so a miss expires.
+	s.probes.checked[testUser] = time.Now().Add(-probeTTL)
+	if st := s.Status(ctx, cx); st.State == StatusCLIMissing {
+		t.Fatalf("expired miss = %+v", st)
 	}
 }
 
