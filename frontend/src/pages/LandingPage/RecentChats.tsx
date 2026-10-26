@@ -1,3 +1,5 @@
+import clsx from 'clsx';
+import { Zap } from 'lucide-react';
 import type { Chat } from '@/types/chat.types';
 import { useStreamStore } from '@/store/streamStore';
 import { useBlockedChatIds } from '@/hooks/useBlockedChatIds';
@@ -7,6 +9,7 @@ import { formatRelativeTime } from '@/utils/date';
 import { stripMarkdownTitle } from '@/utils/format';
 import type { WorkspaceBadge } from '@/hooks/queries/useSidebarChatLists';
 import { ChatStatusDot } from '@/components/ui/ChatStatusDot/ChatStatusDot';
+import { ProviderIcon } from '@/components/ui/icons/ProviderIcon';
 import { chatStatusTone, CHAT_STATUS_LABEL } from '@/utils/message';
 import { AsciiSpinner } from '@/components/ui/AsciiSpinner/AsciiSpinner';
 import { FloatingTooltip } from '@/components/ui/FloatingTooltip/FloatingTooltip';
@@ -46,13 +49,30 @@ export function RecentChats({ chats, workspaceBadgeById, onChatSelect }: RecentC
             completed: completedChatIds.has(chat.id),
             unread: chat.unread,
           });
+          // As in the sidebar: the provider's icon (a bolt for automation runs),
+          // a spinner in its place while running, else the status dot on its corner.
           const statusSlot = (
             <span className={styles['status-slot']}>
               {status === 'running' ? (
                 <AsciiSpinner className={styles.spinner} />
-              ) : status ? (
-                <ChatStatusDot tone={status} />
-              ) : null}
+              ) : chat.automation_id ? (
+                <Zap
+                  aria-hidden
+                  className={clsx(styles['provider-icon'], styles['automation-icon'])}
+                />
+              ) : (
+                <ProviderIcon
+                  provider={chat.session_agent_kind ?? chat.provider}
+                  className={styles['provider-icon']}
+                />
+              )}
+              {status && status !== 'running' && (
+                <ChatStatusDot
+                  tone={status}
+                  className={styles['status-corner']}
+                  ringClassName={styles['status-ring']}
+                />
+              )}
             </span>
           );
           const workspaceBadge = workspaceBadgeById.get(chat.workspace_id);
