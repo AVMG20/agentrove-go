@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path"
 	"strings"
@@ -264,7 +265,7 @@ func (s *Service) ProbeCLIs(ctx context.Context, userID string) {
 		return
 	}
 	sb, err := s.sandboxes.ForUser(userID)
-	if err != nil || !sb.IsRunning(ctx) {
+	if err != nil {
 		return
 	}
 	bins := []string{"claude", "codex", "agy"}
@@ -274,7 +275,7 @@ func (s *Service) ProbeCLIs(ctx context.Context, userID string) {
 	}
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
-	res, err := sb.Exec(ctx, sandbox.ExecRequest{Cmd: []string{"bash", "-lc", script}})
+	res, err := sb.ExecIfRunning(ctx, sandbox.ExecRequest{Cmd: []string{"bash", "-lc", script}})
 	if err != nil {
 		return
 	}
@@ -287,6 +288,32 @@ func (s *Service) ProbeCLIs(ctx context.Context, userID string) {
 		missing[b] = !found[b]
 	}
 	s.probes.set(userID, missing)
+}
+
+// AntigravityUsage returns `agy -p /usage`'s JSON report for p, run in the
+// user's box only while it is up (sandbox.ErrNotRunning otherwise).
+func (s *Service) AntigravityUsage(ctx context.Context, p *Profile) ([]byte, error) {
+	if s.sandboxes == nil {
+		return nil, sandbox.ErrNotRunning
+	}
+	sb, err := s.sandboxes.ForUser(p.UserID)
+	if err != nil {
+		return nil, err
+	}
+	launch := p.Launch()
+	script := "exec agy -p /usage --output-format json"
+	if launch.Setup != "" {
+		script = launch.Setup + " && " + script
+	}
+	res, err := sb.ExecIfRunning(ctx, sandbox.ExecRequest{Cmd: []string{"bash", "-lc", script}, Cwd: sandbox.ContainerHome,
+		Env: launch.Env, Unset: launch.Unset, UnsetGlobal: launch.UnsetGlobal, Timeout: 30 * time.Second})
+	if err != nil {
+		return nil, err
+	}
+	if res.ExitCode != 0 {
+		return nil, fmt.Errorf("agy exited with code %d", res.ExitCode)
+	}
+	return []byte(res.Stdout), nil
 }
 
 // LoginToken returns the access token a signed-in profile's CLI stored in

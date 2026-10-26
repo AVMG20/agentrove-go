@@ -3,7 +3,8 @@
 // endpoint with the sign-in's or the OAuth token, or a custom endpoint's
 // <base URL>/api/usage (proxies mirror the OAuth usage layout) unless the
 // account names a usage URL. Codex accounts signed in with ChatGPT read
-// ChatGPT's rate limits. API keys and Antigravity have no usage to show.
+// ChatGPT's rate limits. Antigravity accounts signed in with Google read
+// `agy -p /usage` in the box, while it runs. API keys have no usage to show.
 package usage
 
 import (
@@ -11,12 +12,15 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math"
 	"net"
 	"net/http"
 	"net/netip"
 	"net/url"
+	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -29,6 +33,7 @@ import (
 	"agentrove/internal/httpx"
 	"agentrove/internal/models"
 	"agentrove/internal/profiles"
+	"agentrove/internal/sandbox"
 )
 
 const (
@@ -65,13 +70,19 @@ const (
 	usageURLKey      = "CLAUDE_USAGE_URL"
 	codexEndpoint    = "https://chatgpt.com/backend-api/wham/usage"
 
+	agyProvider   = "antigravity"
+	agyBoxStopped = "Usage shows while your box is running"
+
 	sessionSeconds = 5 * 3600
+	daySeconds     = 24 * 3600
 	weekSeconds    = 7 * 24 * 3600
 )
 
 type Source struct {
 	// Codex marks ChatGPT's rate-limit layout (else Anthropic's).
-	Codex    bool
+	Codex bool
+	// Agy is read from `agy -p /usage` in the box instead of over HTTP.
+	Agy      *profiles.Profile
 	Provider string
 	URL      string
 	Token    string
@@ -262,6 +273,60 @@ func ParseCodexBody(provider string, body any) Response {
 	return okResponse(provider, windows...)
 }
 
+// ParseAgyBody reads `agy -p /usage --output-format json`: command.data
+// .groups, each a set of models sharing quota buckets with a window
+// ("5h", "weekly", ...) and a remaining_fraction. The first group is the
+// Gemini models agy runs on; the others (Claude, GPT) aren't shown.
+func ParseAgyBody(body any) Response {
+	m, _ := body.(map[string]any)
+	cmd, _ := m["command"].(map[string]any)
+	data, _ := cmd["data"].(map[string]any)
+	groups, _ := data["groups"].([]any)
+	var windows []*Window
+	for _, g := range groups {
+		group, _ := g.(map[string]any)
+		buckets, _ := group["buckets"].([]any)
+		for _, b := range buckets {
+			bucket, _ := b.(map[string]any)
+			left, ok := bucket["remaining_fraction"].(float64)
+			if !ok || math.IsNaN(left) || math.IsInf(left, 0) {
+				continue
+			}
+			window, _ := bucket["window"].(string)
+			used := math.Min(100, math.Max(0, (1-left)*100))
+			windows = append(windows, &Window{UsedPercent: used, ResetsAt: parseReset(bucket["reset_time"]), WindowSeconds: agyWindowSeconds(window)})
+		}
+		if len(windows) > 0 {
+			break
+		}
+	}
+	if len(windows) == 0 {
+		return errorResponse(agyProvider, "agy reported no quota for this account")
+	}
+	sort.SliceStable(windows, func(i, j int) bool { return windows[i].WindowSeconds < windows[j].WindowSeconds })
+	return okResponse(agyProvider, windows...)
+}
+
+// agyWindowSeconds reads agy's window names ("5h", "weekly", "daily").
+func agyWindowSeconds(window string) int {
+	w := strings.ToLower(window)
+	switch {
+	case strings.Contains(w, "week"):
+		return weekSeconds
+	case strings.Contains(w, "day") || strings.Contains(w, "daily"):
+		return daySeconds
+	case strings.Contains(w, "five") || strings.Contains(w, "session"):
+		return sessionSeconds
+	}
+	if m := agyHoursRE.FindStringSubmatch(w); m != nil {
+		h, _ := strconv.Atoi(m[1])
+		return h * 3600
+	}
+	return 0
+}
+
+var agyHoursRE = regexp.MustCompile(`^(\d+)[\s_-]*h`)
+
 func errorResponse(provider, msg string) Response {
 	return Response{Status: "error", Provider: &provider, Error: &msg, FetchedAt: db.Now()}
 }
@@ -360,6 +425,8 @@ func (m *Module) source(p *profiles.Profile) *Source {
 			src.Headers["ChatGPT-Account-Id"] = account
 		}
 		return src
+	case p.AuthMode == profiles.AuthLogin && p.Provider == models.ProviderAntigravity:
+		return &Source{Agy: p, Provider: agyProvider, URL: "agy:" + p.ID}
 	case p.Provider == models.ProviderClaude:
 		// A token or an endpoint: the URLs were chosen by the user, so they go
 		// in as user vars (public addresses only).
@@ -403,7 +470,16 @@ func (m *Module) usage(ctx context.Context, userID string, src *Source, refresh 
 	if ok && time.Since(cached.at) < limit {
 		return cached.res
 	}
-	res := m.fetch(ctx, src)
+	var res Response
+	if src.Agy != nil {
+		res = m.fetchAgy(ctx, src.Agy)
+		// A stopped box keeps showing what it last reported.
+		if res.Error != nil && *res.Error == agyBoxStopped && ok && cached.res.Status == "ok" {
+			return cached.res
+		}
+	} else {
+		res = m.fetch(ctx, src)
+	}
 	m.mu.Lock()
 	for k, e := range m.cache {
 		if time.Since(e.at) >= cacheTTL && k != key {
@@ -413,6 +489,21 @@ func (m *Module) usage(ctx context.Context, userID string, src *Source, refresh 
 	m.cache[key] = cacheEntry{at: time.Now(), res: res}
 	m.mu.Unlock()
 	return res
+}
+
+func (m *Module) fetchAgy(ctx context.Context, p *profiles.Profile) Response {
+	out, err := m.a.Profiles.AntigravityUsage(ctx, p)
+	if errors.Is(err, sandbox.ErrNotRunning) {
+		return errorResponse(agyProvider, agyBoxStopped)
+	}
+	if err != nil {
+		return errorResponse(agyProvider, "agy couldn't report usage")
+	}
+	var body any
+	if err := json.Unmarshal(out, &body); err != nil {
+		return errorResponse(agyProvider, "agy's usage report was not valid JSON")
+	}
+	return ParseAgyBody(body)
 }
 
 func (m *Module) fetch(ctx context.Context, src *Source) Response {

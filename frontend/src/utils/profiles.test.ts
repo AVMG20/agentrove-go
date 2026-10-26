@@ -147,9 +147,6 @@ describe('noUsageReason', () => {
     expect(noUsageReason(profile({ status: 'needs_sign_in' }))).toBe(
       'Sign this account in to see its usage.',
     );
-    expect(noUsageReason(profile({ provider: 'antigravity', auth_mode: 'login' }))).toBe(
-      'Antigravity doesn’t report plan usage.',
-    );
     expect(noUsageReason(profile({ auth_mode: 'endpoint' }))).toBe(
       'This endpoint has no usage URL.',
     );

@@ -51,6 +51,9 @@ func BoxID(userID string) string {
 
 var ErrNotFound = errors.New("sandbox not found")
 
+// ErrNotRunning is ExecIfRunning's answer for a stopped sandbox.
+var ErrNotRunning = errors.New("sandbox is not running")
+
 type ExecRequest struct {
 	Cmd []string
 	Cwd string // absolute path in the sandbox; empty = workspace root
@@ -223,6 +226,22 @@ func (s *Sandbox) Exec(ctx context.Context, req ExecRequest) (ExecResult, error)
 		return ExecResult{}, err
 	}
 	s.mgr.Touch(s.ID)
+	res, err := s.exec(ctx, req)
+	s.mgr.Touch(s.ID)
+	return res, err
+}
+
+// ExecIfRunning is Exec for background reads (CLI checks, usage polls): it
+// never wakes a stopped sandbox and isn't activity, so polling it doesn't
+// keep the box up.
+func (s *Sandbox) ExecIfRunning(ctx context.Context, req ExecRequest) (ExecResult, error) {
+	if !s.IsRunning(ctx) {
+		return ExecResult{}, ErrNotRunning
+	}
+	return s.exec(ctx, req)
+}
+
+func (s *Sandbox) exec(ctx context.Context, req ExecRequest) (ExecResult, error) {
 	if req.Cwd == "" {
 		req.Cwd = s.Root
 	}
@@ -232,9 +251,7 @@ func (s *Sandbox) Exec(ctx context.Context, req ExecRequest) (ExecResult, error)
 	}
 	ctx, cancel := context.WithTimeout(ctx, req.Timeout)
 	defer cancel()
-	res, err := s.provider.Exec(ctx, s.ID, req)
-	s.mgr.Touch(s.ID)
-	return res, err
+	return s.provider.Exec(ctx, s.ID, req)
 }
 
 // Shell runs a bash command string.

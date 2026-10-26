@@ -108,7 +108,6 @@ export function accountLine(profile: Profile): string {
 // Why an account shows no plan usage, for the usage card.
 export function noUsageReason(profile: Profile): string {
   if (profile.status !== 'ready') return 'Sign this account in to see its usage.';
-  if (profile.provider === 'antigravity') return 'Antigravity doesn’t report plan usage.';
   if (profile.auth_mode === 'endpoint') return 'This endpoint has no usage URL.';
   if (profile.auth_mode === 'token') {
     return profile.provider === 'claude'

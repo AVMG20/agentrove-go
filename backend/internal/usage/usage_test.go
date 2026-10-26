@@ -3,6 +3,7 @@ package usage
 import (
 	"context"
 	"encoding/json"
+	"math"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -224,5 +225,37 @@ func TestFetchCodexLayout(t *testing.T) {
 	r := m.fetch(context.Background(), &Source{Codex: true, Provider: "chatgpt.com", URL: srv.URL, Token: "at", Headers: map[string]string{"ChatGPT-Account-Id": "acc"}})
 	if r.Status != "ok" || len(r.Windows) != 1 || r.Windows[0].UsedPercent != 30 || r.Windows[0].WindowSeconds != 18000 {
 		t.Fatalf("fetch = %+v", r)
+	}
+}
+
+func TestParseAgyBody(t *testing.T) {
+	var body any
+	raw := `{"status":"SUCCESS","command":{"name":"usage","data":{"groups":[
+		{"name":"Gemini Models","buckets":[
+			{"id":"gemini-weekly","window":"weekly","remaining_fraction":0.9717,"reset_time":"2026-11-01T11:14:08Z"},
+			{"id":"gemini-5h","window":"5h","remaining_fraction":0.25,"reset_time":"2026-10-26T15:00:00Z"}]},
+		{"name":"Claude and GPT models","buckets":[{"id":"3p-weekly","window":"weekly","remaining_fraction":1}]}]}}}`
+	if err := json.Unmarshal([]byte(raw), &body); err != nil {
+		t.Fatal(err)
+	}
+	res := ParseAgyBody(body)
+	if res.Status != "ok" || len(res.Windows) != 2 {
+		t.Fatalf("res = %+v", res)
+	}
+	session, weekly := res.Windows[0], res.Windows[1]
+	if session.WindowSeconds != sessionSeconds || session.UsedPercent != 75 || !session.ResetsAt.Valid {
+		t.Fatalf("session = %+v", session)
+	}
+	if weekly.WindowSeconds != weekSeconds || math.Abs(weekly.UsedPercent-2.83) > 0.01 {
+		t.Fatalf("weekly = %+v", weekly)
+	}
+
+	if res := ParseAgyBody(map[string]any{}); res.Status != "error" {
+		t.Fatalf("empty = %+v", res)
+	}
+	for window, want := range map[string]int{"5h": sessionSeconds, "5_hour": sessionSeconds, "five_hour": sessionSeconds, "daily": daySeconds, "WEEKLY": weekSeconds, "monthly": 0} {
+		if got := agyWindowSeconds(window); got != want {
+			t.Errorf("agyWindowSeconds(%q) = %d, want %d", window, got, want)
+		}
 	}
 }
