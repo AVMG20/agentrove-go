@@ -206,7 +206,7 @@ function StopButton({ chatId, taskId }: { chatId: string; taskId: string }) {
   );
 }
 
-// Long prompts start clamped; the full text is a click away.
+// Long prompts scroll in a capped box; Expand lifts the cap.
 function Prompt({ text }: { text: string }) {
   const [expanded, setExpanded] = useState(false);
   const [overflows, setOverflows] = useState(false);
@@ -228,7 +228,7 @@ function Prompt({ text }: { text: string }) {
           className={styles['more-button']}
           onClick={() => setExpanded((v) => !v)}
         >
-          {expanded ? 'Show less' : 'Show all'}
+          {expanded ? 'Collapse' : 'Expand'}
         </Button>
       )}
     </section>
