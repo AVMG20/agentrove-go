@@ -54,22 +54,29 @@ type Claims struct {
 	// Chat binds an agent token to the chat whose session holds it, so the
 	// agent can't claim another chat of the user.
 	Chat string `json:"chat,omitempty"`
+	// Session is the refresh_tokens.session_id a session token was issued
+	// for, so the API can tell which session is the caller's.
+	Session string `json:"sid,omitempty"`
 }
 
 // IssueToken signs a token for subject with the given audience and lifetime.
 func (k *Keys) IssueToken(subject, audience string, ttl time.Duration) (string, error) {
-	return k.IssueChatToken(subject, audience, "", ttl)
+	return k.issue(Claims{}, subject, audience, ttl)
 }
 
 // IssueChatToken is IssueToken bound to chatID (see Claims.Chat).
 func (k *Keys) IssueChatToken(subject, audience, chatID string, ttl time.Duration) (string, error) {
+	return k.issue(Claims{Chat: chatID}, subject, audience, ttl)
+}
+
+func (k *Keys) issue(claims Claims, subject, audience string, ttl time.Duration) (string, error) {
 	now := time.Now()
-	claims := Claims{Chat: chatID, RegisteredClaims: jwt.RegisteredClaims{
+	claims.RegisteredClaims = jwt.RegisteredClaims{
 		Subject:   subject,
 		Audience:  jwt.ClaimStrings{audience},
 		IssuedAt:  jwt.NewNumericDate(now),
 		ExpiresAt: jwt.NewNumericDate(now.Add(ttl)),
-	}}
+	}
 	return jwt.NewWithClaims(jwt.SigningMethodHS256, claims).SignedString(k.hmacKey(audience))
 }
 

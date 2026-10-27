@@ -55,6 +55,10 @@ const InstructionsSettingsTab = lazyNamed(
   () => import('@/components/settings/tabs/InstructionsSettingsTab/InstructionsSettingsTab'),
   'InstructionsSettingsTab',
 );
+const SessionsSettingsTab = lazyNamed(
+  () => import('@/components/settings/tabs/SessionsSettingsTab/SessionsSettingsTab'),
+  'SessionsSettingsTab',
+);
 
 const getErrorMessage = (error: unknown): string | undefined =>
   error instanceof Error ? error.message : undefined;
@@ -255,6 +259,7 @@ export function SettingsPage() {
         onPersist={handlePersistInstructions}
       />
     ),
+    sessions: () => <SessionsSettingsTab />,
   };
 
   return (

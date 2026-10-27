@@ -1,7 +1,7 @@
 import { apiClient } from '@/lib/api';
 import { ensureResponse, serviceCall, withAuth } from '@/services/base/BaseService';
 import { ValidationError } from '@/services/base/ServiceError';
-import type { AuthConfig, AuthResponse, User } from '@/types/user.types';
+import type { AuthConfig, AuthResponse, AuthSession, User } from '@/types/user.types';
 import { authStorage } from '@/utils/storage';
 import { logger } from '@/utils/logger';
 import {
@@ -169,9 +169,34 @@ async function setRegistrationEnabled(enabled: boolean): Promise<AuthConfig> {
   });
 }
 
+async function listSessions(): Promise<AuthSession[]> {
+  return withAuth(async () => {
+    const response = await apiClient.get<AuthSession[]>('/auth/sessions');
+    return ensureResponse(response, 'Invalid response from server');
+  });
+}
+
+async function revokeSession(sessionId: string): Promise<void> {
+  validateRequired(sessionId, 'Session');
+
+  return withAuth(async () => {
+    await apiClient.delete(`/auth/sessions/${encodeURIComponent(sessionId)}`);
+  });
+}
+
+// Signs out every device but this one.
+async function revokeOtherSessions(): Promise<void> {
+  return withAuth(async () => {
+    await apiClient.delete('/auth/sessions');
+  });
+}
+
 export const authService = {
   getAuthConfig,
   setRegistrationEnabled,
+  listSessions,
+  revokeSession,
+  revokeOtherSessions,
   signup,
   login,
   getCurrentUser,

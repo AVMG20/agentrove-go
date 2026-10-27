@@ -3,11 +3,13 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 const h = vi.hoisted(() => ({
   post: vi.fn(),
+  get: vi.fn(),
+  del: vi.fn(),
   getRefreshToken: vi.fn<() => string | null>(() => 'refresh'),
   clearAuth: vi.fn(),
 }));
 
-vi.mock('@/lib/api', () => ({ apiClient: { post: h.post } }));
+vi.mock('@/lib/api', () => ({ apiClient: { post: h.post, get: h.get, delete: h.del } }));
 vi.mock('@/utils/storage', () => ({
   authStorage: {
     getToken: vi.fn(),
@@ -41,5 +43,36 @@ describe('authService.logout', () => {
     // A rejection would skip the caller's onSuccess, stranding the UI signed in with no tokens.
     await expect(authService.logout()).resolves.toBeUndefined();
     expect(h.clearAuth).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('authService sessions', () => {
+  it('lists sessions', async () => {
+    const sessions = [{ id: 's1', current: true }];
+    h.get.mockResolvedValueOnce(sessions);
+
+    await expect(authService.listSessions()).resolves.toBe(sessions);
+    expect(h.get).toHaveBeenCalledWith('/auth/sessions');
+  });
+
+  it('revokes one session by id, escaped into the path', async () => {
+    h.del.mockResolvedValueOnce(null);
+
+    await authService.revokeSession('a/b');
+
+    expect(h.del).toHaveBeenCalledWith('/auth/sessions/a%2Fb');
+  });
+
+  it('rejects an empty session id without a request', async () => {
+    await expect(authService.revokeSession('')).rejects.toThrow();
+    expect(h.del).not.toHaveBeenCalled();
+  });
+
+  it('revokes all other sessions', async () => {
+    h.del.mockResolvedValueOnce(null);
+
+    await authService.revokeOtherSessions();
+
+    expect(h.del).toHaveBeenCalledWith('/auth/sessions');
   });
 });

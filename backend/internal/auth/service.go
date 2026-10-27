@@ -27,10 +27,19 @@ type Service struct {
 
 type ctxKey struct{}
 
+type sessionCtxKey struct{}
+
 // UserFrom returns the authenticated user set by Middleware.
 func UserFrom(ctx context.Context) *models.User {
 	u, _ := ctx.Value(ctxKey{}).(*models.User)
 	return u
+}
+
+// SessionFrom returns the caller's session id set by Require; "" for tokens
+// issued without one.
+func SessionFrom(ctx context.Context) string {
+	s, _ := ctx.Value(sessionCtxKey{}).(string)
+	return s
 }
 
 func WithUser(ctx context.Context, u *models.User) context.Context {
@@ -70,47 +79,55 @@ func TokenFromRequest(r *http.Request) string {
 // rejected: they live in agent config inside the user's box, so they must
 // not work as a login for the rest of the API (see AuthenticateMCP).
 func (s *Service) Authenticate(ctx context.Context, token string) (*models.User, error) {
-	return s.authenticate(ctx, token, AudienceSession)
+	u, _, err := s.authenticate(ctx, token, AudienceSession)
+	return u, err
 }
 
 // AuthenticateMCP resolves a full-access MCP token; only the MCP endpoint
 // accepts it.
 func (s *Service) AuthenticateMCP(ctx context.Context, token string) (*models.User, error) {
-	return s.authenticate(ctx, token, AudienceMCP)
+	u, _, err := s.authenticate(ctx, token, AudienceMCP)
+	return u, err
 }
 
-func (s *Service) authenticate(ctx context.Context, token, audience string) (*models.User, error) {
+func (s *Service) authenticate(ctx context.Context, token, audience string) (*models.User, *Claims, error) {
 	if token == "" {
-		return nil, errors.New("missing token")
+		return nil, nil, errors.New("missing token")
 	}
-	sub, err := s.Keys.VerifyToken(token, audience)
+	c, err := s.Keys.VerifyClaims(token, audience)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	u, err := s.GetUser(ctx, sub)
+	u, err := s.GetUser(ctx, c.Subject)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	if !u.IsActive {
-		return nil, errors.New("inactive user")
+		return nil, nil, errors.New("inactive user")
 	}
-	return u, nil
+	return u, c, nil
 }
 
 // Require wraps a handler so it only runs for authenticated users.
 func (s *Service) Require(h httpx.HandlerFunc) http.HandlerFunc {
 	return httpx.Wrap(func(w http.ResponseWriter, r *http.Request) error {
-		u, err := s.Authenticate(r.Context(), TokenFromRequest(r))
+		u, c, err := s.authenticate(r.Context(), TokenFromRequest(r), AudienceSession)
 		if err != nil {
 			w.Header().Set("WWW-Authenticate", "Bearer")
 			return httpx.Unauthorized("Could not validate credentials")
 		}
-		return h(w, r.WithContext(WithUser(r.Context(), u)))
+		ctx := context.WithValue(WithUser(r.Context(), u), sessionCtxKey{}, c.Session)
+		return h(w, r.WithContext(ctx))
 	})
 }
 
 func (s *Service) IssueAccessToken(userID string) (string, error) {
-	return s.Keys.IssueToken(userID, AudienceSession, s.Cfg.AccessTokenTTL)
+	return s.issueSessionToken(userID, "")
+}
+
+// issueSessionToken is IssueAccessToken bound to a login's session id.
+func (s *Service) issueSessionToken(userID, sessionID string) (string, error) {
+	return s.Keys.issue(Claims{Session: sessionID}, userID, AudienceSession, s.Cfg.AccessTokenTTL)
 }
 
 // IssueMCPToken mints the token handed to the agentrove MCP server of a chat
@@ -119,12 +136,21 @@ func (s *Service) IssueMCPToken(userID string) (string, error) {
 	return s.Keys.IssueToken(userID, AudienceMCP, s.Cfg.MCPTokenLifetime)
 }
 
-func (s *Service) CreateRefreshToken(ctx context.Context, q db.Querier, userID, userAgent, ip string) (string, error) {
+// CreateRefreshToken starts a session (a login) and returns its refresh
+// token and session id.
+func (s *Service) CreateRefreshToken(ctx context.Context, q db.Querier, userID, userAgent, ip string) (token, sessionID string, err error) {
+	sessionID = uuid.NewString()
+	token, err = s.insertRefreshToken(ctx, q, sessionID, userID, userAgent, ip, db.Now())
+	return token, sessionID, err
+}
+
+// insertRefreshToken adds a token to a session; started is the session's
+// created_at, carried across rotations.
+func (s *Service) insertRefreshToken(ctx context.Context, q db.Querier, sessionID, userID, userAgent, ip string, started db.Time) (string, error) {
 	token := RandomToken(32)
-	now := db.Now()
-	_, err := q.ExecContext(ctx, `INSERT INTO refresh_tokens (id, token_hash, user_id, expires_at, user_agent, ip_address, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-		uuid.NewString(), HashToken(token), userID, db.T(time.Now().Add(s.Cfg.RefreshTokenTTL)), truncate(userAgent, 512), truncate(ip, 45), now, now)
+	_, err := q.ExecContext(ctx, `INSERT INTO refresh_tokens (id, session_id, token_hash, user_id, expires_at, user_agent, ip_address, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		uuid.NewString(), sessionID, HashToken(token), userID, db.T(time.Now().Add(s.Cfg.RefreshTokenTTL)), truncate(userAgent, 512), truncate(ip, 45), started, db.Now())
 	return token, err
 }
 
@@ -135,25 +161,26 @@ var ErrInvalidRefresh = errors.New("invalid or expired refresh token")
 // the losers pick up the rotated token from storage (frontend/src/utils/storage.ts).
 const rotationGrace = 60 * time.Second
 
-// RotateRefreshToken validates token, revokes it and issues a replacement.
-// Reusing a revoked token revokes every token of that user (theft signal),
-// except a just-rotated one within rotationGrace, which only fails.
-func (s *Service) RotateRefreshToken(ctx context.Context, token, userAgent, ip string) (*models.User, string, error) {
+// RotateRefreshToken validates token, revokes it and issues a replacement in
+// the same session. Reusing a revoked token revokes every token of that user
+// (theft signal), except a just-rotated one within rotationGrace or one whose
+// session was revoked from Settings, which only fail.
+func (s *Service) RotateRefreshToken(ctx context.Context, token, userAgent, ip string) (*models.User, string, string, error) {
 	var user *models.User
-	var newToken, reusedBy string
+	var newToken, sessionID, reusedBy string
 	err := s.DB.Tx(ctx, func(tx *sql.Tx) error {
 		var id, userID string
-		var expires db.Time
+		var expires, started db.Time
 		var revoked db.NullTime
 		var reason sql.NullString
-		err := tx.QueryRowContext(ctx, `SELECT id, user_id, expires_at, revoked_at, revoked_reason FROM refresh_tokens WHERE token_hash = ?`, HashToken(token)).
-			Scan(&id, &userID, &expires, &revoked, &reason)
+		err := tx.QueryRowContext(ctx, `SELECT id, session_id, user_id, expires_at, created_at, revoked_at, revoked_reason FROM refresh_tokens WHERE token_hash = ?`, HashToken(token)).
+			Scan(&id, &sessionID, &userID, &expires, &started, &revoked, &reason)
 		if err != nil {
 			return ErrInvalidRefresh
 		}
 		now := db.Now()
 		if revoked.Valid {
-			if reason.String != "rotated" || time.Since(revoked.Time.Time) > rotationGrace {
+			if reason.String != "revoked" && (reason.String != "rotated" || time.Since(revoked.Time.Time) > rotationGrace) {
 				reusedBy = userID
 			}
 			return ErrInvalidRefresh
@@ -172,20 +199,20 @@ func (s *Service) RotateRefreshToken(ctx context.Context, token, userAgent, ip s
 			return ErrInvalidRefresh
 		}
 		user = u
-		newToken, err = s.CreateRefreshToken(ctx, tx, userID, userAgent, ip)
+		newToken, err = s.insertRefreshToken(ctx, tx, sessionID, userID, userAgent, ip, started)
 		return err
 	})
 	if reusedBy != "" {
 		// Outside the tx: returning the error rolled it back, and the
 		// theft-triggered revoke-all must persist.
 		if rerr := s.RevokeAllRefreshTokens(ctx, s.DB, reusedBy); rerr != nil {
-			return nil, "", rerr
+			return nil, "", "", rerr
 		}
 	}
 	if err != nil {
-		return nil, "", err
+		return nil, "", "", err
 	}
-	return user, newToken, nil
+	return user, newToken, sessionID, nil
 }
 
 // RevokeAllRefreshTokens signs the user out everywhere (token reuse,

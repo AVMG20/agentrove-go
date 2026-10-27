@@ -30,6 +30,22 @@ export const useSetRegistrationMutation = createMutation<AuthConfig, Error, bool
   },
 );
 
+export const useSessionsQuery = () =>
+  useQuery({
+    queryKey: queryKeys.auth.sessions,
+    queryFn: () => authService.listSessions(),
+  });
+
+export const useRevokeSessionMutation = createMutation<void, Error, string>(
+  (sessionId) => authService.revokeSession(sessionId),
+  (queryClient) => queryClient.invalidateQueries({ queryKey: queryKeys.auth.sessions }),
+);
+
+export const useRevokeOtherSessionsMutation = createMutation<void, Error, void>(
+  () => authService.revokeOtherSessions(),
+  (queryClient) => queryClient.invalidateQueries({ queryKey: queryKeys.auth.sessions }),
+);
+
 interface LoginData {
   username: string;
   password: string;

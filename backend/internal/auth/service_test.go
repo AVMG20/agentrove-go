@@ -41,14 +41,14 @@ func activeRefreshTokens(t *testing.T, s *Service) int {
 func TestRefreshReuseRevokesAll(t *testing.T) {
 	s := newService(t)
 	ctx := context.Background()
-	old, _ := s.CreateRefreshToken(ctx, s.DB, testUser, "ua", "ip")
-	other, _ := s.CreateRefreshToken(ctx, s.DB, testUser, "ua", "ip")
-	_, rotated, err := s.RotateRefreshToken(ctx, old, "ua", "ip")
+	old, _, _ := s.CreateRefreshToken(ctx, s.DB, testUser, "ua", "ip")
+	other, _, _ := s.CreateRefreshToken(ctx, s.DB, testUser, "ua", "ip")
+	_, rotated, _, err := s.RotateRefreshToken(ctx, old, "ua", "ip")
 	if err != nil {
 		t.Fatal(err)
 	}
 	// A second tab replaying the just-rotated token only fails.
-	if _, _, err := s.RotateRefreshToken(ctx, old, "ua", "ip"); !errors.Is(err, ErrInvalidRefresh) {
+	if _, _, _, err := s.RotateRefreshToken(ctx, old, "ua", "ip"); !errors.Is(err, ErrInvalidRefresh) {
 		t.Fatalf("grace reuse: %v", err)
 	}
 	if n := activeRefreshTokens(t, s); n != 2 {
@@ -58,14 +58,14 @@ func TestRefreshReuseRevokesAll(t *testing.T) {
 	if _, err := s.DB.Exec(`UPDATE refresh_tokens SET revoked_at = ? WHERE token_hash = ?`, db.T(time.Now().Add(-2*rotationGrace)), HashToken(old)); err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := s.RotateRefreshToken(ctx, old, "ua", "ip"); !errors.Is(err, ErrInvalidRefresh) {
+	if _, _, _, err := s.RotateRefreshToken(ctx, old, "ua", "ip"); !errors.Is(err, ErrInvalidRefresh) {
 		t.Fatalf("reuse: %v", err)
 	}
 	if n := activeRefreshTokens(t, s); n != 0 {
 		t.Fatalf("%d tokens survived reuse", n)
 	}
 	for _, tok := range []string{rotated, other} {
-		if _, _, err := s.RotateRefreshToken(ctx, tok, "ua", "ip"); err == nil {
+		if _, _, _, err := s.RotateRefreshToken(ctx, tok, "ua", "ip"); err == nil {
 			t.Fatal("token still usable after reuse revoke")
 		}
 	}
@@ -75,12 +75,12 @@ func TestRefreshReuseRevokesAll(t *testing.T) {
 func TestLoggedOutTokenReuseRevokesAll(t *testing.T) {
 	s := newService(t)
 	ctx := context.Background()
-	gone, _ := s.CreateRefreshToken(ctx, s.DB, testUser, "ua", "ip")
-	_, _ = s.CreateRefreshToken(ctx, s.DB, testUser, "ua", "ip")
+	gone, _, _ := s.CreateRefreshToken(ctx, s.DB, testUser, "ua", "ip")
+	_, _, _ = s.CreateRefreshToken(ctx, s.DB, testUser, "ua", "ip")
 	if err := s.RevokeRefreshToken(ctx, gone); err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := s.RotateRefreshToken(ctx, gone, "ua", "ip"); !errors.Is(err, ErrInvalidRefresh) {
+	if _, _, _, err := s.RotateRefreshToken(ctx, gone, "ua", "ip"); !errors.Is(err, ErrInvalidRefresh) {
 		t.Fatalf("reuse: %v", err)
 	}
 	if n := activeRefreshTokens(t, s); n != 0 {
@@ -91,7 +91,7 @@ func TestLoggedOutTokenReuseRevokesAll(t *testing.T) {
 func TestResetPasswordRevokesRefreshTokens(t *testing.T) {
 	s := newService(t)
 	ctx := context.Background()
-	_, _ = s.CreateRefreshToken(ctx, s.DB, testUser, "ua", "ip")
+	_, _, _ = s.CreateRefreshToken(ctx, s.DB, testUser, "ua", "ip")
 	reset := RandomToken(16)
 	if _, err := s.DB.Exec(`UPDATE users SET reset_token = ?, reset_token_expires = ? WHERE id = ?`, HashToken(reset), db.T(time.Now().Add(time.Hour)), testUser); err != nil {
 		t.Fatal(err)

@@ -6,6 +6,7 @@ import {
   FolderOpen,
   GitBranch,
   Key,
+  MonitorSmartphone,
   ScrollText,
   Settings2,
   UserCircle,
@@ -23,7 +24,8 @@ export type SettingsSectionId =
   | 'automations'
   | 'artifacts'
   | 'env-vars'
-  | 'instructions';
+  | 'instructions'
+  | 'sessions';
 
 export interface SettingsSection {
   id: SettingsSectionId;
@@ -42,6 +44,7 @@ export const SETTINGS_SECTIONS: SettingsSection[] = [
   { id: 'artifacts', label: 'Artifacts', icon: AppWindow },
   { id: 'env-vars', label: 'Env Variables', icon: Key },
   { id: 'instructions', label: 'Instructions', icon: ScrollText },
+  { id: 'sessions', label: 'Sessions', icon: MonitorSmartphone },
 ];
 
 export const DEFAULT_SETTINGS_SECTION: SettingsSectionId = 'general';

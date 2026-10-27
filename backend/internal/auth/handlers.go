@@ -49,6 +49,9 @@ func (s *Service) Routes(mux *http.ServeMux, prefix string) {
 	mux.HandleFunc("POST "+prefix+"/auth/jwt/refresh", httpx.Wrap(limiter.limit("refresh", 30, time.Minute, s.refresh)))
 	mux.HandleFunc("POST "+prefix+"/auth/jwt/logout", httpx.Wrap(s.logout))
 	mux.HandleFunc("GET "+prefix+"/auth/me", s.Require(s.me))
+	mux.HandleFunc("GET "+prefix+"/auth/sessions", s.Require(s.listSessions))
+	mux.HandleFunc("DELETE "+prefix+"/auth/sessions", s.Require(s.revokeOtherSessions))
+	mux.HandleFunc("DELETE "+prefix+"/auth/sessions/{id}", s.Require(s.revokeSession))
 	mux.HandleFunc("GET "+prefix+"/auth/config", httpx.Wrap(s.getAuthConfig))
 	mux.HandleFunc("PUT "+prefix+"/auth/registration", s.Require(s.setRegistration))
 	mux.HandleFunc("POST "+prefix+"/auth/forgot-password", httpx.Wrap(limiter.limit("forgot", 5, time.Minute, s.forgotPassword)))
@@ -75,11 +78,11 @@ func (s *Service) login(w http.ResponseWriter, r *http.Request) error {
 }
 
 func (s *Service) issueTokens(w http.ResponseWriter, r *http.Request, u *models.User) error {
-	access, err := s.IssueAccessToken(u.ID)
+	refresh, sessionID, err := s.CreateRefreshToken(r.Context(), s.DB, u.ID, r.UserAgent(), httpx.ClientIP(r, s.Cfg.TrustedProxies, s.BoxSubnets))
 	if err != nil {
 		return err
 	}
-	refresh, err := s.CreateRefreshToken(r.Context(), s.DB, u.ID, r.UserAgent(), httpx.ClientIP(r, s.Cfg.TrustedProxies, s.BoxSubnets))
+	access, err := s.issueSessionToken(u.ID, sessionID)
 	if err != nil {
 		return err
 	}
@@ -171,11 +174,11 @@ func (s *Service) refresh(w http.ResponseWriter, r *http.Request) error {
 	if err := httpx.Decode(r, &body); err != nil {
 		return err
 	}
-	u, newRefresh, err := s.RotateRefreshToken(r.Context(), body.RefreshToken, r.UserAgent(), httpx.ClientIP(r, s.Cfg.TrustedProxies, s.BoxSubnets))
+	u, newRefresh, sessionID, err := s.RotateRefreshToken(r.Context(), body.RefreshToken, r.UserAgent(), httpx.ClientIP(r, s.Cfg.TrustedProxies, s.BoxSubnets))
 	if err != nil {
 		return httpx.Unauthorized("Invalid or expired refresh token")
 	}
-	access, err := s.IssueAccessToken(u.ID)
+	access, err := s.issueSessionToken(u.ID, sessionID)
 	if err != nil {
 		return err
 	}
