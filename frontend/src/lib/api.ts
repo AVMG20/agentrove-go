@@ -63,6 +63,9 @@ function shouldInvalidateSession(error: unknown): boolean {
 
 const ACCESS_TOKEN_EXPIRY_BUFFER_MS = 30_000;
 
+// How long to wait for another tab to store the token it just rotated (total ~1s).
+const ROTATION_WAIT_MS = [100, 300, 600];
+
 // Missing/undecodable claims or exp within buffer → don't open long-lived connections on it.
 function accessTokenExpiresSoon(token: string): boolean {
   try {
@@ -135,29 +138,47 @@ class APIClient {
   }
 
   private async performTokenRefresh(): Promise<TokenResponse> {
-    // A stale refresh token (rotated by another tab beyond the server grace window) 401s
-    // and would sign every tab out, so use the freshest one.
-    this.auth.syncFromStorage();
-    const refreshToken = this.auth.getRefreshToken();
-    if (!refreshToken) {
-      throw new RefreshTokenError(401, 'No refresh token available');
+    for (;;) {
+      // A stale refresh token (rotated by another tab beyond the server grace window) 401s
+      // and would sign every tab out, so use the freshest one.
+      this.auth.syncFromStorage();
+      const refreshToken = this.auth.getRefreshToken();
+      if (!refreshToken) {
+        throw new RefreshTokenError(401, 'No refresh token available');
+      }
+
+      const response = await fetch(`${this.baseURL}/auth/jwt/refresh`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ refresh_token: refreshToken }),
+      }).catch(() => {
+        throw new RefreshTokenError(0);
+      });
+
+      // Two tabs refreshing at once (e.g. after a wake): the loser's 401 can arrive before the
+      // winner has stored its replacement, so wait for that instead of signing everyone out.
+      if (response.status === 401 && (await this.awaitRotatedToken(refreshToken))) {
+        continue;
+      }
+
+      if (!response.ok) {
+        throw new RefreshTokenError(response.status);
+      }
+
+      const data: TokenResponse = await response.json();
+      await this.auth.setTokens(data.access_token, data.refresh_token);
+      return data;
     }
+  }
 
-    const response = await fetch(`${this.baseURL}/auth/jwt/refresh`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ refresh_token: refreshToken }),
-    }).catch(() => {
-      throw new RefreshTokenError(0);
-    });
-
-    if (!response.ok) {
-      throw new RefreshTokenError(response.status);
+  // True once another tab has stored a different refresh token than staleToken.
+  private async awaitRotatedToken(staleToken: string): Promise<boolean> {
+    for (const delayMs of ROTATION_WAIT_MS) {
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
+      this.auth.syncFromStorage();
+      if (this.auth.getRefreshToken() !== staleToken) return true;
     }
-
-    const data: TokenResponse = await response.json();
-    await this.auth.setTokens(data.access_token, data.refresh_token);
-    return data;
+    return false;
   }
 
   private async refreshTokenIfNeeded(): Promise<TokenResponse> {

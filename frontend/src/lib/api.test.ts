@@ -124,6 +124,25 @@ describe('APIClient 401 handling', () => {
     expect(h.onSessionExpired).not.toHaveBeenCalled();
   });
 
+  it('waits for the tab that rotated the token instead of signing out', async () => {
+    // Two tabs refresh at once (e.g. on wake): this tab loses, and the winning tab stores its
+    // replacement only after this tab's 401 has arrived. Retry with that token, don't sign out.
+    let stored = 'r1';
+    h.getRefreshToken.mockImplementation(() => stored);
+    fetchMock
+      .mockResolvedValueOnce(json({ message: 'unauth' }, 401)) // original request
+      .mockImplementationOnce(async () => {
+        stored = 'r2';
+        return json({ message: 'stale' }, 401);
+      })
+      .mockResolvedValueOnce(json({ access_token: 'a2', refresh_token: 'r3', token_type: 'bearer' }))
+      .mockResolvedValueOnce(json({ ok: true })); // retried request
+
+    await expect(apiClient.get('/thing')).resolves.toEqual({ ok: true });
+    expect(JSON.parse(fetchMock.mock.calls[2][1].body)).toEqual({ refresh_token: 'r2' });
+    expect(h.onSessionExpired).not.toHaveBeenCalled();
+  });
+
   it('tears down the session on a 401 with no refresh token', async () => {
     h.getRefreshToken.mockReturnValue(null);
     fetchMock.mockResolvedValueOnce(json({ message: 'unauth' }, 401));
