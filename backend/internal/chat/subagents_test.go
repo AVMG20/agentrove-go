@@ -194,6 +194,28 @@ func TestNestedSubagentWorkJoinsItsRoot(t *testing.T) {
 	}
 }
 
+func TestSubagentModelFollowsItsReplies(t *testing.T) {
+	r := newSubagentTracker()
+	call := agentCall("a1", false)
+	call["input"].(map[string]any)["model"] = "haiku"
+	r.handle(testChat, cliMsg("assistant", "", call))
+	if s, _ := r.get(testChat, "a1"); s.Model != "haiku" {
+		t.Fatalf("spawned model = %q", s.Model)
+	}
+	reply := func(parent, model string) claude.Message {
+		raw, _ := json.Marshal(map[string]any{"role": "assistant", "model": model, "content": []map[string]any{
+			{"type": "tool_use", "id": parent + model, "name": "Agent", "input": map[string]any{}}}})
+		return claude.Message{Type: "assistant", Message: raw, ParentToolUseID: &parent}
+	}
+	r.handle(testChat, reply("a1", "claude-haiku-5-5"))
+	r.handle(testChat, reply("a1", "<synthetic>"))
+	// The nested agent's own model isn't its root's.
+	r.handle(testChat, reply("a1claude-haiku-5-5", "claude-opus-5-5"))
+	if s, _ := r.get(testChat, "a1"); s.Model != "claude-haiku-5-5" {
+		t.Fatalf("model = %q", s.Model)
+	}
+}
+
 func TestSubagentActivityIsCapped(t *testing.T) {
 	r := newSubagentTracker()
 	r.handle(testChat, cliMsg("assistant", "", agentCall("a1", false)))
@@ -210,18 +232,20 @@ func TestSubagentActivityIsCapped(t *testing.T) {
 func TestSubagentsPersistAndReconcile(t *testing.T) {
 	m, d := newTestModule(t)
 	ctx := context.Background()
-	m.subs.handle(testChat, cliMsg("assistant", "", agentCall("a1", true)))
+	call := agentCall("a1", true)
+	call["input"].(map[string]any)["model"] = "sonnet"
+	m.subs.handle(testChat, cliMsg("assistant", "", call))
 	m.subs.handle(testChat, cliMsg("assistant", "a1", map[string]any{"type": "text", "text": "working"}))
 	m.flushSubagents(ctx)
 	if subs, _ := m.subs.takeDirty(); len(subs) != 0 {
 		t.Fatalf("flush left %d dirty", len(subs))
 	}
-	var status, activity, prompt string
-	if err := d.QueryRow(`SELECT status, activity, prompt FROM chat_subagents WHERE chat_id = ? AND id = 'a1'`, testChat).Scan(&status, &activity, &prompt); err != nil {
+	var status, activity, prompt, model string
+	if err := d.QueryRow(`SELECT status, activity, prompt, model FROM chat_subagents WHERE chat_id = ? AND id = 'a1'`, testChat).Scan(&status, &activity, &prompt, &model); err != nil {
 		t.Fatal(err)
 	}
-	if status != subagentRunning || !strings.Contains(activity, "working") || prompt != "Fix the editor" {
-		t.Fatalf("stored %s %s %s", status, activity, prompt)
+	if status != subagentRunning || !strings.Contains(activity, "working") || prompt != "Fix the editor" || model != "sonnet" {
+		t.Fatalf("stored %s %s %s %s", status, activity, prompt, model)
 	}
 	m.reconcileSubagents(ctx)
 	if err := d.QueryRow(`SELECT status FROM chat_subagents WHERE id = 'a1'`).Scan(&status); err != nil || status != subagentStopped {

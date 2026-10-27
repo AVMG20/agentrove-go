@@ -184,26 +184,29 @@ function ArtifactsCard({ chatId }: { chatId: string }) {
 // Rows past this fold behind "Show N more"; a busy thread can run dozens.
 const SUBAGENTS_SHOWN = 5;
 
-// Only shown once Claude has spawned a subagent in this chat. A row opens the
+// Only shown while a subagent in this chat is running; finished ones drop out
+// (their panes stay reachable from the in-chat agent card). A row opens the
 // subagent's pane next to the chat; clicking it again closes it.
 function SubagentsCard({ chatId }: { chatId: string }) {
-  const { data: subagents } = useChatSubagentsQuery(chatId);
+  const { data: allSubagents } = useChatSubagentsQuery(chatId);
   const openId = useOpenSubagentId(chatId);
+  const modelMap = useModelMap();
   const [showAll, setShowAll] = useState(false);
-  const running = subagents?.filter((s) => s.status === 'running').length ?? 0;
-  const now = useSecondTick(running > 0);
-  if (!subagents || subagents.length === 0) return null;
+  const subagents = allSubagents?.filter((s) => s.status === 'running') ?? [];
+  const now = useSecondTick(subagents.length > 0);
+  if (subagents.length === 0) return null;
   const shown = showAll ? subagents : subagents.slice(0, SUBAGENTS_SHOWN);
   const hidden = subagents.length - shown.length;
   return (
     <Card
       title="Subagents"
-      action={running > 0 ? <span className={styles.secondary}>{running} running</span> : undefined}
+      action={<span className={styles.secondary}>{subagents.length} running</span>}
     >
       {shown.map((subagent) => (
         <SubagentRow
           key={subagent.id}
           subagent={subagent}
+          model={subagent.model && (modelMap.get(subagent.model)?.name ?? subagent.model)}
           now={now}
           selected={subagent.id === openId}
           onSelect={() => {

@@ -138,6 +138,8 @@ export interface Subagent {
   chat_id: string;
   description: string;
   subagent_type: string;
+  // Model id or alias; absent while it inherits and hasn't replied yet.
+  model?: string;
   background: boolean;
   status: SubagentStatus;
   result?: string;

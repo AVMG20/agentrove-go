@@ -58,6 +58,9 @@ type subagent struct {
 	ChatID       string `json:"chat_id"`
 	Description  string `json:"description"`
 	SubagentType string `json:"subagent_type"`
+	// Model is the Agent call's model alias until the subagent's own replies
+	// name the exact model; empty while it inherits and hasn't replied yet.
+	Model        string `json:"model,omitempty"`
 	Prompt       string `json:"prompt,omitempty"`
 	Background   bool   `json:"background"`
 	Status       string `json:"status"`
@@ -191,6 +194,14 @@ func (r *subagentTracker) handle(chatID string, msg claude.Message) {
 	if s == nil || s.Status != subagentRunning {
 		return
 	}
+	if msg.Type == "assistant" && parent == s.ID { // a nested agent may run on another model
+		var m struct {
+			Model string `json:"model"`
+		}
+		if json.Unmarshal(msg.Message, &m) == nil && m.Model != "" && !strings.HasPrefix(m.Model, "<") {
+			s.Model = m.Model // "<synthetic>" marks CLI-made messages
+		}
+	}
 	for _, b := range blocks {
 		switch {
 		case b.Type == "text" && msg.Type == "assistant":
@@ -267,7 +278,7 @@ func (r *subagentTracker) spawn(chatID string, b cliBlock, now float64) {
 	bg, _ := input["run_in_background"].(bool)
 	r.chats[chatID][b.ID] = &liveSubagent{dirty: true, subagent: subagent{
 		ID: b.ID, ChatID: chatID, Description: clipRunes(str("description"), maxSubagentTitle),
-		SubagentType: firstNonEmpty(str("subagent_type"), "general-purpose"), Prompt: clipRunes(str("prompt"), maxSubagentPrompt),
+		SubagentType: firstNonEmpty(str("subagent_type"), "general-purpose"), Model: str("model"), Prompt: clipRunes(str("prompt"), maxSubagentPrompt),
 		Background: bg, Status: subagentRunning, StartedAt: now,
 	}}
 }
@@ -493,11 +504,11 @@ func (m *Module) saveSubagent(ctx context.Context, s subagent, insert bool) erro
 	if s.FinishedAt != nil {
 		finished = db.NT(fromUnixSeconds(*s.FinishedAt))
 	}
-	_, err := m.st.db.ExecContext(ctx, `INSERT INTO chat_subagents (id, chat_id, description, subagent_type, prompt, background, status, result, tool_count, last_activity, activity, started_at, finished_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-		ON CONFLICT(chat_id, id) DO UPDATE SET background = excluded.background, status = excluded.status, result = excluded.result,
+	_, err := m.st.db.ExecContext(ctx, `INSERT INTO chat_subagents (id, chat_id, description, subagent_type, model, prompt, background, status, result, tool_count, last_activity, activity, started_at, finished_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(chat_id, id) DO UPDATE SET model = excluded.model, background = excluded.background, status = excluded.status, result = excluded.result,
 			tool_count = excluded.tool_count, last_activity = excluded.last_activity, activity = excluded.activity, finished_at = excluded.finished_at`,
-		s.ID, s.ChatID, s.Description, s.SubagentType, s.Prompt, s.Background, s.Status, s.Result, s.ToolCount, s.LastActivity,
+		s.ID, s.ChatID, s.Description, s.SubagentType, s.Model, s.Prompt, s.Background, s.Status, s.Result, s.ToolCount, s.LastActivity,
 		db.J(s.Activity), db.T(fromUnixSeconds(s.StartedAt)), finished)
 	if err != nil {
 		if strings.Contains(err.Error(), "FOREIGN KEY") {
@@ -521,13 +532,13 @@ func (m *Module) reconcileSubagents(ctx context.Context) {
 	}
 }
 
-const subagentColumns = `id, chat_id, description, subagent_type, background, status, result, tool_count, last_activity, started_at, finished_at`
+const subagentColumns = `id, chat_id, description, subagent_type, model, background, status, result, tool_count, last_activity, started_at, finished_at`
 
 func scanSubagent(row interface{ Scan(...any) error }, extra ...any) (subagent, error) {
 	var s subagent
 	var started db.Time
 	var finished db.NullTime
-	err := row.Scan(append([]any{&s.ID, &s.ChatID, &s.Description, &s.SubagentType, &s.Background, &s.Status, &s.Result,
+	err := row.Scan(append([]any{&s.ID, &s.ChatID, &s.Description, &s.SubagentType, &s.Model, &s.Background, &s.Status, &s.Result,
 		&s.ToolCount, &s.LastActivity, &started, &finished}, extra...)...)
 	s.StartedAt = unixSeconds(started.Time)
 	if finished.Valid {

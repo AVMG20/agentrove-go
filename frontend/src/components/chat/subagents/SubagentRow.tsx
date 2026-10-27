@@ -17,13 +17,16 @@ export function SubagentStatusIcon({ status }: { status: SubagentStatus }) {
 
 interface SubagentRowProps {
   subagent: Subagent;
+  // Display name of the model it runs on, shown under its name.
+  model?: string;
   now: number;
   selected: boolean;
   onSelect: () => void;
 }
 
-export function SubagentRow({ subagent, now, selected, onSelect }: SubagentRowProps) {
+export function SubagentRow({ subagent, model, now, selected, onSelect }: SubagentRowProps) {
   const title = subagent.description || subagent.subagent_type;
+  const meta = [model, subagent.last_activity].filter(Boolean).join(' · ');
   return (
     <Button
       variant="unstyled"
@@ -38,9 +41,7 @@ export function SubagentRow({ subagent, now, selected, onSelect }: SubagentRowPr
       </span>
       <span className={styles['row-body']}>
         <span className={styles['row-title']}>{title}</span>
-        {subagent.last_activity && (
-          <span className={styles['row-activity']}>{subagent.last_activity}</span>
-        )}
+        {meta && <span className={styles['row-activity']}>{meta}</span>}
       </span>
       <span className={styles['row-time']}>{subagentDuration(subagent, now)}</span>
     </Button>
