@@ -104,7 +104,9 @@ function handleServiceError(error: unknown): ServiceError {
   if (error instanceof Error) {
     const status = (error as Error & { status?: number }).status;
 
-    if (status === 401 || error.message.includes('401') || error.message.includes('Unauthorized')) {
+    // Status only: an error that merely mentions "401" (an upstream provider's message, say)
+    // is not this session expiring.
+    if (status === 401) {
       return new AuthenticationError();
     }
 

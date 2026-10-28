@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import { NetworkError, ServiceError } from './ServiceError';
+import { AuthenticationError, NetworkError, ServiceError } from './ServiceError';
 import { serviceCall } from './BaseService';
 
 describe('serviceCall', () => {
@@ -18,5 +18,18 @@ describe('serviceCall', () => {
 
     await expect(serviceCall(request)).rejects.toMatchObject({ status: 502 });
     expect(request).toHaveBeenCalledOnce();
+  });
+
+  it('treats only a 401 status as an expired session, not a message mentioning one', async () => {
+    const upstream = Object.assign(new Error('Provider said: 401 Unauthorized'), { status: 502 });
+    await expect(serviceCall(() => Promise.reject(upstream))).rejects.toMatchObject({
+      name: 'ServiceError',
+      status: 502,
+    });
+
+    const expired = Object.assign(new Error('Could not validate credentials'), { status: 401 });
+    await expect(serviceCall(() => Promise.reject(expired))).rejects.toBeInstanceOf(
+      AuthenticationError,
+    );
   });
 });

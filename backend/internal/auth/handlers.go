@@ -3,6 +3,7 @@ package auth
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -175,8 +176,13 @@ func (s *Service) refresh(w http.ResponseWriter, r *http.Request) error {
 		return err
 	}
 	u, newRefresh, sessionID, err := s.RotateRefreshToken(r.Context(), body.RefreshToken, r.UserAgent(), httpx.ClientIP(r, s.Cfg.TrustedProxies, s.BoxSubnets))
-	if err != nil {
+	if errors.Is(err, ErrInvalidRefresh) {
 		return httpx.Unauthorized("Invalid or expired refresh token")
+	}
+	// Anything else (e.g. a database error) is a 500: the client keeps its
+	// session and retries, where a 401 would sign it out.
+	if err != nil {
+		return err
 	}
 	access, err := s.issueSessionToken(u.ID, sessionID)
 	if err != nil {
