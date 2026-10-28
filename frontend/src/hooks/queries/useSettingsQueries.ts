@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { QueryClient, UseQueryOptions } from '@tanstack/react-query';
 import { settingsService } from '@/services/settingsService';
 import type { UserSettings, UserSettingsUpdate } from '@/types/user.types';
@@ -27,6 +27,34 @@ export async function fetchNotificationsEnabled(queryClient: QueryClient): Promi
     // Settings unreachable — assume the server default (enabled).
     return true;
   }
+}
+
+// Under the settings key so useChatEvents holds off refetching while it runs.
+const sidebarFolderOrderMutationKey = [queryKeys.settings, 'sidebar-folder-order'];
+
+// Optimistic, so a dropped folder stays where it landed. Every drop writes the
+// whole list, so with drops in flight only the last response may land.
+export function useUpdateSidebarFolderOrderMutation() {
+  const queryClient = useQueryClient();
+  const isLast = () => queryClient.isMutating({ mutationKey: sidebarFolderOrderMutationKey }) === 1;
+  return useMutation({
+    mutationKey: sidebarFolderOrderMutationKey,
+    mutationFn: (order: string[]) =>
+      settingsService.updateSettings({ sidebar_folder_order: order }),
+    onMutate: async (order) => {
+      await queryClient.cancelQueries({ queryKey: [queryKeys.settings] });
+      queryClient.setQueryData<UserSettings>(
+        [queryKeys.settings],
+        (old) => old && { ...old, sidebar_folder_order: order },
+      );
+    },
+    onSuccess: (data) => {
+      if (isLast()) queryClient.setQueryData([queryKeys.settings], data);
+    },
+    onError: () => {
+      if (isLast()) void queryClient.invalidateQueries({ queryKey: [queryKeys.settings] });
+    },
+  });
 }
 
 export const useUpdateSettingsMutation = createMutation<UserSettings, Error, UserSettingsUpdate>(

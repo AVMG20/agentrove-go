@@ -13,6 +13,11 @@ interface SidebarOverlaysProps {
 }
 
 export function SidebarOverlays({ chat, workspace, workspaces }: SidebarOverlaysProps) {
+  const workspaceAppearance = (workspaceId: string) => {
+    const ws = workspaces.find((w) => w.id === workspaceId);
+    return { icon: ws?.icon ?? null, color: ws?.color ?? null };
+  };
+
   return (
     <>
       {chat.dropdown && (
@@ -31,8 +36,10 @@ export function SidebarOverlays({ chat, workspace, workspaces }: SidebarOverlays
 
       {workspace.workspaceDropdown && (
         <WorkspaceContextMenu
+          key={workspace.workspaceDropdown.workspaceId}
           ref={workspace.workspaceDropdownRef}
           position={workspace.workspaceDropdown.position}
+          appearance={workspaceAppearance(workspace.workspaceDropdown.workspaceId)}
           onNewThread={() => {
             const { workspaceId } = workspace.workspaceDropdown!;
             workspace.setWorkspaceDropdown(null);
@@ -42,6 +49,12 @@ export function SidebarOverlays({ chat, workspace, workspaces }: SidebarOverlays
             const ws = workspaces.find((w) => w.id === workspace.workspaceDropdown!.workspaceId);
             if (ws) workspace.handleRenameWorkspace(ws);
           }}
+          onChangeAppearance={(change) =>
+            workspace.handleChangeWorkspaceAppearance(
+              workspace.workspaceDropdown!.workspaceId,
+              change,
+            )
+          }
           onDelete={() => workspace.handleDeleteWorkspace(workspace.workspaceDropdown!.workspaceId)}
           onClose={() => workspace.setWorkspaceDropdown(null)}
         />

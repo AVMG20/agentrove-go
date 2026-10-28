@@ -6,11 +6,13 @@ package workspace
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"log/slog"
 	"net/http"
 	"os"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strings"
 	"sync"
@@ -20,6 +22,7 @@ import (
 	"agentrove/internal/app"
 	"agentrove/internal/auth"
 	"agentrove/internal/db"
+	"agentrove/internal/events"
 	"agentrove/internal/gitops"
 	"agentrove/internal/httpx"
 	"agentrove/internal/models"
@@ -213,9 +216,30 @@ func (m *Module) get(w http.ResponseWriter, r *http.Request) error {
 	return httpx.OK(w, ws)
 }
 
+// presetKey is the shape of the frontend's folder icon and color keys. Only
+// the shape is checked: an unknown key renders as the default, so new
+// presets need no backend change.
+var presetKey = regexp.MustCompile(`^[a-z][a-z0-9-]{0,31}$`)
+
+// decodePreset reads a folder icon or color; null or "" is the default.
+func decodePreset(field string, raw json.RawMessage) (*string, error) {
+	var v *string
+	if err := json.Unmarshal(raw, &v); err != nil || (v != nil && *v != "" && !presetKey.MatchString(*v)) {
+		return nil, httpx.Unprocessable(field + " must be a preset key or null")
+	}
+	if v != nil && *v == "" {
+		return nil, nil
+	}
+	return v, nil
+}
+
 func (m *Module) update(w http.ResponseWriter, r *http.Request) error {
+	u := auth.UserFrom(r.Context())
 	var body struct {
 		Name *string `json:"name"`
+		// Raw so an explicit null (back to the default) differs from absent.
+		Icon  json.RawMessage `json:"icon"`
+		Color json.RawMessage `json:"color"`
 	}
 	if err := httpx.Decode(r, &body); err != nil {
 		return err
@@ -223,16 +247,45 @@ func (m *Module) update(w http.ResponseWriter, r *http.Request) error {
 	if body.Name != nil && (*body.Name == "" || utf8.RuneCountInString(*body.Name) > 255) {
 		return httpx.Unprocessable("name must be 1-255 characters")
 	}
-	ws, err := m.a.Store.GetWorkspace(r.Context(), auth.UserFrom(r.Context()).ID, r.PathValue("workspace_id"))
+	var icon, color *string
+	var err error
+	if body.Icon != nil {
+		if icon, err = decodePreset("icon", body.Icon); err != nil {
+			return err
+		}
+	}
+	if body.Color != nil {
+		if color, err = decodePreset("color", body.Color); err != nil {
+			return err
+		}
+	}
+	ws, err := m.a.Store.GetWorkspace(r.Context(), u.ID, r.PathValue("workspace_id"))
 	if err != nil {
 		return err
 	}
+	sets := []string{}
+	args := []any{}
 	if body.Name != nil {
+		sets, args = append(sets, "name = ?"), append(args, *body.Name)
+		ws.Name = *body.Name
+	}
+	if body.Icon != nil {
+		sets, args = append(sets, "icon = ?"), append(args, icon)
+		ws.Icon = icon
+	}
+	if body.Color != nil {
+		sets, args = append(sets, "color = ?"), append(args, color)
+		ws.Color = color
+	}
+	if len(sets) > 0 {
 		now := db.Now()
-		if _, err := m.a.DB.ExecContext(r.Context(), `UPDATE workspaces SET name = ?, updated_at = ? WHERE id = ?`, *body.Name, now, ws.ID); err != nil {
+		args = append(args, now, ws.ID)
+		if _, err := m.a.DB.ExecContext(r.Context(), `UPDATE workspaces SET `+strings.Join(sets, ", ")+`, updated_at = ? WHERE id = ?`, args...); err != nil {
 			return err
 		}
-		ws.Name, ws.UpdatedAt = *body.Name, now
+		ws.UpdatedAt = now
+		// The user's other tabs and devices refetch the project list.
+		m.a.Hub.Publish(events.UserChats(u.ID), []byte(`{"kind":"workspaces_updated"}`))
 	}
 	return httpx.OK(w, ws)
 }

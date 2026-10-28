@@ -9,11 +9,16 @@ import { useWorkingChatIds } from '@/hooks/useWorkingChatIds';
 import { useIsMobile } from '@/hooks/useIsMobile';
 import { useChatQuery } from '@/hooks/queries/useChatQueries';
 import { useWorkspacesList, useWorkspacesQuery } from '@/hooks/queries/useWorkspaceQueries';
+import {
+  useSettingsQuery,
+  useUpdateSidebarFolderOrderMutation,
+} from '@/hooks/queries/useSettingsQueries';
+import toast from 'react-hot-toast';
 import { SidebarActions } from './SidebarActions';
 import { SidebarChatList } from './SidebarChatList';
 import { SidebarOverlays } from './SidebarOverlays';
 import { type ChatRowProps } from './SidebarChatRow';
-import { buildRecentChatSections } from './sidebarGrouping';
+import { buildRecentChatSections, moveFolder, type FolderDropPlacement } from './sidebarGrouping';
 import { useSidebarChatActions } from './useSidebarChatActions';
 import { useSidebarWorkspaceActions } from './useSidebarWorkspaceActions';
 import { countActiveSidebarFilters, dropMissingWorkspaceFilter } from '@/store/sidebarFilters';
@@ -102,6 +107,10 @@ export function ThreadsPanel({ hidden = false }: { hidden?: boolean }) {
   );
   const hasVisibleContent = visiblePinnedChats.length > 0 || visibleRecentChats.length > 0;
 
+  // Saved with the user's settings, so every tab and device shares it.
+  const folderOrder = useSettingsQuery().data?.sidebar_folder_order;
+  const updateFolderOrder = useUpdateSidebarFolderOrderMutation();
+
   const groupBy = filters.groupBy;
   const recentChatSections = useMemo(
     () =>
@@ -112,6 +121,7 @@ export function ThreadsPanel({ hidden = false }: { hidden?: boolean }) {
         blockedChatIdSet,
         streamingChatIdSet,
         completedChatIds,
+        folderOrder,
       }),
     [
       groupBy,
@@ -120,8 +130,23 @@ export function ThreadsPanel({ hidden = false }: { hidden?: boolean }) {
       blockedChatIdSet,
       streamingChatIdSet,
       completedChatIds,
+      folderOrder,
     ],
   );
+
+  const handleMoveFolder = (key: string, targetKey: string, placement: FolderDropPlacement) => {
+    // Every known project goes in with the folders on screen, so the first drop
+    // already places folders that only show up later (Load more, filters).
+    const currentKeys = [
+      ...recentChatSections.map((section) => section.key),
+      ...workspaces.map((workspace) => workspace.id),
+    ];
+    const next = moveFolder(folderOrder, currentKeys, key, targetKey, placement);
+    if (!next) return;
+    updateFolderOrder.mutate(next, {
+      onError: () => toast.error('Failed to save the folder order'),
+    });
+  };
 
   // Opening a chat (or watching it finish while open) counts as seeing the
   // completion — clear its Done badge. Covers every open path since both ids
@@ -186,6 +211,7 @@ export function ThreadsPanel({ hidden = false }: { hidden?: boolean }) {
         isFetchingMore={isFetchingMore}
         onLoadMore={loadMore}
         onNewWorkspaceThread={workspaceActions.handleNewWorkspaceThread}
+        onMoveFolder={handleMoveFolder}
       />
 
       <SidebarOverlays chat={chatActions} workspace={workspaceActions} workspaces={workspaces} />

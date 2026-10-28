@@ -1,0 +1,100 @@
+@use '@/styles/globals/colors' as colors;
+@use '@/styles/globals/typography' as type;
+@use '@/styles/globals/animations' as anim;
+@use '@/styles/globals/controls' as controls;
+@use '@/styles/globals/responsive' as responsive;
+
+// Sits inside SidebarMenu's panel, which brings the frame and padding
+.picker {
+  display: flex;
+  flex-direction: column;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding-bottom: var(--space-1);
+}
+
+.back {
+  @include anim.transition-colors;
+  display: flex;
+  height: var(--space-6);
+  width: var(--space-6);
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-sm);
+  color: var(--theme-text-tertiary);
+
+  @include responsive.hover {
+    background-color: var(--theme-surface-hover);
+    color: var(--theme-text-primary);
+  }
+}
+
+.back-icon {
+  height: var(--space-3-5);
+  width: var(--space-3-5);
+}
+
+.title {
+  @include type.type-default(500);
+  color: var(--theme-text-primary);
+}
+
+.label {
+  @include type.type-meta(500);
+  padding: var(--space-1-5) var(--space-1) var(--space-1);
+  color: var(--theme-text-tertiary);
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(6, var(--space-7));
+  gap: var(--space-1);
+  padding-inline: var(--space-0-5);
+
+  @include responsive.media('touch') {
+    grid-template-columns: repeat(6, var(--space-9));
+  }
+}
+
+.option {
+  @include controls.focus-ring;
+  @include anim.transition-colors;
+  display: flex;
+  height: var(--space-7);
+  width: var(--space-7);
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-md);
+  color: var(--theme-text-tertiary);
+
+  @include responsive.hover {
+    background-color: var(--theme-surface-hover);
+  }
+
+  &[aria-pressed='true'] {
+    background-color: var(--theme-surface-active);
+    box-shadow: inset 0 0 0 1px var(--theme-border-hover);
+  }
+
+  @include responsive.media('touch') {
+    height: var(--space-9);
+    width: var(--space-9);
+  }
+}
+
+.option-icon {
+  height: var(--space-4);
+  width: var(--space-4);
+  color: var(--folder-color, var(--theme-text-tertiary));
+}
+
+.swatch {
+  height: var(--space-3-5);
+  width: var(--space-3-5);
+  border-radius: var(--radius-full);
+  background-color: var(--folder-color, var(--theme-text-quaternary));
+}

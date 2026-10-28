@@ -3,6 +3,7 @@ package settings
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -12,6 +13,7 @@ import (
 	"agentrove/internal/app"
 	"agentrove/internal/auth"
 	"agentrove/internal/db"
+	"agentrove/internal/events"
 	"agentrove/internal/httpx"
 	"agentrove/internal/models"
 	"agentrove/internal/profiles"
@@ -125,6 +127,46 @@ func decodeStreamActions(raw json.RawMessage) (db.JSON[[]models.StreamAction], e
 	return out, nil
 }
 
+// maxSidebarFolders bounds the stored sidebar folder order.
+const maxSidebarFolders = 1000
+
+// decodeFolderOrder keeps the ids of the user's live workspaces (the scratch
+// one of threads without a project included), first occurrence winning, so
+// deleted projects drop out on the next save.
+func (m *Module) decodeFolderOrder(ctx context.Context, userID string, raw json.RawMessage) (db.JSON[[]string], error) {
+	if isNull(raw) {
+		return db.JSON[[]string]{}, nil
+	}
+	var ids []string
+	if err := json.Unmarshal(raw, &ids); err != nil || len(ids) > maxSidebarFolders {
+		return db.JSON[[]string]{}, httpx.Unprocessable(fmt.Sprintf("sidebar_folder_order must be a list of at most %d project ids or null", maxSidebarFolders))
+	}
+	rows, err := m.a.DB.QueryContext(ctx, `SELECT id FROM workspaces WHERE user_id = ? AND deleted_at IS NULL`, userID)
+	if err != nil {
+		return db.JSON[[]string]{}, err
+	}
+	defer rows.Close()
+	live := map[string]bool{}
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return db.JSON[[]string]{}, err
+		}
+		live[id] = true
+	}
+	if err := rows.Err(); err != nil {
+		return db.JSON[[]string]{}, err
+	}
+	out := []string{}
+	for _, id := range ids {
+		if live[id] {
+			out = append(out, id)
+			delete(live, id)
+		}
+	}
+	return db.J(out), nil
+}
+
 // patch applies only the fields present in the body (exclude_unset).
 func (m *Module) patch(w http.ResponseWriter, r *http.Request) error {
 	u := auth.UserFrom(r.Context())
@@ -222,6 +264,13 @@ func (m *Module) patch(w http.ResponseWriter, r *http.Request) error {
 		}
 		set("browser_tools_enabled", v)
 	}
+	if raw, ok := body["sidebar_folder_order"]; ok {
+		v, err := m.decodeFolderOrder(r.Context(), u.ID, raw)
+		if err != nil {
+			return err
+		}
+		set("sidebar_folder_order", v)
+	}
 
 	// Creates the row on first use.
 	if _, err := m.a.Store.GetUserSettings(r.Context(), u.ID); err != nil {
@@ -240,6 +289,9 @@ func (m *Module) patch(w http.ResponseWriter, r *http.Request) error {
 		if _, err := m.a.DB.ExecContext(r.Context(), q+" WHERE user_id = ?", args...); err != nil {
 			return err
 		}
+		// The user's other tabs and devices refetch (the sidebar folder order
+		// lives here). Best-effort: they also refetch when their feed reconnects.
+		m.a.Hub.Publish(events.UserChats(u.ID), []byte(`{"kind":"settings_updated"}`))
 	}
 	m.a.Sandboxes.InvalidateUserEnv(u.ID)
 	return m.get(w, r)

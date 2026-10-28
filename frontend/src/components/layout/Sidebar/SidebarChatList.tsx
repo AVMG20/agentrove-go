@@ -8,7 +8,8 @@ import { SidebarChatRow, type ChatRowProps } from './SidebarChatRow';
 import { SidebarFilterMenu } from './SidebarFilterMenu';
 import { SidebarSection } from './SidebarSection';
 import { SidebarWorkspaceGroup } from './SidebarWorkspaceGroup';
-import type { SidebarChatSection } from './sidebarGrouping';
+import type { FolderDropPlacement, SidebarChatSection } from './sidebarGrouping';
+import { useFolderDrag } from './useFolderDrag';
 import styles from './SidebarChatList.module.scss';
 
 interface SidebarChatListProps {
@@ -27,6 +28,8 @@ interface SidebarChatListProps {
   isFetchingMore: boolean;
   onLoadMore: () => void;
   onNewWorkspaceThread: (e: MouseEvent, workspaceId: string | null) => void;
+  // A workspace folder dropped before or after another one.
+  onMoveFolder: (key: string, targetKey: string, placement: FolderDropPlacement) => void;
 }
 
 export function SidebarChatList({
@@ -45,8 +48,10 @@ export function SidebarChatList({
   isFetchingMore,
   onLoadMore,
   onNewWorkspaceThread,
+  onMoveFolder,
 }: SidebarChatListProps) {
   const groupedByWorkspace = filters.groupBy === 'workspace';
+  const folderDrag = useFolderDrag(onMoveFolder);
 
   return (
     <div ref={scrollContainerRef} className={styles.scroll}>
@@ -93,9 +98,12 @@ export function SidebarChatList({
                       key={section.key}
                       workspaceId={section.key}
                       name={section.label ?? 'Unknown project'}
+                      icon={workspaceBadgeById.get(section.key)?.icon}
+                      color={workspaceBadgeById.get(section.key)?.color}
                       noProject={section.chats[0]?.no_project}
                       onNewThread={onNewWorkspaceThread}
                       onOpenMenu={rowProps.onOpenWorkspaceMenu}
+                      drag={folderDrag(section.key)}
                     >
                       {section.chats.map((chat) => (
                         <SidebarChatRow

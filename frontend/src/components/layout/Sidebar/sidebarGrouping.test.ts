@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Chat } from '@/types/chat.types';
-import { buildRecentChatSections } from './sidebarGrouping';
+import { buildRecentChatSections, moveFolder, sortByFolderOrder } from './sidebarGrouping';
 
 const NOW = new Date(2026, 6, 12, 12);
 
@@ -133,6 +133,81 @@ describe('buildRecentChatSections workspace grouping', () => {
       completedChatIds: new Set(),
     });
     expect(sections.map(({ label }) => label)).toEqual(['No project']);
+  });
+
+  it('follows the saved folder order, new folders first by recency, threads by recency', () => {
+    const sections = buildRecentChatSections({
+      groupBy: 'workspace',
+      visibleRecentChats: [
+        chat('a1', DAY, { workspace_id: 'ws-a' }),
+        chat('new', DAY, { workspace_id: 'ws-new' }),
+        chat('s', DAY, { workspace_id: 'scratch', no_project: true }),
+        chat('b', DAY, { workspace_id: 'ws-b' }),
+        chat('a2', DAY, { workspace_id: 'ws-a' }),
+      ],
+      workspaceBadgeById: new Map(),
+      blockedChatIdSet: new Set(),
+      streamingChatIdSet: new Set(),
+      completedChatIds: new Set(),
+      // ws-gone has no threads loaded; it only keeps its place.
+      folderOrder: ['ws-b', 'ws-gone', 'scratch', 'ws-a'],
+    });
+
+    expect(sections.map(({ key, chats }) => [key, chats.map(({ id }) => id)])).toEqual([
+      ['ws-new', ['new']],
+      ['ws-b', ['b']],
+      ['scratch', ['s']],
+      ['ws-a', ['a1', 'a2']],
+    ]);
+  });
+});
+
+describe('sortByFolderOrder', () => {
+  const key = (k: string) => k;
+
+  it('keeps the incoming order without a saved order', () => {
+    expect(sortByFolderOrder(['c', 'a', 'b'], key, null)).toEqual(['c', 'a', 'b']);
+    expect(sortByFolderOrder(['c', 'a', 'b'], key, [])).toEqual(['c', 'a', 'b']);
+  });
+
+  it('puts unknown folders first in incoming order, then the saved order', () => {
+    expect(sortByFolderOrder(['a', 'x', 'b', 'y', 'c'], key, ['c', 'a', 'b'])).toEqual([
+      'x',
+      'y',
+      'c',
+      'a',
+      'b',
+    ]);
+  });
+});
+
+describe('moveFolder', () => {
+  it('saves the on-screen order with the dragged folder moved on the first drop', () => {
+    // On screen a, b, c (recency); d is a project with no loaded threads.
+    expect(moveFolder(null, ['a', 'b', 'c', 'a', 'b', 'c', 'd'], 'c', 'a', 'before')).toEqual([
+      'c',
+      'a',
+      'b',
+      'd',
+    ]);
+    expect(moveFolder(undefined, ['a', 'b', 'c'], 'a', 'c', 'after')).toEqual(['b', 'c', 'a']);
+  });
+
+  it('keeps folders that are off screen in place', () => {
+    // h is saved between a and b but filtered out; new folder n shows first.
+    expect(moveFolder(['a', 'h', 'b'], ['n', 'a', 'b'], 'b', 'a', 'before')).toEqual([
+      'n',
+      'b',
+      'a',
+      'h',
+    ]);
+  });
+
+  it('returns null when the drop moves nothing', () => {
+    expect(moveFolder(['a', 'b'], ['a', 'b'], 'a', 'a', 'after')).toBeNull();
+    expect(moveFolder(['a', 'b'], ['a', 'b'], 'a', 'b', 'before')).toBeNull();
+    expect(moveFolder(['a', 'b'], ['a', 'b'], 'b', 'a', 'after')).toBeNull();
+    expect(moveFolder(['a'], ['a'], 'a', 'missing', 'after')).toBeNull();
   });
 });
 

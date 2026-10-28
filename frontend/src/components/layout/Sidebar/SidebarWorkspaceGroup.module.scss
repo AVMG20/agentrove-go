@@ -3,8 +3,42 @@
 @use '@/styles/globals/controls' as controls;
 @use '@/styles/globals/responsive' as responsive;
 
+.group {
+  position: relative;
+}
+
+// Padding, not margin, so the gap between folders is still a drop zone
 .group + .group {
-  margin-top: var(--space-2);
+  padding-top: var(--space-2);
+}
+
+.group--dragging {
+  opacity: 0.5;
+}
+
+// Drop line, centred in the gap on the side the folder will land
+.group--drop-before::before,
+.group--drop-after::after {
+  content: '';
+  pointer-events: none;
+  position: absolute;
+  left: calc(var(--space-2) * -1);
+  right: calc(var(--space-2) * -1);
+  height: 2px;
+  border-radius: var(--radius-full);
+  background-color: var(--theme-accent);
+}
+
+.group--drop-before::before {
+  top: -1px;
+
+  .group + & {
+    top: calc(var(--space-1) - 1px);
+  }
+}
+
+.group--drop-after::after {
+  bottom: calc(var(--space-1) * -1 - 1px);
 }
 
 .header {
@@ -73,7 +107,8 @@
   position: absolute;
   height: var(--space-4);
   width: var(--space-4);
-  color: var(--theme-text-tertiary);
+  // --folder-color: the folder's preset color (folderAppearance.module.scss)
+  color: var(--folder-color, var(--theme-text-tertiary));
   transition:
     opacity var(--duration-fast),
     transform var(--duration-base);

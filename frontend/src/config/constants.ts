@@ -11,8 +11,10 @@ export const MAX_UPLOAD_SIZE_BYTES = {
   CHAT_ATTACHMENT: 5 * 1024 * 1024,
 } as const;
 
-export const DROPDOWN_WIDTH = 128;
-export const DROPDOWN_HEIGHT = 90;
+// Typical sidebar menu size (SidebarMenu: min-width space-48, four or five
+// items), for placing it beside its button; SidebarMenu keeps it on screen.
+export const DROPDOWN_WIDTH = 192;
+export const DROPDOWN_HEIGHT = 180;
 export const DROPDOWN_MARGIN = 8;
 
 export const MONACO_FONT_FAMILY =

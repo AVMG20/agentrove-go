@@ -67,6 +67,8 @@ type UserSettings struct {
 	TitleModelID              string                  `json:"title_model_id"`
 	AutoCompactWindow         int                     `json:"auto_compact_window"`
 	BrowserToolsEnabled       bool                    `json:"browser_tools_enabled"`
+	// Workspace ids, in the order the sidebar shows their thread folders.
+	SidebarFolderOrder db.JSON[[]string] `json:"sidebar_folder_order"`
 	// Server-wide SANDBOX_BROWSER_ENABLED, so the UI can hide the browser.
 	BrowserAvailable bool    `json:"browser_available"`
 	CreatedAt        db.Time `json:"created_at"`
@@ -82,6 +84,8 @@ type Workspace struct {
 	WorkspacePath   string      `json:"workspace_path"`
 	SourceType      *string     `json:"source_type"`
 	SourceURL       *string     `json:"source_url"`
+	Icon            *string     `json:"icon"`  // sidebar folder preset; nil is the plain folder
+	Color           *string     `json:"color"` // sidebar folder preset; nil is the default color
 	DeletedAt       db.NullTime `json:"-"`
 	CreatedAt       db.Time     `json:"created_at"`
 	UpdatedAt       db.Time     `json:"updated_at"`
@@ -94,10 +98,10 @@ type Workspace struct {
 // where threads started without a project run. Project lists leave it out.
 const ScratchSource = "scratch"
 
-const WorkspaceColumns = `id, name, user_id, sandbox_id, sandbox_provider, workspace_path, source_type, source_url, deleted_at, created_at, updated_at`
+const WorkspaceColumns = `id, name, user_id, sandbox_id, sandbox_provider, workspace_path, source_type, source_url, icon, color, deleted_at, created_at, updated_at`
 
 func (w *Workspace) ScanFields() []any {
-	return []any{&w.ID, &w.Name, &w.UserID, &w.SandboxID, &w.SandboxProvider, &w.WorkspacePath, &w.SourceType, &w.SourceURL, &w.DeletedAt, &w.CreatedAt, &w.UpdatedAt}
+	return []any{&w.ID, &w.Name, &w.UserID, &w.SandboxID, &w.SandboxProvider, &w.WorkspacePath, &w.SourceType, &w.SourceURL, &w.Icon, &w.Color, &w.DeletedAt, &w.CreatedAt, &w.UpdatedAt}
 }
 
 type Chat struct {

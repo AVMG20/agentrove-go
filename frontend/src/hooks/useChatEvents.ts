@@ -74,6 +74,24 @@ export function useChatEvents(options?: { enabled?: boolean }) {
         return;
       }
 
+      if (parsed.kind === 'settings_updated') {
+        // Saves from other tabs and devices (e.g. the sidebar folder order). While
+        // this tab is saving, its own response lands instead: a refetch could
+        // return an older order than the one it just dropped.
+        if (queryClient.isMutating({ mutationKey: [queryKeys.settings] }) === 0) {
+          void queryClient.invalidateQueries({ queryKey: [queryKeys.settings] });
+        }
+        return;
+      }
+
+      if (parsed.kind === 'workspaces_updated') {
+        // A rename or folder icon/color; same hold-off as settings above.
+        if (queryClient.isMutating({ mutationKey: queryKeys.workspaces }) === 0) {
+          void queryClient.invalidateQueries({ queryKey: queryKeys.workspaces, exact: true });
+        }
+        return;
+      }
+
       if (parsed.kind === 'stream_started') {
         // Server bumps updated_at — refetch so chats outside loaded pages surface.
         queryClient.invalidateQueries({ queryKey: [queryKeys.chats, 'infinite'] });
@@ -104,6 +122,7 @@ export function useChatEvents(options?: { enabled?: boolean }) {
         void queryClient.invalidateQueries({ queryKey: queryKeys.workspaces });
         void queryClient.invalidateQueries({ queryKey: ['chat'] });
         void queryClient.invalidateQueries({ queryKey: queryKeys.subagentsAll });
+        void queryClient.invalidateQueries({ queryKey: [queryKeys.settings] });
         resyncActiveStreams(
           () => chatService.getActiveStreams(),
           () => cancelled,

@@ -4,30 +4,47 @@
 @use '@/styles/globals/responsive' as responsive;
 @use '@/styles/globals/zlayer' as z;
 
+// Same frosted floating panel as the sidebar filter menu. Sized to its longest
+// item (never wrapping), with a floor so short menus don't look cramped.
 .menu {
   @include z.z('dropdown');
   position: fixed;
-  width: var(--space-32);
-  overflow: hidden;
-  border: 1px solid var(--theme-border);
-  border-radius: var(--radius-lg);
-  background-color: var(--theme-surface);
+  display: flex;
+  min-width: var(--space-48);
+  max-width: calc(100vw - var(--space-4));
+  flex-direction: column;
+  gap: 1px;
+  border: 1px solid colors.theme-color('border', 0.5);
+  border-radius: var(--radius-xl);
+  background-color: colors.theme-color('surface-secondary', 0.95);
+  padding: var(--space-1-5);
   box-shadow: var(--shadow-medium);
+  backdrop-filter: blur(24px);
 
   &:focus {
     outline: none;
   }
 }
 
-.item {
+@mixin item {
   @include type.type-default;
   @include anim.transition-colors;
   display: flex;
   width: 100%;
   align-items: center;
-  gap: var(--space-2);
-  padding: var(--space-2) var(--space-3);
+  gap: var(--space-2-5);
+  border-radius: var(--radius-md);
+  padding: var(--space-2) var(--space-2-5);
   text-align: left;
+  white-space: nowrap;
+
+  @include responsive.media('touch') {
+    padding-block: var(--space-2-5);
+  }
+}
+
+.item {
+  @include item;
   color: var(--theme-text-primary);
 
   @include responsive.hover {
@@ -36,14 +53,7 @@
 }
 
 .item-danger {
-  @include type.type-default;
-  @include anim.transition-colors;
-  display: flex;
-  width: 100%;
-  align-items: center;
-  gap: var(--space-2);
-  padding: var(--space-2) var(--space-3);
-  text-align: left;
+  @include item;
   color: var(--theme-error-text);
 
   @include responsive.hover {
@@ -59,6 +69,13 @@
 }
 
 .icon {
-  height: var(--space-3);
-  width: var(--space-3);
+  height: var(--space-3-5);
+  width: var(--space-3-5);
+  flex-shrink: 0;
+}
+
+// Separates destructive items from the rest
+.divider {
+  margin-block: var(--space-1);
+  border-top: 1px solid colors.theme-color('border', 0.5);
 }

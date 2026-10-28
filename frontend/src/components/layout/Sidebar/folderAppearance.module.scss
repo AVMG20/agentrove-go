@@ -1,0 +1,49 @@
+@use 'sass:list';
+
+// Folder colors (folderAppearance.ts): user-picked labels, not theme tokens.
+// Light themes take the deeper shade and dark themes the lighter one, so a
+// folder icon keeps at least 3:1 against the sidebar either way.
+$folder-colors: (
+  'red': (
+    #dc2626,
+    #f87171,
+  ),
+  'orange': (
+    #ea580c,
+    #fb923c,
+  ),
+  'yellow': (
+    #ca8a04,
+    #facc15,
+  ),
+  'green': (
+    #16a34a,
+    #4ade80,
+  ),
+  'teal': (
+    #0d9488,
+    #2dd4bf,
+  ),
+  'blue': (
+    #2563eb,
+    #60a5fa,
+  ),
+  'purple': (
+    #9333ea,
+    #c084fc,
+  ),
+  'pink': (
+    #db2777,
+    #f472b6,
+  ),
+);
+
+@each $name, $pair in $folder-colors {
+  .color-#{$name} {
+    --folder-color: #{list.nth($pair, 1)};
+
+    :global([data-theme='dark']) & {
+      --folder-color: #{list.nth($pair, 2)};
+    }
+  }
+}

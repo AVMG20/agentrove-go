@@ -12,6 +12,10 @@ export interface Workspace {
   workspace_path: string;
   source_type?: string | null;
   source_url?: string | null;
+  // Sidebar folder presets (folderAppearance.ts); null is the plain folder.
+  // Optional: workspaces cached from before these fields lack them.
+  icon?: string | null;
+  color?: string | null;
   created_at: string;
   updated_at: string;
   chat_count: number;
@@ -28,6 +32,9 @@ export interface CreateWorkspaceRequest {
 
 export interface UpdateWorkspaceRequest {
   name?: string;
+  // null resets to the default.
+  icon?: string | null;
+  color?: string | null;
 }
 
 export interface WorkspaceDiskUsage {

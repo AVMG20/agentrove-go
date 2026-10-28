@@ -78,6 +78,9 @@ export interface UserSettings {
   title_model_id: string;
   auto_compact_window: number;
   browser_tools_enabled: boolean;
+  // Workspace ids in the order the sidebar shows their thread folders; folders
+  // missing from it come first, most recent activity first.
+  sidebar_folder_order: string[] | null;
   // Read-only: whether the server runs box browsers at all.
   browser_available: boolean;
   created_at: string;

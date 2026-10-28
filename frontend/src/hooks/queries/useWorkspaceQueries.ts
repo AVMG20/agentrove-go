@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef } from 'react';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { QueryClient, UseQueryOptions } from '@tanstack/react-query';
 import { workspaceService } from '@/services/workspaceService';
 import type {
@@ -137,6 +137,36 @@ export const useUpdateWorkspaceMutation = createMutation<
     queryClient.invalidateQueries({ queryKey: queryKeys.chatsSearchAll });
   },
 );
+
+// Under the workspaces key so useChatEvents holds off refetching while it runs.
+const workspaceAppearanceMutationKey = [...queryKeys.workspaces, 'appearance'];
+
+// A folder's icon and color. Optimistic, so the folder repaints on pick; with
+// picks in flight only the last one settles the list from the server.
+export function useUpdateWorkspaceAppearanceMutation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationKey: workspaceAppearanceMutationKey,
+    mutationFn: ({ workspaceId, data }: { workspaceId: string; data: UpdateWorkspaceRequest }) =>
+      workspaceService.updateWorkspace(workspaceId, data),
+    onMutate: async ({ workspaceId, data }) => {
+      await queryClient.cancelQueries({ queryKey: queryKeys.workspaces, exact: true });
+      queryClient.setQueryData<PaginatedResponse<Workspace>>(queryKeys.workspaces, (old) =>
+        old
+          ? {
+              ...old,
+              items: old.items.map((w) => (w.id === workspaceId ? { ...w, ...data } : w)),
+            }
+          : old,
+      );
+    },
+    onSettled: () => {
+      if (queryClient.isMutating({ mutationKey: workspaceAppearanceMutationKey }) === 1) {
+        void queryClient.invalidateQueries({ queryKey: queryKeys.workspaces, exact: true });
+      }
+    },
+  });
+}
 
 export const useDeleteWorkspaceMutation = createMutation<void, Error, string>(
   (workspaceId) => workspaceService.deleteWorkspace(workspaceId),

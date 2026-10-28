@@ -18,8 +18,8 @@ import (
 const pingInterval = 15 * time.Second
 
 // chatEventsFeed is the per-session chat lifecycle feed (chat_created,
-// title_updated, stream_started, background_tasks). No replay: the sidebar
-// refetches on reconnect.
+// title_updated, stream_started, background_tasks, plus settings_updated from
+// the settings module). No replay: the sidebar refetches on reconnect.
 func (m *Module) chatEventsFeed(w http.ResponseWriter, r *http.Request) error {
 	sub := m.a.Hub.Subscribe(events.UserChats(user(r).ID), 256)
 	defer sub.Close()

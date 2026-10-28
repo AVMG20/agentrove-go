@@ -26,11 +26,54 @@ interface GroupingContext {
   blockedChatIdSet: Set<string>;
   streamingChatIdSet: Set<string>;
   completedChatIds: Set<string>;
+  // The user's saved order of workspace folders (user settings).
+  folderOrder?: readonly string[] | null;
+}
+
+export type FolderDropPlacement = 'before' | 'after';
+
+// Folders missing from the saved order (new projects, or none saved yet) come
+// first in their incoming recency order, then the saved ones in saved order.
+export function sortByFolderOrder<T>(
+  items: T[],
+  keyOf: (item: T) => string,
+  order: readonly string[] | null | undefined,
+): T[] {
+  if (!order?.length) return items;
+  const rank = new Map(order.map((key, index) => [key, index]));
+  const unknown = items.filter((item) => !rank.has(keyOf(item)));
+  const known = items
+    .filter((item) => rank.has(keyOf(item)))
+    .sort((a, b) => rank.get(keyOf(a))! - rank.get(keyOf(b))!);
+  return [...unknown, ...known];
+}
+
+// The full order to save after dropping `key` before or after `targetKey`.
+// `currentKeys` are the folders on screen in display order, then every other
+// known project, so folders that aren't loaded or are filtered out keep their
+// place. Null when nothing moves.
+export function moveFolder(
+  order: readonly string[] | null | undefined,
+  currentKeys: readonly string[],
+  key: string,
+  targetKey: string,
+  placement: FolderDropPlacement,
+): string[] | null {
+  if (key === targetKey) return null;
+  const saved = order ?? [];
+  const savedSet = new Set(saved);
+  const full = [...new Set(currentKeys.filter((k) => !savedSet.has(k))), ...saved];
+  const next = full.filter((k) => k !== key);
+  const targetIndex = next.indexOf(targetKey);
+  if (targetIndex === -1) return null;
+  next.splice(placement === 'before' ? targetIndex : targetIndex + 1, 0, key);
+  return next.every((k, index) => k === full[index]) ? null : next;
 }
 
 // Always returns a sections list so the JSX renders one shape — ungrouped is a
 // single headerless section. Groups keep the flat list's recency order:
-// date and workspace groups appear in order of their most recent chat; status
+// date and workspace groups appear in order of their most recent chat (for
+// workspaces, until the user drags them into an order of their own); status
 // groups follow badge urgency. Pinned stays flat — it's a small, curated list.
 export function buildRecentChatSections({
   groupBy,
@@ -39,6 +82,7 @@ export function buildRecentChatSections({
   blockedChatIdSet,
   streamingChatIdSet,
   completedChatIds,
+  folderOrder,
 }: GroupingContext): SidebarChatSection[] {
   if (groupBy === 'date') {
     const groups = new Map<number, SidebarChatSection>();
@@ -82,7 +126,7 @@ export function buildRecentChatSections({
       }
       group.chats.push(chat);
     }
-    return Array.from(groups.values());
+    return sortByFolderOrder(Array.from(groups.values()), ({ key }) => key, folderOrder);
   }
   if (groupBy === 'status') {
     const byStatus = new Map<SidebarStatusFilter | 'other', Chat[]>();

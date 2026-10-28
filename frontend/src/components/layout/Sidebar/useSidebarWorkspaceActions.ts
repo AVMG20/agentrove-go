@@ -2,11 +2,14 @@ import { useState, useRef, useCallback, type RefObject } from 'react';
 import { useMountEffect } from '@/hooks/useMountEffect';
 import type { NavigateFunction } from 'react-router-dom';
 import type { Workspace } from '@/types/workspace.types';
+import toast from 'react-hot-toast';
 import {
   useDeleteWorkspaceMutation,
+  useUpdateWorkspaceAppearanceMutation,
   useUpdateWorkspaceMutation,
 } from '@/hooks/queries/useWorkspaceQueries';
 import { useUIStore } from '@/store/uiStore';
+import type { FolderAppearance } from './FolderAppearancePicker';
 import { mutateWithToast, calculateDropdownPosition } from './sidebarHelpers';
 
 interface UseSidebarWorkspaceActionsParams {
@@ -34,6 +37,7 @@ export function useSidebarWorkspaceActions({
   const workspaceDropdownRef = useRef<HTMLDivElement>(null);
   const deleteWorkspace = useDeleteWorkspaceMutation();
   const updateWorkspace = useUpdateWorkspaceMutation();
+  const updateWorkspaceAppearance = useUpdateWorkspaceAppearanceMutation();
 
   useMountEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -117,6 +121,17 @@ export function useSidebarWorkspaceActions({
     [workspaceToRename, updateWorkspace],
   );
 
+  // Optimistic; a failure puts the folder back when the list refetches.
+  const handleChangeWorkspaceAppearance = useCallback(
+    (workspaceId: string, change: Partial<FolderAppearance>) => {
+      updateWorkspaceAppearance.mutate(
+        { workspaceId, data: change },
+        { onError: () => toast.error('Failed to update the project folder') },
+      );
+    },
+    [updateWorkspaceAppearance],
+  );
+
   const handleDeleteWorkspace = useCallback((workspaceId: string) => {
     setWorkspaceToDelete(workspaceId);
     setWorkspaceDropdown(null);
@@ -154,6 +169,7 @@ export function useSidebarWorkspaceActions({
     handleWorkspaceContextMenu,
     handleRenameWorkspace,
     handleSaveWorkspaceRename,
+    handleChangeWorkspaceAppearance,
     handleDeleteWorkspace,
     confirmDeleteWorkspace,
   };

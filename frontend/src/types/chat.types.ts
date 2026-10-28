@@ -165,7 +165,10 @@ export type ChatEvent =
   | { kind: 'stream_started'; chat_id: string; message_id: string }
   | { kind: 'title_updated'; chat_id: string; title: string }
   | { kind: 'background_tasks'; chat_id: string; tasks: BackgroundTask[] }
-  | { kind: 'subagent'; chat_id: string; subagent: Subagent };
+  | { kind: 'subagent'; chat_id: string; subagent: Subagent }
+  // The user's settings or projects changed (possibly in another tab or device).
+  | { kind: 'settings_updated' }
+  | { kind: 'workspaces_updated' };
 
 export interface ChatRequest {
   prompt: string;

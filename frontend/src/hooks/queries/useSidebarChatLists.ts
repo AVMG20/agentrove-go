@@ -4,6 +4,9 @@ import type { Workspace } from '@/types/workspace.types';
 
 export interface WorkspaceBadge {
   name: string;
+  // Folder presets (folderAppearance.ts); absent is the plain folder.
+  icon?: string | null;
+  color?: string | null;
 }
 
 // Pinned and unpinned chats as the sidebar's Pinned/Recents lists.
@@ -36,7 +39,11 @@ export function useSidebarChatLists(workspaces: Workspace[], enabled: boolean = 
   const workspaceBadgeById = useMemo(() => {
     const map = new Map<string, WorkspaceBadge>();
     for (const workspace of workspaces) {
-      map.set(workspace.id, { name: workspace.name });
+      map.set(workspace.id, {
+        name: workspace.name,
+        icon: workspace.icon,
+        color: workspace.color,
+      });
     }
     return map;
   }, [workspaces]);
