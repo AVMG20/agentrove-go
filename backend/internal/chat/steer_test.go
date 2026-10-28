@@ -284,3 +284,51 @@ func TestSendNowWhileTurnStartsForcesItLater(t *testing.T) {
 		t.Fatalf("turn got %v (force %v), want the old message forced", got, force)
 	}
 }
+
+// A send-now message left over from an earlier turn joins the next turn
+// unforced: only Send now pressed while this turn started interrupts it.
+func TestSteerQueuedDoesNotForceLeftovers(t *testing.T) {
+	m, _ := newTestModule(t)
+	ctx := context.Background()
+	left := queued("left")
+	left.QueuedAt = db.T(time.Now().Add(-time.Minute))
+	left.sendNow = true
+	m.st.requeue(ctx, testChat, left)
+	tr := newTestTurn(m)
+	tr.steer.start()
+	m.steerQueued(tr)
+
+	if got, force := tr.steer.take(); len(got) != 1 || force {
+		t.Fatalf("turn got %v (force %v), want the leftover unforced", got, force)
+	}
+}
+
+// Send now after Stop on a message the turn holds puts it back flagged to
+// run once the turn ends.
+func TestSendNowOnStoppingTurnFlagsHeldMessage(t *testing.T) {
+	m, _ := newTestModule(t)
+	ctx := context.Background()
+	tr := newTestTurn(m)
+	tr.steer.start()
+	q := queued("held")
+	tr.steer.offer(q, false)
+	tr.cancelled.Store(true)
+
+	if ok, err := m.sendNowRunning(ctx, tr, testChat, "held"); err != nil || !ok {
+		t.Fatal(ok, err)
+	}
+	tr.requeueSteered([]*QueuedMessage{q}, false)
+	if !m.st.hasQueued(ctx, testChat, true) {
+		t.Fatal("held message not flagged to run next")
+	}
+}
+
+// A cycle Claude started on its own takes steers with the same model.
+func TestFollowupTurnTakesSteers(t *testing.T) {
+	m, _ := newTestModule(t)
+	tr := newTestTurn(m)
+	tr.req.followup, tr.req.permissionMode, tr.req.personaName, tr.req.effort = true, "", "", ""
+	if !tr.steerable(queued("x")) {
+		t.Fatal("follow-up turn refused a steer with its model")
+	}
+}

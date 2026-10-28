@@ -33,11 +33,14 @@ type steering struct {
 	// back; Send now on one of them forces the steer.
 	held  map[string]bool
 	force bool
-	ready chan struct{}
+	// forceIDs are messages Send now was pressed on before the turn could
+	// take them: forced once offered, flagged send-now if handed back.
+	forceIDs map[string]bool
+	ready    chan struct{}
 }
 
 func newSteering() *steering {
-	return &steering{held: map[string]bool{}, ready: make(chan struct{}, 1)}
+	return &steering{held: map[string]bool{}, forceIDs: map[string]bool{}, ready: make(chan struct{}, 1)}
 }
 
 // offer hands q to the turn, forcing it with force; false means the turn
@@ -50,9 +53,24 @@ func (s *steering) offer(q *QueuedMessage, force bool) bool {
 	}
 	s.waiting = append(s.waiting, q)
 	s.held[q.ID] = true
-	s.force = s.force || force
+	s.force = s.force || force || s.forceIDs[q.ID]
+	delete(s.forceIDs, q.ID)
 	s.signal()
 	return true
+}
+
+// markForce records Send now on a message the turn can't force yet.
+func (s *steering) markForce(id string) {
+	s.mu.Lock()
+	s.forceIDs[id] = true
+	s.mu.Unlock()
+}
+
+// holds reports whether the turn holds the message.
+func (s *steering) holds(id string) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.held[id]
 }
 
 // forceHeld forces the steer of a message the turn already holds.
@@ -74,11 +92,15 @@ func (s *steering) signal() {
 	}
 }
 
-// release forgets a message the CLI started on or that went back to the queue.
-func (s *steering) release(id string) {
+// release forgets a message the CLI started on or that went back to the
+// queue; it reports whether Send now was pressed on it meanwhile.
+func (s *steering) release(id string) bool {
 	s.mu.Lock()
+	defer s.mu.Unlock()
 	delete(s.held, id)
-	s.mu.Unlock()
+	forced := s.forceIDs[id]
+	delete(s.forceIDs, id)
+	return forced
 }
 
 func (s *steering) start() {
@@ -242,19 +264,24 @@ func (t *turn) requeueSteered(qs []*QueuedMessage, sendNow bool) {
 	qs = slices.Clone(qs)
 	slices.SortStableFunc(qs, func(a, b *QueuedMessage) int { return a.QueuedAt.Compare(b.QueuedAt.Time) })
 	for i := len(qs) - 1; i >= 0; i-- {
-		t.steer.release(qs[i].ID)
-		qs[i].sendNow = sendNow
+		qs[i].sendNow = t.steer.release(qs[i].ID) || sendNow
 		t.m.st.requeue(context.Background(), t.chatID, qs[i])
 	}
 }
 
 // steerable reports whether q can join the turn: a message with other
 // settings (model, effort, permission mode, persona, a new worktree) runs as
-// a turn of its own.
+// a turn of its own. A cycle Claude started on its own runs with the
+// session's settings, so only the model counts there.
 func (t *turn) steerable(q *QueuedMessage) bool {
+	if q.ModelID != t.req.modelID || (q.Worktree && t.req.chat.WorktreeCwd == nil) {
+		return false
+	}
+	if t.req.followup {
+		return true
+	}
 	effort, _ := claude.Effort(q.ThinkingMode)
-	return q.ModelID == t.req.modelID && effort == t.req.effort && q.PermissionMode == t.req.permissionMode &&
-		q.SelectedPersonaName == t.req.personaName && (!q.Worktree || t.req.chat.WorktreeCwd != nil)
+	return effort == t.req.effort && q.PermissionMode == t.req.permissionMode && q.SelectedPersonaName == t.req.personaName
 }
 
 // offerSteer hands q to the turn as a steer if it can join it.
@@ -267,20 +294,25 @@ func (t *turn) offerSteer(q *QueuedMessage, force bool) bool {
 // and the message, left flagged send-now in the queue, takes over its stream.
 // False means the message is neither queued nor held by the turn.
 func (m *Module) sendNowRunning(ctx context.Context, t *turn, chatID, queuedID string) (bool, error) {
-	if t.steer.forceHeld(queuedID) {
+	if t.cancelled.Load() && t.steer.holds(queuedID) {
+		t.steer.markForce(queuedID) // the stop hands it back flagged to run next
+		return true, nil
+	}
+	if !t.cancelled.Load() && t.steer.forceHeld(queuedID) {
 		return true, nil
 	}
 	if t.cancelled.Load() || (t.steer.starting() && reqProvider(t.req) == models.ProviderClaude) {
 		// A stopping turn starts it when it ends; a starting one forces it in
 		// once it can take it (steerQueued).
+		t.steer.markForce(queuedID)
 		res, err := m.st.db.ExecContext(ctx, `UPDATE queued_messages SET send_now = 1 WHERE id = ? AND chat_id = ?`, queuedID, chatID)
 		if err != nil {
 			return false, err
 		}
 		if n, _ := res.RowsAffected(); n == 0 {
-			return t.steer.forceHeld(queuedID), nil
+			return !t.cancelled.Load() && t.steer.forceHeld(queuedID), nil
 		}
-		if !t.steer.starting() {
+		if !t.cancelled.Load() && !t.steer.starting() {
 			m.steerQueued(t) // it opened meanwhile, maybe after its own look at the queue
 		}
 		return true, nil
@@ -306,7 +338,8 @@ func (m *Module) sendNowRunning(ctx context.Context, t *turn, chatID, queuedID s
 // steerQueued hands the turn the messages that arrived while it was still
 // starting and couldn't take them yet: those queued since it was created,
 // and those flagged send-now. Older ones were left for the user (a stopped
-// turn's steers) and stay queued, as do ones that can't join the turn.
+// turn's steers) and stay queued, as do ones that can't join the turn. Only
+// Send now pressed while this turn started forces one (markForce).
 func (m *Module) steerQueued(t *turn) {
 	ctx := context.Background()
 	queue, err := m.st.listQueue(ctx, t.chatID)
@@ -322,7 +355,7 @@ func (m *Module) steerQueued(t *turn) {
 		if err != nil || taken == nil {
 			continue
 		}
-		if !t.steer.offer(taken, taken.sendNow) {
+		if !t.steer.offer(taken, false) {
 			m.st.requeue(ctx, t.chatID, taken)
 			return
 		}
