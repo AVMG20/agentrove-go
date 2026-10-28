@@ -38,6 +38,19 @@ export function useChatEvents(options?: { enabled?: boolean }) {
     };
     syncBackgroundTasks();
 
+    // While this tab saves settings, a refetch could return an older folder
+    // order than the one it just dropped: wait for its saves to land first.
+    let settingsRetry: number | undefined;
+    const refetchSettingsWhenIdle = () => {
+      window.clearTimeout(settingsRetry);
+      if (cancelled) return;
+      if (queryClient.isMutating({ mutationKey: [queryKeys.settings] }) > 0) {
+        settingsRetry = window.setTimeout(refetchSettingsWhenIdle, 500);
+        return;
+      }
+      void queryClient.invalidateQueries({ queryKey: [queryKeys.settings] });
+    };
+
     const onChatEvent = (event: MessageEvent) => {
       if (!event.data) return;
       let parsed: ChatEvent;
@@ -75,12 +88,8 @@ export function useChatEvents(options?: { enabled?: boolean }) {
       }
 
       if (parsed.kind === 'settings_updated') {
-        // Saves from other tabs and devices (e.g. the sidebar folder order). While
-        // this tab is saving, its own response lands instead: a refetch could
-        // return an older order than the one it just dropped.
-        if (queryClient.isMutating({ mutationKey: [queryKeys.settings] }) === 0) {
-          void queryClient.invalidateQueries({ queryKey: [queryKeys.settings] });
-        }
+        // Saves from other tabs and devices (e.g. the sidebar folder order).
+        refetchSettingsWhenIdle();
         return;
       }
 
@@ -122,7 +131,7 @@ export function useChatEvents(options?: { enabled?: boolean }) {
         void queryClient.invalidateQueries({ queryKey: queryKeys.workspaces });
         void queryClient.invalidateQueries({ queryKey: ['chat'] });
         void queryClient.invalidateQueries({ queryKey: queryKeys.subagentsAll });
-        void queryClient.invalidateQueries({ queryKey: [queryKeys.settings] });
+        refetchSettingsWhenIdle();
         resyncActiveStreams(
           () => chatService.getActiveStreams(),
           () => cancelled,
@@ -137,6 +146,7 @@ export function useChatEvents(options?: { enabled?: boolean }) {
 
     return () => {
       cancelled = true;
+      window.clearTimeout(settingsRetry);
       unsubscribe();
     };
   }, [enabled, queryClient]);

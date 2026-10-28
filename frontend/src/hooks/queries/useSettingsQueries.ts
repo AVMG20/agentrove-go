@@ -39,6 +39,8 @@ export function useUpdateSidebarFolderOrderMutation() {
   const isLast = () => queryClient.isMutating({ mutationKey: sidebarFolderOrderMutationKey }) === 1;
   return useMutation({
     mutationKey: sidebarFolderOrderMutationKey,
+    // One save at a time, in drop order, so the server keeps the last drop.
+    scope: { id: 'sidebar-folder-order' },
     mutationFn: (order: string[]) =>
       settingsService.updateSettings({ sidebar_folder_order: order }),
     onMutate: async (order) => {

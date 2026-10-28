@@ -1,4 +1,4 @@
-import { useCallback, useState, type DragEvent } from 'react';
+import { useCallback, useRef, useState, type DragEvent } from 'react';
 import type { FolderDropPlacement } from './sidebarGrouping';
 
 // Own drag type, so dragged files, links or text never reorder folders.
@@ -33,7 +33,11 @@ export function useFolderDrag(
     placement: FolderDropPlacement;
   } | null>(null);
 
+  // The folder being dragged, set at once (draggingKey lags a frame).
+  const activeRef = useRef<string | null>(null);
+
   const reset = useCallback(() => {
+    activeRef.current = null;
     setDraggingKey(null);
     setDropTarget(null);
   }, []);
@@ -45,7 +49,10 @@ export function useFolderDrag(
       e.dataTransfer.effectAllowed = 'move';
       e.dataTransfer.setData(FOLDER_DRAG_TYPE, key);
       // Restyling the source during dragstart can cancel the drag in Chrome.
-      requestAnimationFrame(() => setDraggingKey(key));
+      activeRef.current = key;
+      requestAnimationFrame(() => {
+        if (activeRef.current === key) setDraggingKey(key);
+      });
     },
     onDragEnd: reset,
     onDragOver: (e) => {
