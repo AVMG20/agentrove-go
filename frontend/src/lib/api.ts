@@ -66,6 +66,13 @@ const ACCESS_TOKEN_EXPIRY_BUFFER_MS = 30_000;
 // How long to wait for another tab to store the token it just rotated (total ~1s).
 const ROTATION_WAIT_MS = [100, 300, 600];
 
+// Retries of a refresh that failed on the network (total ~12s). The server may have rotated
+// before the response was lost (e.g. waking from sleep); a retry within its grace window gets
+// the same replacement back, while giving up and retrying later would sign the user out.
+const NETWORK_RETRY_MS = [1_000, 3_000, 8_000];
+
+const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
 // Missing/undecodable claims or exp within buffer → don't open long-lived connections on it.
 function accessTokenExpiresSoon(token: string): boolean {
   try {
@@ -138,6 +145,7 @@ class APIClient {
   }
 
   private async performTokenRefresh(): Promise<TokenResponse> {
+    let networkRetries = 0;
     for (;;) {
       // A stale refresh token (rotated by another tab beyond the server grace window) 401s
       // and would sign every tab out, so use the freshest one.
@@ -147,13 +155,20 @@ class APIClient {
         throw new RefreshTokenError(401, 'No refresh token available');
       }
 
-      const response = await fetch(`${this.baseURL}/auth/jwt/refresh`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ refresh_token: refreshToken }),
-      }).catch(() => {
+      let response: Response;
+      try {
+        response = await fetch(`${this.baseURL}/auth/jwt/refresh`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ refresh_token: refreshToken }),
+        });
+      } catch {
+        if (networkRetries < NETWORK_RETRY_MS.length) {
+          await wait(NETWORK_RETRY_MS[networkRetries++]);
+          continue;
+        }
         throw new RefreshTokenError(0);
-      });
+      }
 
       // Two tabs refreshing at once (e.g. after a wake): the loser's 401 can arrive before the
       // winner has stored its replacement, so wait for that instead of signing everyone out.
@@ -174,7 +189,7 @@ class APIClient {
   // True once another tab has stored a different refresh token than staleToken.
   private async awaitRotatedToken(staleToken: string): Promise<boolean> {
     for (const delayMs of ROTATION_WAIT_MS) {
-      await new Promise((resolve) => setTimeout(resolve, delayMs));
+      await wait(delayMs);
       this.auth.syncFromStorage();
       if (this.auth.getRefreshToken() !== staleToken) return true;
     }

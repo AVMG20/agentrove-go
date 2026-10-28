@@ -47,9 +47,9 @@ func TestRefreshReuseRevokesAll(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// A second tab replaying the just-rotated token only fails.
-	if _, _, _, err := s.RotateRefreshToken(ctx, old, "ua", "ip"); !errors.Is(err, ErrInvalidRefresh) {
-		t.Fatalf("grace reuse: %v", err)
+	// A second tab replaying the just-rotated token gets the same replacement.
+	if _, again, _, err := s.RotateRefreshToken(ctx, old, "ua", "ip"); err != nil || again != rotated {
+		t.Fatalf("grace reuse: %v (same token: %v)", err, again == rotated)
 	}
 	if n := activeRefreshTokens(t, s); n != 2 {
 		t.Fatalf("grace reuse revoked tokens: %d active", n)
@@ -68,6 +68,55 @@ func TestRefreshReuseRevokesAll(t *testing.T) {
 		if _, _, _, err := s.RotateRefreshToken(ctx, tok, "ua", "ip"); err == nil {
 			t.Fatal("token still usable after reuse revoke")
 		}
+	}
+}
+
+// A client that never got a refresh response retries with its old token and
+// keeps the session, even if the replacement has rotated again since.
+func TestRefreshRetryAfterLostResponse(t *testing.T) {
+	s := newService(t)
+	ctx := context.Background()
+	old, session, _ := s.CreateRefreshToken(ctx, s.DB, testUser, "ua", "ip")
+	_, lost, _, err := s.RotateRefreshToken(ctx, old, "ua", "ip")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, live, _, err := s.RotateRefreshToken(ctx, lost, "ua", "ip")
+	if err != nil {
+		t.Fatal(err)
+	}
+	u, got, gotSession, err := s.RotateRefreshToken(ctx, old, "ua", "ip")
+	if err != nil || got != live || gotSession != session || u.ID != testUser {
+		t.Fatalf("retry: %v (live token: %v, session %q)", err, got == live, gotSession)
+	}
+	if n := activeRefreshTokens(t, s); n != 1 {
+		t.Fatalf("%d active tokens after retry", n)
+	}
+	// The returned token works as the session's own.
+	if _, _, _, err := s.RotateRefreshToken(ctx, got, "ua", "ip"); err != nil {
+		t.Fatalf("refresh with returned token: %v", err)
+	}
+}
+
+// A replay within the grace whose session has since ended fails, but is no
+// theft signal.
+func TestGraceReplayOfEndedSessionOnlyFails(t *testing.T) {
+	s := newService(t)
+	ctx := context.Background()
+	old, _, _ := s.CreateRefreshToken(ctx, s.DB, testUser, "ua", "ip")
+	_, _, _ = s.CreateRefreshToken(ctx, s.DB, testUser, "ua", "ip")
+	_, rotated, _, err := s.RotateRefreshToken(ctx, old, "ua", "ip")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.RevokeRefreshToken(ctx, rotated); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, _, err := s.RotateRefreshToken(ctx, old, "ua", "ip"); !errors.Is(err, ErrInvalidRefresh) {
+		t.Fatalf("replay: %v", err)
+	}
+	if n := activeRefreshTokens(t, s); n != 1 {
+		t.Fatalf("replay revoked other sessions: %d active", n)
 	}
 }
 

@@ -135,12 +135,58 @@ describe('APIClient 401 handling', () => {
         stored = 'r2';
         return json({ message: 'stale' }, 401);
       })
-      .mockResolvedValueOnce(json({ access_token: 'a2', refresh_token: 'r3', token_type: 'bearer' }))
+      .mockResolvedValueOnce(
+        json({ access_token: 'a2', refresh_token: 'r3', token_type: 'bearer' }),
+      )
       .mockResolvedValueOnce(json({ ok: true })); // retried request
 
     await expect(apiClient.get('/thing')).resolves.toEqual({ ok: true });
     expect(JSON.parse(fetchMock.mock.calls[2][1].body)).toEqual({ refresh_token: 'r2' });
     expect(h.onSessionExpired).not.toHaveBeenCalled();
+  });
+
+  it('retries a refresh whose response was lost instead of giving up', async () => {
+    // Waking from sleep: the server may have rotated the token before the connection dropped.
+    // Retrying soon (within its grace window) gets the replacement back.
+    vi.useFakeTimers();
+    try {
+      h.getRefreshToken.mockReturnValue('r1');
+      fetchMock
+        .mockResolvedValueOnce(json({ message: 'unauth' }, 401)) // original request
+        .mockRejectedValueOnce(new TypeError('Failed to fetch')) // refresh, response lost
+        .mockResolvedValueOnce(
+          json({ access_token: 'a2', refresh_token: 'r2', token_type: 'bearer' }),
+        )
+        .mockResolvedValueOnce(json({ ok: true })); // retried request
+
+      const result = apiClient.get('/thing');
+      await vi.runAllTimersAsync();
+      await expect(result).resolves.toEqual({ ok: true });
+      expect(JSON.parse(fetchMock.mock.calls[2][1].body)).toEqual({ refresh_token: 'r1' });
+      expect(h.onSessionExpired).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('keeps the session when the refresh never reaches the server', async () => {
+    vi.useFakeTimers();
+    try {
+      h.getRefreshToken.mockReturnValue('r1');
+      fetchMock
+        .mockResolvedValueOnce(json({ message: 'unauth' }, 401))
+        .mockRejectedValue(new TypeError('Failed to fetch'));
+
+      const result = apiClient.get('/thing');
+      const settled = expect(result).rejects.toThrow('Token refresh failed');
+      await vi.runAllTimersAsync();
+      await settled;
+      expect(fetchMock).toHaveBeenCalledTimes(5); // request + 1 refresh + 3 retries
+      expect(h.onSessionExpired).not.toHaveBeenCalled();
+    } finally {
+      fetchMock.mockReset();
+      vi.useRealTimers();
+    }
   });
 
   it('tears down the session on a 401 with no refresh token', async () => {

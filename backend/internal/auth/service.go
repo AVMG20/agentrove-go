@@ -157,14 +157,21 @@ func (s *Service) insertRefreshToken(ctx context.Context, q db.Querier, sessionI
 var ErrInvalidRefresh = errors.New("invalid or expired refresh token")
 
 // rotationGrace is how long a token replaced by a refresh may be replayed
-// without counting as theft: tabs (or a waking laptop) refresh at once, and
-// the losers pick up the rotated token from storage (frontend/src/utils/storage.ts).
+// without counting as theft. Tabs (or a waking laptop) refresh at once, and a
+// refresh response can be lost after the server rotated (sleep, flaky
+// network); a replay in this window gets the replacement token back.
 const rotationGrace = 60 * time.Second
 
+// maxReplacementHops bounds following replaced_by when the replacement was
+// itself rotated within the grace window.
+const maxReplacementHops = 5
+
 // RotateRefreshToken validates token, revokes it and issues a replacement in
-// the same session. Reusing a revoked token revokes every token of that user
-// (theft signal), except a just-rotated one within rotationGrace or one whose
-// session was revoked from Settings, which only fail.
+// the same session. Replaying a just-rotated token within rotationGrace
+// returns its live replacement, so a refresh is safe to retry. Any other reuse
+// of a revoked token revokes every token of that user (theft signal), except
+// one whose session was revoked from Settings or that a replay can't follow to
+// a live token, which only fail.
 func (s *Service) RotateRefreshToken(ctx context.Context, token, userAgent, ip string) (*models.User, string, string, error) {
 	var user *models.User
 	var newToken, sessionID, reusedBy string
@@ -172,15 +179,25 @@ func (s *Service) RotateRefreshToken(ctx context.Context, token, userAgent, ip s
 		var id, userID string
 		var expires, started db.Time
 		var revoked db.NullTime
-		var reason sql.NullString
-		err := tx.QueryRowContext(ctx, `SELECT id, session_id, user_id, expires_at, created_at, revoked_at, revoked_reason FROM refresh_tokens WHERE token_hash = ?`, HashToken(token)).
-			Scan(&id, &sessionID, &userID, &expires, &started, &revoked, &reason)
-		if err != nil {
+		var reason, replacedBy sql.NullString
+		err := tx.QueryRowContext(ctx, `SELECT id, session_id, user_id, expires_at, created_at, revoked_at, revoked_reason, replaced_by FROM refresh_tokens WHERE token_hash = ?`, HashToken(token)).
+			Scan(&id, &sessionID, &userID, &expires, &started, &revoked, &reason, &replacedBy)
+		if errors.Is(err, sql.ErrNoRows) {
 			return ErrInvalidRefresh
 		}
-		now := db.Now()
+		if err != nil {
+			return err
+		}
 		if revoked.Valid {
-			if reason.String != "revoked" && (reason.String != "rotated" || time.Since(revoked.Time.Time) > rotationGrace) {
+			if reason.String == "rotated" && time.Since(revoked.Time.Time) <= rotationGrace {
+				newToken, err = s.liveReplacement(ctx, tx, replacedBy.String)
+				if err != nil {
+					return err
+				}
+				user, err = activeUser(ctx, tx, userID)
+				return err
+			}
+			if reason.String != "revoked" {
 				reusedBy = userID
 			}
 			return ErrInvalidRefresh
@@ -188,18 +205,19 @@ func (s *Service) RotateRefreshToken(ctx context.Context, token, userAgent, ip s
 		if time.Now().After(expires.Time) {
 			return ErrInvalidRefresh
 		}
-		if _, err := tx.ExecContext(ctx, `UPDATE refresh_tokens SET revoked_at = ?, revoked_reason = 'rotated', updated_at = ? WHERE id = ?`, now, now, id); err != nil {
+		if user, err = activeUser(ctx, tx, userID); err != nil {
 			return err
 		}
-		u := &models.User{}
-		if err := tx.QueryRowContext(ctx, `SELECT `+models.UserColumns+` FROM users WHERE id = ?`, userID).Scan(u.ScanFields()...); err != nil {
-			return ErrInvalidRefresh
-		}
-		if !u.IsActive {
-			return ErrInvalidRefresh
-		}
-		user = u
 		newToken, err = s.insertRefreshToken(ctx, tx, sessionID, userID, userAgent, ip, started)
+		if err != nil {
+			return err
+		}
+		enc, err := s.Keys.Encrypt(newToken)
+		if err != nil {
+			return err
+		}
+		now := db.Now()
+		_, err = tx.ExecContext(ctx, `UPDATE refresh_tokens SET revoked_at = ?, revoked_reason = 'rotated', replaced_by = ?, updated_at = ? WHERE id = ?`, now, enc, now, id)
 		return err
 	})
 	if reusedBy != "" {
@@ -213,6 +231,58 @@ func (s *Service) RotateRefreshToken(ctx context.Context, token, userAgent, ip s
 		return nil, "", "", err
 	}
 	return user, newToken, sessionID, nil
+}
+
+// liveReplacement follows a rotated token's replaced_by to the session's live
+// token. ErrInvalidRefresh when the chain ends anywhere else (logged out,
+// revoked, expired, or rotated before replaced_by existed).
+func (s *Service) liveReplacement(ctx context.Context, tx *sql.Tx, replacedBy string) (string, error) {
+	for range maxReplacementHops {
+		if replacedBy == "" {
+			return "", ErrInvalidRefresh
+		}
+		token, err := s.Keys.Decrypt(replacedBy)
+		if err != nil {
+			return "", ErrInvalidRefresh
+		}
+		var expires db.Time
+		var revoked db.NullTime
+		var reason, next sql.NullString
+		err = tx.QueryRowContext(ctx, `SELECT expires_at, revoked_at, revoked_reason, replaced_by FROM refresh_tokens WHERE token_hash = ?`, HashToken(token)).
+			Scan(&expires, &revoked, &reason, &next)
+		if errors.Is(err, sql.ErrNoRows) {
+			return "", ErrInvalidRefresh
+		}
+		if err != nil {
+			return "", err
+		}
+		if !revoked.Valid {
+			if time.Now().After(expires.Time) {
+				return "", ErrInvalidRefresh
+			}
+			return token, nil
+		}
+		if reason.String != "rotated" {
+			return "", ErrInvalidRefresh
+		}
+		replacedBy = next.String
+	}
+	return "", ErrInvalidRefresh
+}
+
+func activeUser(ctx context.Context, q db.Querier, userID string) (*models.User, error) {
+	u := &models.User{}
+	err := q.QueryRowContext(ctx, `SELECT `+models.UserColumns+` FROM users WHERE id = ?`, userID).Scan(u.ScanFields()...)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, ErrInvalidRefresh
+	}
+	if err != nil {
+		return nil, err
+	}
+	if !u.IsActive {
+		return nil, ErrInvalidRefresh
+	}
+	return u, nil
 }
 
 // RevokeAllRefreshTokens signs the user out everywhere (token reuse,
@@ -254,6 +324,8 @@ func (s *Service) RevokeRefreshToken(ctx context.Context, token string) error {
 func (s *Service) PurgeExpiredRefreshTokens(ctx context.Context) {
 	cutoff := db.T(time.Now().Add(-7 * 24 * time.Hour))
 	_, _ = s.DB.ExecContext(ctx, `DELETE FROM refresh_tokens WHERE expires_at < ? OR (revoked_at IS NOT NULL AND revoked_at < ?)`, db.Now(), cutoff)
+	// Past the grace window a replay can't use the replacement; don't keep it.
+	_, _ = s.DB.ExecContext(ctx, `UPDATE refresh_tokens SET replaced_by = NULL WHERE replaced_by IS NOT NULL AND revoked_at < ?`, db.T(time.Now().Add(-rotationGrace)))
 }
 
 func truncate(s string, n int) string {
