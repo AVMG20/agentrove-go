@@ -54,6 +54,26 @@ describe('queueMessage', () => {
     });
   });
 
+  it('marks a message the running turn took as awaiting pickup', async () => {
+    svc.queueMessage.mockResolvedValue({ id: 'server-1', steered: true });
+    await useMessageQueueStore.getState().queueMessage('c1', 'hello', 'gpt-5');
+
+    expect(queueOf('c1')[0]).toMatchObject({ id: 'server-1', awaitingPickup: true });
+  });
+
+  it('drops a message the turn started on before its add returned', async () => {
+    let resolve!: (r: { id: string; steered: boolean }) => void;
+    svc.queueMessage.mockReturnValue(new Promise((r) => (resolve = r)));
+    const pending = useMessageQueueStore.getState().queueMessage('c1', 'hello', 'gpt-5');
+
+    useMessageQueueStore.getState().removeLocalOnly('c1', 'server-1');
+    expect(queueOf('c1')).toHaveLength(1);
+    resolve({ id: 'server-1', steered: true });
+    await pending;
+
+    expect(queueOf('c1')).toHaveLength(0);
+  });
+
   it('keeps the unsynced local message on a network error and returns the temp id', async () => {
     svc.queueMessage.mockRejectedValue(new NetworkError());
     const returned = await useMessageQueueStore.getState().queueMessage('c1', 'hello', 'gpt-5');
@@ -252,7 +272,11 @@ describe('sendNow', () => {
     expect(ok).toBe(true);
     expect(svc.sendNow).toHaveBeenCalledWith('c1', 'm1');
     // Stays listed until the stream takes it (user_steering or queue_processing).
-    expect(queueOf('c1')[0]).toMatchObject({ sendingNow: false, awaitingPickup: true });
+    expect(queueOf('c1')[0]).toMatchObject({
+      sendingNow: false,
+      awaitingPickup: true,
+      forced: true,
+    });
   });
 
   it('resets sendingNow and returns false when the send fails', async () => {

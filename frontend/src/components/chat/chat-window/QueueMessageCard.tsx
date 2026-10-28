@@ -279,14 +279,33 @@ export const QueueMessageCard = memo(function QueueMessageCard({
               <Spinner size="xs" />
               Sending...
             </span>
-          ) : message.awaitingPickup ? (
+          ) : message.awaitingPickup && message.forced ? (
             <span
               className={styles.sending}
-              title="Claude reads it at its next step; running subagents keep going"
+              title="Running commands and subagents move to the background and keep going"
             >
               <Spinner size="xs" />
-              Waiting for Claude…
+              Steering…
             </span>
+          ) : message.awaitingPickup ? (
+            <>
+              <span
+                className={styles.sending}
+                title="Claude reads it when its current step finishes; running subagents keep going"
+              >
+                <Spinner size="xs" />
+                Waiting for Claude…
+              </span>
+              <Button
+                onClick={() => onSendNow(message.id)}
+                variant="unstyled"
+                className={clsx(styles['action-btn'], styles['action-btn--icon'])}
+                aria-label="Steer now"
+                title="Steer now: stop what Claude is doing (commands and subagents keep running in the background)"
+              >
+                <Send className={styles['action-glyph']} />
+              </Button>
+            </>
           ) : isEditing ? (
             <>
               <Button

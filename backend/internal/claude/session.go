@@ -458,6 +458,23 @@ func (s *Session) InterruptCancelQueued(ctx context.Context) ([]string, error) {
 	return resp.Cancelled, nil
 }
 
+// BackgroundTasks moves the running turn's foreground Bash commands and
+// subagents to the background (the terminal's Ctrl+B): their tool calls
+// return at once and they keep running, reporting back when they settle.
+func (s *Session) BackgroundTasks(ctx context.Context) error {
+	_, err := s.Control(ctx, map[string]any{"subtype": "background_tasks"})
+	return err
+}
+
+// InterruptSendNow asks the CLI to give the user messages waiting behind the
+// running turn to the model now (the terminal's send-now). It ends what the
+// turn is doing in the foreground, unlike a Stop it ends nothing in the
+// background, and it cancels nothing queued.
+func (s *Session) InterruptSendNow(ctx context.Context) error {
+	_, err := s.Control(ctx, map[string]any{"subtype": "interrupt", "send_now": true})
+	return err
+}
+
 func (s *Session) SetModel(ctx context.Context, model string) error {
 	s.mu.Lock()
 	same := s.model == model

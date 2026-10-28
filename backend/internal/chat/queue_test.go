@@ -63,7 +63,7 @@ func TestMessageQueuedAsTurnEndsIsStarted(t *testing.T) {
 	tr.queueMode = queueAll
 	m.turns[testChat] = tr
 
-	if err := m.enqueue(context.Background(), testChat, testUser, queued("late")); err != nil {
+	if _, err := m.enqueue(context.Background(), testChat, testUser, queued("late")); err != nil {
 		t.Fatal(err)
 	}
 	time.Sleep(20 * time.Millisecond)
@@ -79,7 +79,7 @@ func TestMessageQueuedAsTurnEndsIsStarted(t *testing.T) {
 func TestMessageQueuedOnIdleChatIsStarted(t *testing.T) {
 	m, _ := newTestModule(t)
 	rec := recordStarts(t, m)
-	if err := m.enqueue(context.Background(), testChat, testUser, queued("idle")); err != nil {
+	if _, err := m.enqueue(context.Background(), testChat, testUser, queued("idle")); err != nil {
 		t.Fatal(err)
 	}
 	waitFor(t, 2*time.Second, "start", func() bool { return len(rec.started()) == 1 })
@@ -94,7 +94,7 @@ func TestReleaseHonoursQueueMode(t *testing.T) {
 		tr := newTestTurn(m)
 		tr.queueMode = mode
 		m.turns[testChat] = tr
-		if err := m.enqueue(context.Background(), testChat, testUser, queued("next")); err != nil {
+		if _, err := m.enqueue(context.Background(), testChat, testUser, queued("next")); err != nil {
 			t.Fatal(err)
 		}
 		m.release(tr)
@@ -119,7 +119,7 @@ func TestEnqueueRacingReleaseNeverStrands(t *testing.T) {
 		wg.Add(2)
 		go func() {
 			defer wg.Done()
-			if err := m.enqueue(context.Background(), testChat, testUser, queued(fmt.Sprint(i))); err != nil {
+			if _, err := m.enqueue(context.Background(), testChat, testUser, queued(fmt.Sprint(i))); err != nil {
 				t.Error(err)
 			}
 		}()

@@ -1017,17 +1017,27 @@ func (m *Module) startQueued(prev *turn, sendNowOnly bool, priorDur *int64) bool
 	return true
 }
 
-// enqueue adds a message to the chat's queue. The turn it was queued behind
-// may have ended already, or be past its queue check, in which case it runs
-// the queue as it lets go of the chat.
-func (m *Module) enqueue(ctx context.Context, chatID, userID string, q *QueuedMessage) error {
+// enqueue hands a message to the chat's running Claude turn as a steer
+// (true; see steer.go), or else adds it to the chat's queue. The turn it was
+// queued behind may have ended already, or be past its queue check, in which
+// case it runs the queue as it lets go of the chat.
+func (m *Module) enqueue(ctx context.Context, chatID, userID string, q *QueuedMessage) (bool, error) {
+	t := m.activeTurn(chatID)
+	starting := t != nil && t.steer.starting()
+	if t != nil && t.offerSteer(q, false) {
+		return true, nil
+	}
 	if err := m.st.enqueue(ctx, chatID, q); err != nil {
-		return err
+		return false, err
+	}
+	if starting && !t.steer.starting() {
+		// The turn opened, and maybe looked at the queue, in between.
+		m.steerQueued(t)
 	}
 	if !m.busy(chatID) {
 		go func() { _ = m.runQueued(chatID, userID, false) }()
 	}
-	return nil
+	return false, nil
 }
 
 // runQueued starts the chat's next queued message unless something holds the

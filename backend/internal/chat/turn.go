@@ -6,7 +6,9 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"maps"
 	"regexp"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -100,10 +102,13 @@ type turn struct {
 	cancelled atomic.Bool
 	done      chan struct{}
 
-	in    *inbox
-	tr    *claude.Translator
-	sess  *claude.Session
-	steer *steering
+	in      *inbox
+	tr      *claude.Translator
+	sess    *claude.Session
+	steer   *steering
+	created time.Time
+	// noBackground is set once the CLI refused to background tasks.
+	noBackground atomic.Bool
 
 	mu             sync.Mutex
 	buf            []bufferedEvent
@@ -141,7 +146,7 @@ func newTurn(m *Module, req *turnRequest) *turn {
 		ctx: ctx, cancel: cancel, done: make(chan struct{}),
 		in: newInbox(), tr: claude.NewTranslator(), steer: newSteering(),
 		perms: map[string]*pendingPerm{}, elicits: map[string]*pendingElicit{},
-		lastFlush: time.Now(), lastCheckpoint: time.Now(), publish: req.userID,
+		lastFlush: time.Now(), lastCheckpoint: time.Now(), publish: req.userID, created: time.Now(),
 	}
 	t.tr.SetContextWindow(models.ModelContextWindow(reqProvider(req), req.modelID))
 	return t
@@ -426,10 +431,9 @@ func (t *turn) execute() (*claude.Result, error) {
 	// Messages steered in from the queue but never sent go back to it: they
 	// run next, as send-now would have, unless the user stopped the turn.
 	t.steer.start()
+	t.m.steerQueued(t)
 	defer func() {
-		for _, q := range t.steer.close() {
-			t.requeueSteered(q, !t.cancelled.Load())
-		}
+		t.requeueSteered(t.steer.close(), !t.cancelled.Load())
 	}()
 	// handle consumes one message and returns the turn's result, if it ended.
 	handle := func(msg claude.Message) *claude.Result {
@@ -458,6 +462,16 @@ func (t *turn) execute() (*claude.Result, error) {
 	}
 
 	var interruptDeadline <-chan time.Time
+	// A forced steer in progress: its next step and deadline (see makeWay).
+	var makeWayTick <-chan time.Time
+	var makeWayDeadline time.Time
+	makeWay := func() {
+		if t.makeWay(sess, c, makeWayDeadline) {
+			makeWayTick = nil
+		} else {
+			makeWayTick = time.After(makeWayEvery)
+		}
+	}
 	ctxDone := t.ctx.Done()
 	for {
 		select {
@@ -466,18 +480,35 @@ func (t *turn) execute() (*claude.Result, error) {
 				return res, nil
 			}
 		case <-t.steer.ready:
-			t.sendSteered(sb, sess, c)
+			if t.sendSteered(sb, sess, c) && ctxDone != nil {
+				if makeWayTick == nil {
+					makeWayDeadline = time.Now().Add(forceGrace)
+				}
+				// Act on what the CLI has reported so far.
+				if res := t.drain(handle); res != nil {
+					return res, nil
+				}
+				makeWay()
+			}
+		case <-makeWayTick:
+			if res := t.drain(handle); res != nil {
+				return res, nil
+			}
+			makeWay()
 		case <-sess.Done():
 			// The reader may have queued the final messages just before exit.
 			if res := t.drain(handle); res != nil {
 				return res, nil
 			}
+			// Steered messages the CLI never started on died with it.
+			t.requeueSteered(slices.Collect(maps.Values(c.unechoed())), false)
 			if t.cancelled.Load() {
 				return nil, nil
 			}
 			return nil, sess.Err()
 		case <-ctxDone:
 			ctxDone = nil
+			makeWayTick = nil
 			t.denyPending("The user interrupted this turn.")
 			// Steered messages Claude hasn't started on are dropped with the
 			// turn and go back to the user's queue (not run: this is a stop).
@@ -493,21 +524,22 @@ func (t *turn) execute() (*claude.Result, error) {
 				if err != nil {
 					// No answer: the process is likely being killed, taking them with it.
 					slog.Warn("interrupt with steered messages", "chat", t.chatID, "err", err)
-					for _, q := range steered {
-						t.requeueSteered(q, false)
-					}
+					t.requeueSteered(slices.Collect(maps.Values(steered)), false)
 					return
 				}
+				var back []*QueuedMessage
 				for _, id := range dropped {
 					if q := steered[id]; q != nil {
-						t.requeueSteered(q, false)
+						back = append(back, q)
 					}
 				}
+				t.requeueSteered(back, false)
 			}()
 			interruptDeadline = time.After(interruptGrace)
 		case <-interruptDeadline:
 			slog.Warn("claude did not stop after interrupt; killing", "chat", t.chatID)
 			t.m.sessions.drop(t.chatID, sess)
+			t.requeueSteered(slices.Collect(maps.Values(c.unechoed())), false)
 			return nil, nil
 		}
 	}

@@ -35,6 +35,8 @@ export interface QueuedMessage extends QueuedItem {
 
 export interface QueueAddResponse {
   id: string;
+  // Handed straight to the running turn instead of queued.
+  steered?: boolean;
 }
 
 export interface LocalQueuedMessage {
@@ -50,4 +52,7 @@ export interface LocalQueuedMessage {
   // Sent into the running turn; Claude takes it at its next step (running
   // subagents keep going), and it moves into the chat then (user_steering).
   awaitingPickup?: boolean;
+  // Send now was pressed on it: the turn backgrounds its running tools and
+  // subagents and stops to take it now.
+  forced?: boolean;
 }

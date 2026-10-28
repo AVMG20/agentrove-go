@@ -45,6 +45,8 @@ interface MessageQueueState<AddArgs extends unknown[]> {
 const createQueueStore = <AddArgs extends unknown[]>(api: QueueApi<AddArgs>) => {
   // Arguments of unsynced items by temp id; not state, nothing renders them.
   const pendingArgs = new Map<string, AddArgs>();
+  // Server ids the turn started on before their add request returned.
+  const pickedUp = new Set<string>();
 
   return create<MessageQueueState<AddArgs>>((set, get) => {
     const patchMessage = (
@@ -73,11 +75,16 @@ const createQueueStore = <AddArgs extends unknown[]>(api: QueueApi<AddArgs>) => 
       try {
         const result = await api.queueMessage(chatId, content, ...args);
         pendingArgs.delete(tempId);
+        if (pickedUp.delete(result.id)) {
+          get().removeLocalOnly(chatId, tempId);
+          return result.id;
+        }
         patchMessage(chatId, tempId, (msg) => ({
           ...msg,
           id: result.id,
           synced: true,
           failed: false,
+          awaitingPickup: result.steered === true,
         }));
         return result.id;
       } catch (error) {
@@ -231,7 +238,9 @@ const createQueueStore = <AddArgs extends unknown[]>(api: QueueApi<AddArgs>) => 
             nextQueues.set(
               chatId,
               currentQueue.map((msg) =>
-                msg.id === messageId ? { ...msg, sendingNow: false, awaitingPickup: true } : msg,
+                msg.id === messageId
+                  ? { ...msg, sendingNow: false, awaitingPickup: true, forced: true }
+                  : msg,
               ),
             );
             return { queues: nextQueues };
@@ -250,6 +259,11 @@ const createQueueStore = <AddArgs extends unknown[]>(api: QueueApi<AddArgs>) => 
         set((state) => {
           const nextQueues = new Map(state.queues);
           const currentQueue = nextQueues.get(chatId) || [];
+          if (!currentQueue.some((msg) => msg.id === messageId)) {
+            // Maybe still under its temp id: drop it once the add returns this id.
+            if (currentQueue.some((msg) => !msg.synced && !msg.failed)) pickedUp.add(messageId);
+            return state;
+          }
           const filteredQueue = currentQueue.filter((msg) => msg.id !== messageId);
 
           if (filteredQueue.length === 0) {

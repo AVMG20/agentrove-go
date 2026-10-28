@@ -50,7 +50,10 @@ func newTestModule(t *testing.T) (*Module, *db.DB) {
 
 // newTestTurn builds a turn whose emits never publish to the hub.
 func newTestTurn(m *Module) *turn {
-	t := newTurn(m, &turnRequest{chat: &models.Chat{ID: testChat}, userID: testUser, messageID: testMsg})
+	// The settings of queued() messages, so they can steer into it.
+	effort, _ := claude.Effort(nil)
+	t := newTurn(m, &turnRequest{chat: &models.Chat{ID: testChat}, userID: testUser, messageID: testMsg,
+		modelID: "sonnet", permissionMode: "bypassPermissions", personaName: DefaultPersona, effort: effort})
 	t.publish = ""
 	return t
 }

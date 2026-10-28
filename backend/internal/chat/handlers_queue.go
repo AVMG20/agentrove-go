@@ -38,10 +38,11 @@ func (m *Module) queueMessage(w http.ResponseWriter, r *http.Request) error {
 		ThinkingMode: httpx.FormOptional(r, "thinking_mode"), Worktree: httpx.FormBool(r, "worktree", false), BaseBranch: httpx.FormOptional(r, "base_branch"),
 		SelectedPersonaName: firstNonEmpty(r.FormValue("selected_persona_name"), DefaultPersona), QueuedAt: db.Now(), Attachments: atts,
 	}
-	if err := m.enqueue(r.Context(), c.ID, u.ID, q); err != nil {
+	steered, err := m.enqueue(r.Context(), c.ID, u.ID, q)
+	if err != nil {
 		return err
 	}
-	return httpx.Created(w, map[string]any{"id": q.ID, "queued_at": q.QueuedAt})
+	return httpx.Created(w, map[string]any{"id": q.ID, "queued_at": q.QueuedAt, "steered": steered})
 }
 
 func (m *Module) getQueue(w http.ResponseWriter, r *http.Request) error {
@@ -110,14 +111,25 @@ func (m *Module) clearQueue(w http.ResponseWriter, r *http.Request) error {
 	return httpx.NoContent(w)
 }
 
-// sendNow flags a queued message to run next: a running Claude turn takes it
-// as a steer (see steer.go), any other running turn is interrupted and the
-// message takes over its stream; an idle chat starts it directly.
+// sendNow runs a queued message now: a running Claude turn forces it in as a
+// steer (see steer.go), any other running turn is interrupted and the message
+// takes over its stream; an idle chat starts it directly. On a running
+// Claude turn it also works on a message the turn already holds.
 func (m *Module) sendNow(w http.ResponseWriter, r *http.Request) error {
 	u := user(r)
 	c, err := m.a.Store.GetChat(r.Context(), u.ID, r.PathValue("chat_id"))
 	if err != nil {
 		return err
+	}
+	if t := m.activeTurn(c.ID); t != nil {
+		ok, err := m.sendNowRunning(r.Context(), t, c.ID, r.PathValue("message_id"))
+		if err != nil {
+			return err
+		}
+		if !ok {
+			return httpx.NotFound("Queued message not found")
+		}
+		return httpx.NoContent(w)
 	}
 	res, err := m.a.DB.ExecContext(r.Context(), `UPDATE queued_messages SET send_now = 1 WHERE id = ? AND chat_id = ?`, r.PathValue("message_id"), c.ID)
 	if err != nil {
@@ -125,12 +137,6 @@ func (m *Module) sendNow(w http.ResponseWriter, r *http.Request) error {
 	}
 	if n, _ := res.RowsAffected(); n == 0 {
 		return httpx.NotFound("Queued message not found")
-	}
-	if t := m.activeTurn(c.ID); t != nil {
-		if err := m.sendNowRunning(r.Context(), t, c.ID, r.PathValue("message_id")); err != nil {
-			return err
-		}
-		return httpx.NoContent(w)
 	}
 	if err := m.runQueued(c.ID, u.ID, true); err != nil {
 		return httpx.Errorf(503, "Failed to start send-now execution")

@@ -58,6 +58,17 @@ func NewTranslator() *Translator {
 // SawOutput reports whether the turn produced any visible output.
 func (t *Translator) SawOutput() bool { return t.sawOutput }
 
+// ToolsRunning reports whether a main-thread tool call is still waiting for
+// its result.
+func (t *Translator) ToolsRunning() bool {
+	for _, p := range t.tools {
+		if p["parent_id"] == nil {
+			return true
+		}
+	}
+	return false
+}
+
 // hiddenTools render as plan updates instead of tool cards.
 var hiddenTools = map[string]bool{"TodoWrite": true, "TaskCreate": true, "TaskUpdate": true, "TaskList": true, "TaskGet": true}
 

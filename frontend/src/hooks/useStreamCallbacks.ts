@@ -92,6 +92,15 @@ interface UseStreamCallbacksResult {
 }
 
 // SSE pipeline: buffer envelopes, flush on a coalescing timer, own start/replay/stop + terminal handlers.
+// Messages sent into a turn that ended are in the chat now or back in the
+// server's queue; drop their "Waiting for Claude…" copies.
+function settleSteeredQueue(chatId: string) {
+  const queueStore = useMessageQueueStore.getState();
+  if (queueStore.getQueue(chatId).some((m) => m.awaitingPickup)) {
+    void queueStore.fetchQueue(chatId, true);
+  }
+}
+
 export function useStreamCallbacks({
   messages,
   chatId,
@@ -431,14 +440,7 @@ export function useStreamCallbacks({
       queryClient.invalidateQueries({ queryKey: queryKeys.chatsSearchAll });
       // The session panel lists artifacts the turn published.
       queryClient.invalidateQueries({ queryKey: queryKeys.artifacts });
-      // Messages sent into the turn are in the chat now or, after a stop, back
-      // in the server's queue.
-      if (targetChatId) {
-        const queueStore = useMessageQueueStore.getState();
-        if (queueStore.getQueue(targetChatId).some((m) => m.awaitingPickup)) {
-          void queueStore.fetchQueue(targetChatId, true);
-        }
-      }
+      if (targetChatId) settleSteeredQueue(targetChatId);
 
       // Server mutates title/updated_at/context during the turn — refresh even if off-screen.
       if (targetChatId) {
@@ -549,6 +551,7 @@ export function useStreamCallbacks({
 
       if (targetChatId) {
         queryClient.invalidateQueries({ queryKey: queryKeys.messages(targetChatId) });
+        if (!lostConnection) settleSteeredQueue(targetChatId);
       }
 
       // A server-reported failure, not a dropped connection (that one retries).
@@ -591,6 +594,8 @@ export function useStreamCallbacks({
     (data: QueueProcessingData) => {
       if (!chatId) return;
       const isCurrentChat = chatId === chatIdRef.current;
+
+      settleSteeredQueue(chatId);
 
       // Queue continuation starts a new stream/message pair without terminal events
       // on the prior stream, so flush and drop stale per-stream session state.

@@ -2,6 +2,7 @@ package claude
 
 import (
 	"bufio"
+	"encoding/json"
 	"fmt"
 	"os"
 	"reflect"
@@ -156,5 +157,20 @@ func TestParseLineSkipsNoise(t *testing.T) {
 	m, ok, _ := parseLine([]byte(`  {"type":"result","subtype":"success"}` + "\n"))
 	if !ok || m.Type != "result" || string(m.Raw) != `{"type":"result","subtype":"success"}` {
 		t.Fatalf("got %+v", m)
+	}
+}
+
+// ToolsRunning tracks main-thread tool calls only, until their results.
+func TestToolsRunning(t *testing.T) {
+	tr := NewTranslator()
+	parent := "toolu_agent"
+	tr.toolStarted(parent, "Agent", nil, nil)
+	tr.toolStarted("toolu_sub", "Bash", nil, &parent)
+	if !tr.ToolsRunning() {
+		t.Fatal("main-thread tool not running")
+	}
+	tr.user(Message{Message: json.RawMessage(`{"content":[{"type":"tool_result","tool_use_id":"toolu_agent","content":"Async agent launched"}]}`)})
+	if tr.ToolsRunning() {
+		t.Fatal("a subagent's tool counted as the turn's")
 	}
 }

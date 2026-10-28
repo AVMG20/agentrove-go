@@ -34,6 +34,13 @@
   color: var(--theme-text-tertiary);
 }
 
+// A message the user sent mid-turn sits on the right, like their own messages.
 .steering-segment {
+  display: flex;
+  justify-content: flex-end;
   margin: var(--space-3) 0;
+
+  > * {
+    max-width: 85%;
+  }
 }
