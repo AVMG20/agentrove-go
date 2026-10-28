@@ -7,6 +7,7 @@ import { ProviderIcon } from '@/components/ui/icons/ProviderIcon';
 import { useChatArtifactsQuery } from '@/hooks/queries/useArtifactQueries';
 import { useChatSubagentsQuery } from '@/hooks/queries/useSubagentQueries';
 import { useOpenSubagentId } from '@/hooks/useOpenSubagent';
+import { useOpenArtifactId } from '@/hooks/useOpenArtifact';
 import { useSecondTick } from '@/hooks/useSecondTick';
 import { SubagentRow } from '@/components/chat/subagents/SubagentRow';
 import { useModelMap } from '@/hooks/queries/useModelQueries';
@@ -155,20 +156,30 @@ function ContextCard({ chat }: { chat: Chat }) {
   );
 }
 
-// Only shown once the agent has published something from this chat.
+// Only shown once the agent has published something from this chat. A row
+// opens the artifact beside the chat (again: closes it); a modified click, like
+// any link, opens the standalone page.
 function ArtifactsCard({ chatId }: { chatId: string }) {
   const { data: published } = useChatArtifactsQuery(chatId);
+  const openId = useOpenArtifactId(chatId);
   if (!published || published.length === 0) return null;
   return (
     <Card title="Artifacts">
       {published.map((artifact) => (
-        // The viewer is a standalone page — keep the chat open next to it.
         <a
           key={artifact.id}
           href={`/artifacts/${artifact.id}`}
-          target="_blank"
-          rel="noopener noreferrer"
-          className={styles['thread-row']}
+          className={clsx(
+            styles['thread-row'],
+            artifact.id === openId && styles['thread-row--selected'],
+          )}
+          aria-pressed={artifact.id === openId}
+          onClick={(e) => {
+            if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+            e.preventDefault();
+            useUIStore.getState().setSessionSheetOpen(false);
+            useUIStore.getState().toggleArtifact(chatId, artifact.id);
+          }}
         >
           <span className={styles['row-icon']}>
             <AppWindow className={styles.glyph} />

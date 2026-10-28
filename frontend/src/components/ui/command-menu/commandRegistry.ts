@@ -17,6 +17,7 @@ import {
   ArrowDownFromLine,
   Palette,
   Settings,
+  AppWindow,
 } from 'lucide-react';
 import { useUIStore } from '@/store/uiStore';
 import { settingsPath } from '@/components/settings/settingsSections';
@@ -29,6 +30,7 @@ import { traverseFileStructure, getFileName } from '@/utils/file';
 import { IS_MAC_PLATFORM } from '@/utils/platform';
 import type { ViewType } from '@/types/ui.types';
 import type { Chat } from '@/types/chat.types';
+import type { Artifact } from '@/types/artifact.types';
 import type { FileStructure } from '@/types/file-system.types';
 import type { GitBranchesData } from '@/types/sandbox.types';
 
@@ -187,6 +189,15 @@ const SETTING_COMMANDS: ActionCommandItem[] = [
     label: 'Toggle sidebar',
     icon: PanelLeftClose,
     shortcut: '.',
+  },
+  // No chord: every safe key is taken. Opens the active chat's artifact beside it.
+  {
+    type: 'action',
+    id: 'toggle-artifact',
+    label: 'Toggle artifact',
+    icon: AppWindow,
+    hideOnMobile: true,
+    requiresChat: true,
   },
   {
     type: 'action',
@@ -350,7 +361,16 @@ export function executeCommand(
   } else if (cmd.id === 'toggle-sidebar') {
     ui.setSidebarOpen(!ui.sidebarOpen);
   } else if (cmd.id === 'toggle-session-panel') {
-    ui.setSessionPanelOpen(!ui.sessionPanelOpen);
+    ui.toggleSessionPanel();
+  } else if (cmd.id === 'toggle-artifact') {
+    const chat = getActiveChat(queryClient);
+    if (!chat) return;
+    const artifacts = queryClient.getQueryData<Artifact[]>(queryKeys.chatArtifacts(chat.id));
+    if (artifacts && artifacts.length === 0) {
+      toast.error('No artifacts in this thread yet');
+      return;
+    }
+    ui.toggleArtifact(chat.id, null);
   } else if (cmd.id === 'set-theme') {
     ui.setPendingMenuMode('themes');
     ui.setCommandMenuOpen(true);

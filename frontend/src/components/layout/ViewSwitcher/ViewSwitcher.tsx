@@ -1,6 +1,7 @@
-import { Fragment, useMemo } from 'react';
+import { Fragment, useEffect, useMemo } from 'react';
 import { useMatch } from 'react-router-dom';
 import { PanelRight } from 'lucide-react';
+import clsx from 'clsx';
 import { Button } from '@/components/ui/primitives/Button/Button';
 import { Tooltip } from '@/components/ui/Tooltip/Tooltip';
 import {
@@ -8,12 +9,16 @@ import {
   formatShortcut,
   SESSION_PANEL_SHORTCUT,
 } from '@/components/ui/command-menu/commandRegistry';
-import { useUIStore } from '@/store/uiStore';
+import { isArtifactOnScreen, isSessionPanelShown, useUIStore } from '@/store/uiStore';
 import { useIsMobile } from '@/hooks/useIsMobile';
 import { isCoarsePointer } from '@/utils/device';
 import { useSettingsQuery } from '@/hooks/queries/useSettingsQueries';
+import { useChatArtifactsQuery } from '@/hooks/queries/useArtifactQueries';
+import { artifactTileFor, latestArtifact } from '@/hooks/useOpenArtifact';
 import { activeSplitSlot, VIEW_ICONS, VIEW_LABELS, viewTypeToTileId } from '@/utils/tileHelpers';
 import type { ViewType } from '@/types/ui.types';
+
+const ArtifactIcon = VIEW_ICONS.artifact;
 import styles from './ViewSwitcher.module.scss';
 
 type SwitchableView = Exclude<ViewType, 'agent'>;
@@ -39,8 +44,9 @@ export function ViewSwitcher() {
   const activeAgentTile = useUIStore((s) => s.activeAgentTile);
   const splitChatIds = useUIStore((s) => s.splitChatIds);
   const visibleLayout = useUIStore((s) => s.visibleLayout);
-  const sessionPanelOpen = useUIStore((s) => s.sessionPanelOpen);
+  const sessionPanelShown = useUIStore(isSessionPanelShown);
   const isLandingPage = useMatch('/');
+  const routeChatId = useMatch('/chat/:chatId')?.params.chatId;
   const isMobile = useIsMobile();
   // Shortcut and split hints mean nothing on a phone, and a tap leaves the CSS
   // tooltip stuck open; the buttons keep their aria-labels.
@@ -94,19 +100,65 @@ export function ViewSwitcher() {
           <Fragment key={view}>{button}</Fragment>
         );
       })}
+      {/* Same pane-scoping as the views: the focused split chat's artifacts. */}
+      {(slot ? splitChatIds[slot - 1] : routeChatId) && !isMobile && (
+        <ArtifactButton
+          chatId={(slot ? splitChatIds[slot - 1] : routeChatId) as string}
+          showTooltip={showTooltips}
+        />
+      )}
       {!isLandingPage && !isMobile && (
         <Tooltip content={SESSION_PANEL_TOOLTIP} position="bottom-end">
           <Button
             variant="unstyled"
-            onClick={() => useUIStore.getState().setSessionPanelOpen(!sessionPanelOpen)}
+            onClick={() => useUIStore.getState().toggleSessionPanel()}
             className={styles['view-button']}
             aria-label="Toggle session panel"
-            aria-pressed={sessionPanelOpen}
+            aria-pressed={sessionPanelShown}
           >
             <PanelRight className={styles.icon} />
           </Button>
         </Tooltip>
       )}
     </div>
+  );
+}
+
+// Only there once the chat has published an artifact. Opens it beside the
+// chat; a dot marks a version the user hasn't had on screen yet.
+function ArtifactButton({ chatId, showTooltip }: { chatId: string; showTooltip: boolean }) {
+  const { data: artifacts } = useChatArtifactsQuery(chatId);
+  const newest = latestArtifact(artifacts)?.updated_at;
+  const seen = useUIStore((s) => s.artifactSeenByChat[chatId]);
+  const onScreen = useUIStore((s) => isArtifactOnScreen(s, false));
+  const isActive = useUIStore((s) =>
+    s.visibleLayout.flat().includes(artifactTileFor(chatId, s.splitChatIds)),
+  );
+  // What's there on first load counts as seen; only later edits get the dot.
+  useEffect(() => {
+    if (artifacts && seen === undefined) {
+      useUIStore.getState().markArtifactsSeen(chatId, newest ?? '');
+    }
+  }, [artifacts, chatId, newest, seen]);
+  if (!artifacts?.length) return null;
+  const unseen = !onScreen && seen !== undefined && !!newest && newest > seen;
+
+  const button = (
+    <Button
+      variant="unstyled"
+      onClick={() => useUIStore.getState().toggleArtifact(chatId, null)}
+      className={clsx(styles['view-button'], unseen && styles['view-button--dot'])}
+      aria-label={unseen ? 'Toggle artifact view (updated)' : 'Toggle artifact view'}
+      aria-pressed={isActive}
+    >
+      <ArtifactIcon className={styles.icon} />
+    </Button>
+  );
+  return showTooltip ? (
+    <Tooltip content={artifacts.length > 1 ? 'Artifacts' : 'Artifact'} position="bottom-end">
+      {button}
+    </Tooltip>
+  ) : (
+    button
   );
 }

@@ -37,3 +37,19 @@
   height: var(--space-4);
   width: var(--space-4);
 }
+
+// A version the user hasn't had on screen yet.
+.view-button--dot {
+  position: relative;
+
+  &::after {
+    position: absolute;
+    top: var(--space-1);
+    right: var(--space-1);
+    height: 6px;
+    width: 6px;
+    border-radius: var(--radius-full);
+    background-color: var(--theme-accent);
+    content: '';
+  }
+}

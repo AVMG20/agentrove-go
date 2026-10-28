@@ -71,6 +71,12 @@
     background-color: colors.theme-color('surface-hover', 0.5);
     color: var(--theme-text-primary);
   }
+
+  // Open in a pane beside the chat.
+  &--selected {
+    background-color: var(--theme-surface-hover);
+    color: var(--theme-text-primary);
+  }
 }
 
 .row-icon {

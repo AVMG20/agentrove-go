@@ -1,14 +1,30 @@
 @use '@/styles/globals/colors' as colors;
+@use '@/styles/globals/animations' as anim;
 
 .workspace-split {
-  display: grid;
+  position: relative;
   height: 100%;
   width: 100%;
   flex: 1;
   overflow: hidden;
+
+  // Iframes and terminals would swallow the pointer mid-drag.
+  &--dragging {
+    cursor: col-resize;
+    user-select: none;
+
+    .tile {
+      pointer-events: none;
+    }
+  }
+
+  &--dragging-y {
+    cursor: row-resize;
+  }
 }
 
 .tile {
+  position: absolute;
   display: flex;
   min-height: 0;
   min-width: 0;
@@ -25,4 +41,55 @@
 
 .tile-hidden {
   display: none;
+}
+
+// A wide invisible grab area centred on the pane border; the line lights up on
+// hover, focus and drag.
+.divider {
+  position: absolute;
+  z-index: 1;
+  touch-action: none;
+
+  &::after {
+    @include anim.transition-colors;
+    position: absolute;
+    background-color: transparent;
+    content: '';
+  }
+
+  &:hover::after,
+  &:focus-visible::after,
+  .workspace-split--dragging &:active::after {
+    background-color: colors.theme-color('border', 1);
+  }
+
+  &:focus-visible {
+    outline: none;
+  }
+
+  &--x {
+    width: 9px;
+    transform: translateX(-4px);
+    cursor: col-resize;
+
+    &::after {
+      top: 0;
+      bottom: 0;
+      left: 3px;
+      width: 3px;
+    }
+  }
+
+  &--y {
+    height: 9px;
+    transform: translateY(-4px);
+    cursor: row-resize;
+
+    &::after {
+      top: 3px;
+      right: 0;
+      left: 0;
+      height: 3px;
+    }
+  }
 }

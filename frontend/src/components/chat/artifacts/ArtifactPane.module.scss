@@ -1,0 +1,168 @@
+@use '@/styles/globals/colors' as colors;
+@use '@/styles/globals/typography' as type;
+@use '@/styles/globals/animations' as anim;
+@use '@/styles/globals/responsive' as responsive;
+
+.pane {
+  display: flex;
+  height: 100%;
+  // Fill the workspace pane, which lays its view out as a flex row.
+  width: 100%;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+  background-color: var(--theme-surface);
+}
+
+.header {
+  display: flex;
+  min-height: var(--space-12);
+  flex-shrink: 0;
+  align-items: center;
+  gap: var(--space-1);
+  border-bottom: 1px solid colors.theme-color('border', 0.3);
+  padding: var(--space-1-5) var(--space-2) var(--space-1-5) var(--space-4);
+}
+
+.header-text {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+.title {
+  @include type.type-default(500);
+  @include type.type-overflow;
+  max-width: 100%;
+  color: var(--theme-text-primary);
+}
+
+// The artifact picker reads as the title, with a chevron; its padding hangs
+// left so the text lines up with the meta line.
+.switcher-slot {
+  min-width: 0;
+  max-width: 100%;
+  margin: calc(-1 * var(--space-1)) 0 0 calc(-1 * var(--space-2-5));
+
+  > div {
+    max-width: 100%;
+  }
+}
+
+.switcher {
+  max-width: 100%;
+  padding-block: var(--space-1);
+
+  // The Dropdown label is toolbar-sized; here it is the pane title.
+  span {
+    @include type.type-default(500);
+    color: var(--theme-text-primary);
+  }
+}
+
+.meta {
+  @include type.type-meta;
+  @include type.type-overflow;
+  max-width: 100%;
+  color: var(--theme-text-quaternary);
+}
+
+.updated {
+  color: var(--theme-text-secondary);
+}
+
+.fresh {
+  @include type.type-meta(500);
+  @include anim.transition-colors;
+  display: flex;
+  min-width: 0;
+  max-width: 14rem;
+  align-items: center;
+  gap: var(--space-1);
+  margin-right: var(--space-1);
+  border: 1px solid colors.theme-color('border', 0.5);
+  border-radius: var(--radius-full);
+  padding: var(--space-0-5) var(--space-2);
+  color: var(--theme-text-secondary);
+
+  @include responsive.hover {
+    background-color: var(--theme-surface-hover);
+    color: var(--theme-text-primary);
+  }
+}
+
+.fresh-icon {
+  height: var(--space-3);
+  width: var(--space-3);
+  flex-shrink: 0;
+}
+
+.fresh-text {
+  @include type.type-overflow;
+}
+
+.icon-button {
+  @include anim.transition-colors;
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-md);
+  padding: var(--space-1-5);
+  color: var(--theme-text-tertiary);
+
+  @include responsive.hover {
+    background-color: var(--theme-surface-hover);
+    color: var(--theme-text-primary);
+  }
+
+  &:disabled {
+    cursor: default;
+    opacity: 0.6;
+  }
+}
+
+.glyph {
+  height: var(--space-4);
+  width: var(--space-4);
+}
+
+.frame {
+  display: block;
+  // iOS Safari grows an iframe to its content's width despite width: 100%.
+  width: 1px;
+  min-width: 100%;
+  min-height: 0;
+  flex: 1;
+  border: 0;
+  // Pages without their own background render on white, like a browser tab.
+  background-color: #fff;
+}
+
+.status {
+  @include type.type-meta;
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  padding: var(--space-4);
+  text-align: center;
+  color: var(--theme-text-tertiary);
+}
+
+.status-icon {
+  height: var(--space-6);
+  width: var(--space-6);
+  color: var(--theme-text-quaternary);
+}
+
+.spinner {
+  @include anim.spin;
+  height: var(--space-6);
+  width: var(--space-6);
+  color: var(--theme-text-quaternary);
+}

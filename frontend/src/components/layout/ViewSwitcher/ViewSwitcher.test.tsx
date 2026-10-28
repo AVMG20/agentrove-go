@@ -13,6 +13,11 @@ vi.mock('@/hooks/queries/useSettingsQueries', () => ({
   }),
 }));
 
+let artifacts: { id: string; updated_at: string }[] | undefined = [];
+vi.mock('@/hooks/queries/useArtifactQueries', () => ({
+  useChatArtifactsQuery: () => ({ data: artifacts }),
+}));
+
 function renderSwitcher() {
   return render(
     <MemoryRouter initialEntries={['/chat/c1']}>
@@ -24,6 +29,8 @@ function renderSwitcher() {
 afterEach(() => {
   cleanup();
   browserAvailable = true;
+  artifacts = [];
+  useUIStore.setState({ artifactSeenByChat: {}, visibleLayout: [['agent:primary']] });
   vi.restoreAllMocks();
   window.innerWidth = 1024;
 });
@@ -66,5 +73,38 @@ describe('ViewSwitcher hints', () => {
     renderSwitcher();
     expect(screen.queryAllByRole('tooltip')).toEqual([]);
     expect(screen.getByRole('button', { name: 'Toggle Terminal view' })).toBeTruthy();
+  });
+});
+
+describe('ViewSwitcher artifact button', () => {
+  it('stays hidden until the chat has an artifact', () => {
+    renderSwitcher();
+    expect(screen.queryByRole('button', { name: /artifact view/ })).toBeNull();
+  });
+
+  it('opens the chat artifact beside it', () => {
+    artifacts = [{ id: 'a1', updated_at: '2026-10-28T10:00:00Z' }];
+    const toggleArtifact = vi.fn();
+    vi.spyOn(useUIStore, 'getState').mockReturnValue({
+      ...useUIStore.getState(),
+      toggleArtifact,
+    });
+    renderSwitcher();
+    fireEvent.click(screen.getByRole('button', { name: 'Toggle artifact view' }));
+    expect(toggleArtifact).toHaveBeenCalledWith('c1', null);
+  });
+
+  it('marks a version published after load as unseen', () => {
+    artifacts = [{ id: 'a1', updated_at: '2026-10-28T10:00:00Z' }];
+    useUIStore.setState({ artifactSeenByChat: { c1: '2026-10-28T09:00:00Z' } });
+    renderSwitcher();
+    expect(screen.getByRole('button', { name: 'Toggle artifact view (updated)' })).toBeTruthy();
+  });
+
+  it('counts what was there on first load as seen', () => {
+    artifacts = [{ id: 'a1', updated_at: '2026-10-28T10:00:00Z' }];
+    renderSwitcher();
+    expect(screen.getByRole('button', { name: 'Toggle artifact view' })).toBeTruthy();
+    expect(useUIStore.getState().artifactSeenByChat.c1).toBe('2026-10-28T10:00:00Z');
   });
 });

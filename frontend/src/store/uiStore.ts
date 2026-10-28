@@ -112,6 +112,25 @@ type UIStoreState = ThemeState &
     // Opens the subagent's pane next to the chat (null: the list of them), or
     // closes it when it's already showing that.
     toggleSubagent: (chatId: string, subagentId: string | null) => void;
+    // Artifact shown in each chat's artifact pane; persisted so a restored
+    // layout reopens the same one. Missing = the chat's most recently updated.
+    artifactByChat: Record<string, string>;
+    // Opens the artifact beside the chat (null: whichever it showed last), or
+    // closes the pane when it's already showing that.
+    toggleArtifact: (chatId: string, artifactId: string | null) => void;
+    // Newest artifact updated_at the user has had on screen, per chat; drives the
+    // title bar dot. Session-only: absent means not looked at yet this session.
+    artifactSeenByChat: Record<string, string>;
+    markArtifactsSeen: (chatId: string, updatedAt: string) => void;
+    // The session panel steps aside while an artifact is on screen; this brings
+    // it back until the next artifact opens. Session-only.
+    sessionPanelOverride: boolean;
+    // Title bar button / shortcut: shows or hides the panel as currently painted.
+    toggleSessionPanel: () => void;
+    // Pane size fractions by layout key (the tile ids involved), so each pairing
+    // keeps its own split — e.g. a wide artifact but an even diff.
+    paneSizes: Record<string, number[]>;
+    setPaneSizes: (key: string, sizes: number[]) => void;
     // Landing workspace sandbox for git shortcuts before a chat exists.
     workspaceSandboxId: string | null;
     setWorkspaceSandboxId: (sandboxId: string | null) => void;
@@ -123,6 +142,26 @@ const getInitialSidebarState = (): boolean => {
 };
 
 const isDesktop = (): boolean => typeof window !== 'undefined' && !isMobileViewport();
+
+// Remembered pane splits; oldest layouts drop off past this.
+const MAX_PANE_SIZE_ENTRIES = 40;
+
+type PaintState = Pick<UIStoreState, 'visibleLayout' | 'focusedTile'>;
+
+export function isArtifactOnScreen(state: PaintState, isMobile: boolean): boolean {
+  return paintedLayout(state.visibleLayout, state.focusedTile, isMobile)
+    .flat()
+    .some((tile) => tileIdToViewType(tile) === 'artifact');
+}
+
+// Desktop only (phones use the sheet): the panel yields its width to an open
+// artifact unless the user asked for it back.
+export function isSessionPanelShown(
+  state: PaintState & Pick<UIStoreState, 'sessionPanelOpen' | 'sessionPanelOverride'>,
+): boolean {
+  if (!isArtifactOnScreen(state, false)) return state.sessionPanelOpen;
+  return state.sessionPanelOverride;
+}
 
 function splitAgentTile(slot: SplitSlot): AgentTileId {
   return `agent:split-${slot}`;
@@ -290,6 +329,30 @@ export const useUIStore = create<UIStoreState>()(
       setPendingMenuMode: (mode) => set({ pendingMenuMode: mode }),
       sessionPanelOpen: getInitialSidebarState(),
       setSessionPanelOpen: (open) => set({ sessionPanelOpen: open }),
+      sessionPanelOverride: false,
+      toggleSessionPanel: () => {
+        const state = get();
+        if (!isArtifactOnScreen(state, false)) {
+          set({ sessionPanelOpen: !state.sessionPanelOpen, sessionPanelOverride: false });
+          return;
+        }
+        // Hiding beside an artifact is temporary: the panel returns when it closes.
+        if (isSessionPanelShown(state)) set({ sessionPanelOverride: false });
+        else set({ sessionPanelOverride: true, sessionPanelOpen: true });
+      },
+      paneSizes: {},
+      setPaneSizes: (key, sizes) =>
+        set((state) => {
+          const paneSizes = { ...state.paneSizes };
+          // Re-insert so the key counts as most recent when trimming.
+          delete paneSizes[key];
+          paneSizes[key] = sizes;
+          const keys = Object.keys(paneSizes);
+          for (const old of keys.slice(0, Math.max(0, keys.length - MAX_PANE_SIZE_ENTRIES))) {
+            delete paneSizes[old];
+          }
+          return { paneSizes };
+        }),
       sessionSheetOpen: false,
       setSessionSheetOpen: (open) => set({ sessionSheetOpen: open }),
       createPRDialogOpen: false,
@@ -350,6 +413,61 @@ export const useUIStore = create<UIStoreState>()(
           get().focusTile(tileId);
         } else if (isDesktop()) {
           set({ visibleLayout: appendToLastRow(state.visibleLayout, tileId) });
+          get().focusTile(tileId);
+        } else {
+          get().activateTab(tileId);
+        }
+      },
+
+      artifactByChat: {},
+      artifactSeenByChat: {},
+      markArtifactsSeen: (chatId, updatedAt) => {
+        const seen = get().artifactSeenByChat[chatId];
+        if (seen !== undefined && seen >= updatedAt) return;
+        set((state) => ({
+          artifactSeenByChat: { ...state.artifactSeenByChat, [chatId]: updatedAt },
+        }));
+      },
+      toggleArtifact: (chatId, artifactId) => {
+        const state = get();
+        const splitIndex = state.splitChatIds.indexOf(chatId);
+        const slot = splitIndex >= 0 ? splitSlotAt(splitIndex) : null;
+        const tileId = viewTypeToTileId('artifact', slot);
+        // On a phone only the painted pane counts as showing.
+        const visible = paintedLayout(state.visibleLayout, state.focusedTile, !isDesktop())
+          .flat()
+          .includes(tileId);
+        if (visible && (artifactId === null || state.artifactByChat[chatId] === artifactId)) {
+          get().removeTab(tileId);
+          return;
+        }
+        set({
+          artifactByChat: artifactId
+            ? { ...state.artifactByChat, [chatId]: artifactId }
+            : state.artifactByChat,
+          sessionPanelOverride: visible ? state.sessionPanelOverride : false,
+          openTabs: state.openTabs.includes(tileId) ? state.openTabs : [...state.openTabs, tileId],
+        });
+        if (visible) {
+          get().focusTile(tileId);
+        } else if (isDesktop()) {
+          // Beside the chat it belongs to, not wherever the last row ends.
+          const owner = agentTileFor(tileId);
+          const row = state.visibleLayout.findIndex((r) => r.includes(owner));
+          set({
+            visibleLayout:
+              row >= 0
+                ? state.visibleLayout.map((r, i) =>
+                    i === row
+                      ? [
+                          ...r.slice(0, r.indexOf(owner) + 1),
+                          tileId,
+                          ...r.slice(r.indexOf(owner) + 1),
+                        ]
+                      : r,
+                  )
+                : appendToLastRow(state.visibleLayout, tileId),
+          });
           get().focusTile(tileId);
         } else {
           get().activateTab(tileId);
@@ -541,9 +659,12 @@ export const useUIStore = create<UIStoreState>()(
         delete editorByChat[chatId];
         const layoutsByChat = { ...state.layoutsByChat };
         delete layoutsByChat[chatId];
+        const artifactByChat = { ...state.artifactByChat };
+        delete artifactByChat[chatId];
         set({
           editorByChat,
           layoutsByChat,
+          artifactByChat,
           // Null live pointer so ChatPage unmount stash can't resurrect the deleted chat.
           ...(state.currentWorkspaceChatId === chatId ? { currentWorkspaceChatId: null } : {}),
         });
@@ -553,7 +674,7 @@ export const useUIStore = create<UIStoreState>()(
       cleanupAllChats: () => {
         // Reset first so the next loadWorkspaceForChat can't re-stash deleted chats.
         get().resetWorkspace();
-        set({ editorByChat: {}, layoutsByChat: {} });
+        set({ editorByChat: {}, layoutsByChat: {}, artifactByChat: {} });
         clearTerminalStorage();
       },
 
@@ -657,6 +778,8 @@ export const useUIStore = create<UIStoreState>()(
         visibleLayout: state.visibleLayout,
         currentWorkspaceChatId: state.currentWorkspaceChatId,
         editorByChat: state.editorByChat,
+        artifactByChat: state.artifactByChat,
+        paneSizes: state.paneSizes,
       }),
       version: 1,
       migrate: migrateUIState,

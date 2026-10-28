@@ -63,7 +63,15 @@ export interface ModelSelectionState {
 }
 
 // subagent: one subagent's prompt and activity, opened from the session panel.
-export type ViewType = 'agent' | 'diff' | 'editor' | 'terminal' | 'browser' | 'subagent';
+// artifact: a published artifact next to the chat (the /artifacts page, inline).
+export type ViewType =
+  | 'agent'
+  | 'diff'
+  | 'editor'
+  | 'terminal'
+  | 'browser'
+  | 'subagent'
+  | 'artifact';
 
 export const MAX_CHAT_PANES = 4;
 export type SplitSlot = 1 | 2 | 3;

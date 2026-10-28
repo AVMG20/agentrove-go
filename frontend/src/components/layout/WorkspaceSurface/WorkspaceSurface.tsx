@@ -1,6 +1,6 @@
 import { Suspense, useEffect, type ReactNode } from 'react';
 import { lazyNamed } from '@/utils/lazyNamed';
-import { useUIStore } from '@/store/uiStore';
+import { isSessionPanelShown, useUIStore } from '@/store/uiStore';
 import { useIsMobile } from '@/hooks/useIsMobile';
 import { SplitViewContainer } from '@/components/ui/SplitViewContainer/SplitViewContainer';
 import { CommandMenu } from '@/components/ui/command-menu/CommandMenu';
@@ -24,6 +24,10 @@ const TerminalContainer = lazyNamed(
 const SubagentPane = lazyNamed(
   () => import('@/components/chat/subagents/SubagentPane'),
   'SubagentPane',
+);
+const ArtifactPane = lazyNamed(
+  () => import('@/components/chat/artifacts/ArtifactPane'),
+  'ArtifactPane',
 );
 // Loaded on first open: most sessions never look at the browser.
 const BrowserTab = lazyNamed(
@@ -78,6 +82,12 @@ function renderPane(
           <SubagentPane chatId={chatId} tileId={tileId} isVisible={isVisible} />
         </Suspense>
       );
+    case 'artifact':
+      return (
+        <Suspense fallback={viewLoadingFallback}>
+          <ArtifactPane chatId={chatId} tileId={tileId} isVisible={isVisible} />
+        </Suspense>
+      );
     default:
       return null;
   }
@@ -128,7 +138,8 @@ interface WorkspaceSurfaceProps {
 }
 
 export function WorkspaceSurface({ renderView, sessionPanel, children }: WorkspaceSurfaceProps) {
-  const sessionPanelOpen = useUIStore((s) => s.sessionPanelOpen);
+  // Steps aside while an artifact is on screen (see isSessionPanelShown).
+  const sessionPanelShown = useUIStore(isSessionPanelShown);
   const sessionSheetOpen = useUIStore((s) => s.sessionSheetOpen);
   const createCommitDialogOpen = useUIStore((s) => s.createCommitDialogOpen);
   const createPRDialogOpen = useUIStore((s) => s.createPRDialogOpen);
@@ -142,7 +153,7 @@ export function WorkspaceSurface({ renderView, sessionPanel, children }: Workspa
       <div className={styles.surface}>
         <SplitViewContainer renderView={renderView} />
       </div>
-      {sessionPanelOpen && !isMobile && sessionPanel}
+      {sessionPanelShown && !isMobile && sessionPanel}
       {isMobile && sessionPanel && (
         <SessionSheet
           isOpen={sessionSheetOpen}

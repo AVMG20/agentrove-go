@@ -1,5 +1,13 @@
 import type { LucideIcon } from 'lucide-react';
-import { Bot, BotMessageSquare, CodeXml, GitBranch, Globe, Terminal } from 'lucide-react';
+import {
+  AppWindow,
+  Bot,
+  BotMessageSquare,
+  CodeXml,
+  GitBranch,
+  Globe,
+  Terminal,
+} from 'lucide-react';
 import type { AgentTileId, SplitSlot, SplitTileId, TileId, ViewType } from '@/types/ui.types';
 
 export const VIEW_LABELS: Record<ViewType, string> = {
@@ -9,6 +17,7 @@ export const VIEW_LABELS: Record<ViewType, string> = {
   terminal: 'Terminal',
   browser: 'Browser',
   subagent: 'Subagent',
+  artifact: 'Artifact',
 };
 
 // Shared by pane tabs and the view switcher so glyphs stay identical.
@@ -19,6 +28,7 @@ export const VIEW_ICONS: Record<ViewType, LucideIcon> = {
   terminal: Terminal,
   browser: Globe,
   subagent: BotMessageSquare,
+  artifact: AppWindow,
 };
 
 export function splitSlotOfTile(tileId: TileId): SplitSlot | null {

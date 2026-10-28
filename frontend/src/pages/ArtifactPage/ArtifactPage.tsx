@@ -1,10 +1,10 @@
-import { useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import clsx from 'clsx';
 import toast from 'react-hot-toast';
 import { Globe, Link2, Loader2, Lock } from 'lucide-react';
 import { Button } from '@/components/ui/primitives/Button/Button';
 import { Switch } from '@/components/ui/primitives/Switch/Switch';
+import { ArtifactFrame } from '@/components/artifacts/ArtifactFrame';
 import {
   useArtifactViewQuery,
   useUpdateArtifactMutation,
@@ -17,13 +17,6 @@ import { formatRelativeTime } from '@/utils/date';
 import iconDark from '/brand/icon-dark.svg';
 import iconLight from '/brand/icon-white.svg';
 import styles from './ArtifactPage.module.scss';
-import { useArtifactBridge } from './useArtifactBridge';
-
-// No allow-same-origin: the page gets an opaque origin, so its scripts can't
-// reach this app's storage, cookies or API. The content response repeats this
-// as a CSP sandbox for when the page is opened on its own.
-const FRAME_SANDBOX =
-  'allow-scripts allow-forms allow-modals allow-popups allow-popups-to-escape-sandbox allow-downloads';
 
 export function ArtifactPage() {
   const { artifactId } = useParams<{ artifactId: string }>();
@@ -32,17 +25,6 @@ export function ArtifactPage() {
     useAuthStore((state) => state.isAuthenticated) && !!authService.getToken();
   const { data: view, error, isLoading } = useArtifactViewQuery(artifactId);
   const updateArtifact = useUpdateArtifactMutation();
-  const frameRef = useRef<HTMLIFrameElement>(null);
-  useArtifactBridge(frameRef, view);
-
-  // Re-point the iframe only when the content changes: every refetch mints a
-  // fresh view token (and visibility toggles add or drop one), and a new src
-  // would reload the page and throw away whatever state it holds.
-  const frameKey = view ? `${view.id}:${view.version}` : null;
-  const [frame, setFrame] = useState<{ key: string; src: string } | null>(null);
-  if (view && frameKey && frameKey !== frame?.key) {
-    setFrame({ key: frameKey, src: artifactService.getContentUrl(view) });
-  }
 
   const handleVisibilityChange = async (isPublic: boolean) => {
     if (!view) return;
@@ -73,7 +55,7 @@ export function ArtifactPage() {
     );
   }
 
-  if (!view || !frame) {
+  if (!view) {
     const notFound = (error as ServiceError | null)?.status === 404;
     return (
       <div className={styles.page}>
@@ -153,15 +135,7 @@ export function ArtifactPage() {
           </Button>
         </div>
       </header>
-      <iframe
-        key={frame.key}
-        ref={frameRef}
-        className={styles.frame}
-        src={frame.src}
-        sandbox={FRAME_SANDBOX}
-        referrerPolicy="no-referrer"
-        title={view.title}
-      />
+      <ArtifactFrame view={view} className={styles.frame} />
     </div>
   );
 }

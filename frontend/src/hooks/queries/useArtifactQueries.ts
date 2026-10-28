@@ -34,14 +34,15 @@ export const useArtifactPagesQuery = (search: string) =>
     staleTime: 30_000,
   });
 
-export const useArtifactViewQuery = (artifactId: string | undefined) =>
+// poll=false keeps a hidden viewer's data without polling for new versions.
+export const useArtifactViewQuery = (artifactId: string | undefined, poll = true) =>
   useQuery<ArtifactView>({
     queryKey: queryKeys.artifactView(artifactId),
     queryFn: () => artifactService.getArtifactView(artifactId!),
     enabled: !!artifactId,
     // A 404 (deleted, or private and not yours) won't fix itself on retry.
     retry: false,
-    refetchInterval: VIEW_REFRESH_MS,
+    refetchInterval: poll ? VIEW_REFRESH_MS : false,
   });
 
 export const useUpdateArtifactMutation = createMutation<

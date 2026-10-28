@@ -7,6 +7,7 @@ import {
   MAX_SIDEBAR_WIDTH,
   DEFAULT_SIDEBAR_WIDTH,
   migrateUIState,
+  isSessionPanelShown,
 } from './uiStore';
 import { THEME_CYCLE } from '@/utils/theme';
 
@@ -31,6 +32,10 @@ beforeEach(() => {
     fileOpenNonce: 0,
     composerSelectionsByChat: {},
     subagentByChat: {},
+    artifactByChat: {},
+    sessionPanelOpen: true,
+    sessionPanelOverride: false,
+    paneSizes: {},
   });
 });
 
@@ -421,5 +426,81 @@ describe('toggleSubagent', () => {
     useUIStore.setState({ splitChatIds: ['c2'] });
     state().toggleSubagent('c2', 'a1');
     expect(state().visibleLayout).toEqual([['agent:primary', 'subagent:split-1']]);
+  });
+});
+
+describe('toggleArtifact', () => {
+  it('opens the artifact beside its chat and closes it on a second click', () => {
+    state().toggleArtifact('c1', 'a1');
+    expect(state().visibleLayout).toEqual([['agent:primary', 'artifact']]);
+    expect(state().artifactByChat.c1).toBe('a1');
+    state().toggleArtifact('c1', 'a1');
+    expect(state().visibleLayout).toEqual([['agent:primary']]);
+    expect(state().openTabs).not.toContain('artifact');
+  });
+
+  it('switches artifacts in place instead of closing', () => {
+    state().toggleArtifact('c1', 'a1');
+    state().toggleArtifact('c1', 'a2');
+    expect(state().visibleLayout).toEqual([['agent:primary', 'artifact']]);
+    expect(state().artifactByChat.c1).toBe('a2');
+  });
+
+  it('keeps the last pick when toggled without one', () => {
+    state().toggleArtifact('c1', 'a1');
+    state().toggleArtifact('c1', null);
+    expect(state().visibleLayout).toEqual([['agent:primary']]);
+    state().toggleArtifact('c1', null);
+    expect(state().visibleLayout).toEqual([['agent:primary', 'artifact']]);
+    expect(state().artifactByChat.c1).toBe('a1');
+  });
+
+  it('sits next to a split chat it belongs to', () => {
+    state().openChatInSplit('c2');
+    state().toggleArtifact('c2', 'a1');
+    expect(state().visibleLayout).toEqual([['agent:primary', 'agent:split-1', 'artifact:split-1']]);
+  });
+});
+
+describe('session panel beside an artifact', () => {
+  it('steps aside while an artifact is on screen and returns after', () => {
+    expect(isSessionPanelShown(state())).toBe(true);
+    state().toggleArtifact('c1', 'a1');
+    expect(isSessionPanelShown(state())).toBe(false);
+    state().toggleArtifact('c1', 'a1');
+    expect(isSessionPanelShown(state())).toBe(true);
+  });
+
+  it('can be brought back without changing the saved preference', () => {
+    state().toggleArtifact('c1', 'a1');
+    state().toggleSessionPanel();
+    expect(isSessionPanelShown(state())).toBe(true);
+    state().toggleSessionPanel();
+    expect(isSessionPanelShown(state())).toBe(false);
+    expect(state().sessionPanelOpen).toBe(true);
+  });
+
+  it('hides again when the next artifact opens', () => {
+    state().toggleArtifact('c1', 'a1');
+    state().toggleSessionPanel();
+    state().toggleArtifact('c1', 'a1');
+    state().toggleArtifact('c1', 'a1');
+    expect(isSessionPanelShown(state())).toBe(false);
+  });
+
+  it('toggles normally without an artifact', () => {
+    state().toggleSessionPanel();
+    expect(state().sessionPanelOpen).toBe(false);
+  });
+});
+
+describe('setPaneSizes', () => {
+  it('stores sizes by layout key and drops the oldest past the cap', () => {
+    for (let i = 0; i < 45; i++) state().setPaneSizes(`cols:k${i}`, [0.4, 0.6]);
+    const keys = Object.keys(state().paneSizes);
+    expect(keys).toHaveLength(40);
+    expect(keys[0]).toBe('cols:k5');
+    state().setPaneSizes('cols:k5', [0.5, 0.5]);
+    expect(Object.keys(state().paneSizes).slice(-1)).toEqual(['cols:k5']);
   });
 });
