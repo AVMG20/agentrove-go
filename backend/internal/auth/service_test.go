@@ -2,7 +2,6 @@ package auth
 
 import (
 	"context"
-	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -21,7 +20,7 @@ func newService(t *testing.T) *Service {
 	}
 	t.Cleanup(func() { d.Close() })
 	keys, _ := NewKeys(strings.Repeat("k", 40))
-	cfg := &config.Config{AccessTokenTTL: time.Minute, RefreshTokenTTL: time.Hour, MCPTokenLifetime: time.Hour}
+	cfg := &config.Config{SessionTTL: time.Hour, MCPTokenLifetime: time.Hour}
 	now := db.Now()
 	if _, err := d.Exec(`INSERT INTO users (id, email, username, hashed_password, is_active, created_at, updated_at) VALUES (?, 'a@b.c', 'a', 'x', 1, ?, ?)`, testUser, now, now); err != nil {
 		t.Fatal(err)
@@ -29,118 +28,74 @@ func newService(t *testing.T) *Service {
 	return &Service{DB: d, Cfg: cfg, Keys: keys}
 }
 
-func activeRefreshTokens(t *testing.T, s *Service) int {
+// login starts a session for userID and returns its token and id.
+func login(t *testing.T, s *Service, userID string) (token, sessionID string) {
+	t.Helper()
+	sessionID, err := s.CreateSession(context.Background(), userID, "ua", "ip")
+	if err != nil {
+		t.Fatal(err)
+	}
+	token, err = s.IssueSessionToken(userID, sessionID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return token, sessionID
+}
+
+func TestSessionTokenLivesWithItsSession(t *testing.T) {
+	s := newService(t)
+	ctx := context.Background()
+	tok, sid := login(t, s, testUser)
+	other, _ := login(t, s, testUser)
+	if u, err := s.Authenticate(ctx, tok); err != nil || u.ID != testUser {
+		t.Fatalf("authenticate: %v", err)
+	}
+	if err := s.EndSession(ctx, sid); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Authenticate(ctx, tok); err == nil {
+		t.Fatal("token works after its session ended")
+	}
+	if _, err := s.Authenticate(ctx, other); err != nil {
+		t.Fatalf("other session ended too: %v", err)
+	}
+	// A token without a session (or for someone else's) is no login.
+	bare, _ := s.Keys.IssueToken(testUser, AudienceSession, time.Hour)
+	if _, err := s.Authenticate(ctx, bare); err == nil {
+		t.Fatal("token without session accepted")
+	}
+}
+
+func TestPurgeExpiredSessions(t *testing.T) {
+	s := newService(t)
+	ctx := context.Background()
+	_, stale := login(t, s, testUser)
+	fresh, _ := login(t, s, testUser)
+	if _, err := s.DB.Exec(`UPDATE sessions SET created_at = ? WHERE id = ?`, db.T(time.Now().Add(-2*time.Hour)), stale); err != nil {
+		t.Fatal(err)
+	}
+	s.PurgeExpiredSessions(ctx)
+	if n := sessionCount(t, s); n != 1 {
+		t.Fatalf("%d sessions after purge", n)
+	}
+	if _, err := s.Authenticate(ctx, fresh); err != nil {
+		t.Fatalf("fresh session purged: %v", err)
+	}
+}
+
+func sessionCount(t *testing.T, s *Service) int {
 	t.Helper()
 	var n int
-	if err := s.DB.QueryRow(`SELECT COUNT(1) FROM refresh_tokens WHERE user_id = ? AND revoked_at IS NULL`, testUser).Scan(&n); err != nil {
+	if err := s.DB.QueryRow(`SELECT COUNT(1) FROM sessions WHERE user_id = ?`, testUser).Scan(&n); err != nil {
 		t.Fatal(err)
 	}
 	return n
 }
 
-func TestRefreshReuseRevokesAll(t *testing.T) {
+func TestResetPasswordEndsSessions(t *testing.T) {
 	s := newService(t)
 	ctx := context.Background()
-	old, _, _ := s.CreateRefreshToken(ctx, s.DB, testUser, "ua", "ip")
-	other, _, _ := s.CreateRefreshToken(ctx, s.DB, testUser, "ua", "ip")
-	_, rotated, _, err := s.RotateRefreshToken(ctx, old, "ua", "ip")
-	if err != nil {
-		t.Fatal(err)
-	}
-	// A second tab replaying the just-rotated token gets the same replacement.
-	if _, again, _, err := s.RotateRefreshToken(ctx, old, "ua", "ip"); err != nil || again != rotated {
-		t.Fatalf("grace reuse: %v (same token: %v)", err, again == rotated)
-	}
-	if n := activeRefreshTokens(t, s); n != 2 {
-		t.Fatalf("grace reuse revoked tokens: %d active", n)
-	}
-	// Past the grace window it's theft: everything goes.
-	if _, err := s.DB.Exec(`UPDATE refresh_tokens SET revoked_at = ? WHERE token_hash = ?`, db.T(time.Now().Add(-2*rotationGrace)), HashToken(old)); err != nil {
-		t.Fatal(err)
-	}
-	if _, _, _, err := s.RotateRefreshToken(ctx, old, "ua", "ip"); !errors.Is(err, ErrInvalidRefresh) {
-		t.Fatalf("reuse: %v", err)
-	}
-	if n := activeRefreshTokens(t, s); n != 0 {
-		t.Fatalf("%d tokens survived reuse", n)
-	}
-	for _, tok := range []string{rotated, other} {
-		if _, _, _, err := s.RotateRefreshToken(ctx, tok, "ua", "ip"); err == nil {
-			t.Fatal("token still usable after reuse revoke")
-		}
-	}
-}
-
-// A client that never got a refresh response retries with its old token and
-// keeps the session, even if the replacement has rotated again since.
-func TestRefreshRetryAfterLostResponse(t *testing.T) {
-	s := newService(t)
-	ctx := context.Background()
-	old, session, _ := s.CreateRefreshToken(ctx, s.DB, testUser, "ua", "ip")
-	_, lost, _, err := s.RotateRefreshToken(ctx, old, "ua", "ip")
-	if err != nil {
-		t.Fatal(err)
-	}
-	_, live, _, err := s.RotateRefreshToken(ctx, lost, "ua", "ip")
-	if err != nil {
-		t.Fatal(err)
-	}
-	u, got, gotSession, err := s.RotateRefreshToken(ctx, old, "ua", "ip")
-	if err != nil || got != live || gotSession != session || u.ID != testUser {
-		t.Fatalf("retry: %v (live token: %v, session %q)", err, got == live, gotSession)
-	}
-	if n := activeRefreshTokens(t, s); n != 1 {
-		t.Fatalf("%d active tokens after retry", n)
-	}
-	// The returned token works as the session's own.
-	if _, _, _, err := s.RotateRefreshToken(ctx, got, "ua", "ip"); err != nil {
-		t.Fatalf("refresh with returned token: %v", err)
-	}
-}
-
-// A replay within the grace whose session has since ended fails, but is no
-// theft signal.
-func TestGraceReplayOfEndedSessionOnlyFails(t *testing.T) {
-	s := newService(t)
-	ctx := context.Background()
-	old, _, _ := s.CreateRefreshToken(ctx, s.DB, testUser, "ua", "ip")
-	_, _, _ = s.CreateRefreshToken(ctx, s.DB, testUser, "ua", "ip")
-	_, rotated, _, err := s.RotateRefreshToken(ctx, old, "ua", "ip")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := s.RevokeRefreshToken(ctx, rotated); err != nil {
-		t.Fatal(err)
-	}
-	if _, _, _, err := s.RotateRefreshToken(ctx, old, "ua", "ip"); !errors.Is(err, ErrInvalidRefresh) {
-		t.Fatalf("replay: %v", err)
-	}
-	if n := activeRefreshTokens(t, s); n != 1 {
-		t.Fatalf("replay revoked other sessions: %d active", n)
-	}
-}
-
-// A token revoked by logout gets no grace, however recent.
-func TestLoggedOutTokenReuseRevokesAll(t *testing.T) {
-	s := newService(t)
-	ctx := context.Background()
-	gone, _, _ := s.CreateRefreshToken(ctx, s.DB, testUser, "ua", "ip")
-	_, _, _ = s.CreateRefreshToken(ctx, s.DB, testUser, "ua", "ip")
-	if err := s.RevokeRefreshToken(ctx, gone); err != nil {
-		t.Fatal(err)
-	}
-	if _, _, _, err := s.RotateRefreshToken(ctx, gone, "ua", "ip"); !errors.Is(err, ErrInvalidRefresh) {
-		t.Fatalf("reuse: %v", err)
-	}
-	if n := activeRefreshTokens(t, s); n != 0 {
-		t.Fatalf("%d tokens survived reuse of a logged-out token", n)
-	}
-}
-
-func TestResetPasswordRevokesRefreshTokens(t *testing.T) {
-	s := newService(t)
-	ctx := context.Background()
-	_, _, _ = s.CreateRefreshToken(ctx, s.DB, testUser, "ua", "ip")
+	tok, _ := login(t, s, testUser)
 	reset := RandomToken(16)
 	if _, err := s.DB.Exec(`UPDATE users SET reset_token = ?, reset_token_expires = ? WHERE id = ?`, HashToken(reset), db.T(time.Now().Add(time.Hour)), testUser); err != nil {
 		t.Fatal(err)
@@ -148,14 +103,14 @@ func TestResetPasswordRevokesRefreshTokens(t *testing.T) {
 	if ok, err := s.ResetPassword(ctx, "wrong", "h"); ok || err != nil {
 		t.Fatalf("bad token: %v %v", ok, err)
 	}
-	if n := activeRefreshTokens(t, s); n != 1 {
-		t.Fatalf("bad token revoked tokens: %d", n)
+	if n := sessionCount(t, s); n != 1 {
+		t.Fatalf("bad token ended sessions: %d left", n)
 	}
 	if ok, err := s.ResetPassword(ctx, reset, "newhash"); !ok || err != nil {
 		t.Fatalf("reset: %v %v", ok, err)
 	}
-	if n := activeRefreshTokens(t, s); n != 0 {
-		t.Fatalf("%d tokens survived reset", n)
+	if _, err := s.Authenticate(ctx, tok); err == nil {
+		t.Fatal("session survived reset")
 	}
 	u, _ := s.GetUser(ctx, testUser)
 	if u.HashedPassword != "newhash" {
@@ -176,7 +131,7 @@ func TestMCPTokenScope(t *testing.T) {
 	if u, err := s.AuthenticateMCP(ctx, mcp); err != nil || u.ID != testUser {
 		t.Fatalf("AuthenticateMCP: %v", err)
 	}
-	session, _ := s.IssueAccessToken(testUser)
+	session, _ := login(t, s, testUser)
 	if _, err := s.Authenticate(ctx, session); err != nil {
 		t.Fatalf("session: %v", err)
 	}

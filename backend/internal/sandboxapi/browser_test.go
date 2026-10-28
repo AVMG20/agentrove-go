@@ -60,7 +60,7 @@ func newBrowserFixture(t *testing.T) *browserFixture {
 	}
 	t.Cleanup(func() { d.Close() })
 	keys, _ := auth.NewKeys(strings.Repeat("k", 40))
-	cfg := &config.Config{APIPrefix: "/api/v1", AccessTokenTTL: time.Hour, BrowserEnabled: true}
+	cfg := &config.Config{APIPrefix: "/api/v1", SessionTTL: time.Hour, BrowserEnabled: true}
 	a := &app.App{Cfg: cfg, DB: d, Keys: keys, Store: &store.Store{DB: d, Keys: keys}}
 	a.Auth = &auth.Service{DB: d, Cfg: cfg, Keys: keys}
 	now := db.Now()
@@ -89,7 +89,11 @@ func newBrowserFixture(t *testing.T) *browserFixture {
 
 func (f *browserFixture) token(t *testing.T, userID string) string {
 	t.Helper()
-	tok, err := f.a.Auth.IssueAccessToken(userID)
+	sid, err := f.a.Auth.CreateSession(context.Background(), userID, "ua", "ip")
+	if err != nil {
+		t.Fatal(err)
+	}
+	tok, err := f.a.Auth.IssueSessionToken(userID, sid)
 	if err != nil {
 		t.Fatal(err)
 	}

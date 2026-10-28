@@ -1,7 +1,6 @@
 import { logger } from '@/utils/logger';
 
 const AUTH_TOKEN_KEY = 'auth_token';
-const REFRESH_TOKEN_KEY = 'refresh_token';
 const CHAT_EVENT_ID_PREFIX = 'chat:';
 const CHAT_EVENT_ID_SUFFIX = ':lastEventId';
 const MAX_CHAT_EVENT_ID_ENTRIES = 500;
@@ -59,77 +58,44 @@ const safeRemoveItem = (key: string): void => {
   }
 };
 
+// Kept in memory too, so a tab without writable storage stays signed in.
 let cachedToken: string | null = null;
-let cachedRefreshToken: string | null = null;
 let tokenCacheInitialized = false;
 const signOutListeners = new Set<() => void>();
 
-function initTokenCacheFromLocalStorage(): void {
-  if (tokenCacheInitialized) return;
-  cachedToken = safeGetItem(AUTH_TOKEN_KEY);
-  cachedRefreshToken = safeGetItem(REFRESH_TOKEN_KEY);
-  tokenCacheInitialized = true;
-}
-
-// In-memory cache for sync getToken() on the API hot path, backed by localStorage.
 export const authStorage = {
   getToken: (): string | null => {
-    initTokenCacheFromLocalStorage();
+    if (!tokenCacheInitialized) {
+      cachedToken = safeGetItem(AUTH_TOKEN_KEY);
+      tokenCacheInitialized = true;
+    }
     return cachedToken;
   },
-  getRefreshToken: (): string | null => {
-    initTokenCacheFromLocalStorage();
-    return cachedRefreshToken;
-  },
-  setTokens: async (token: string, refreshToken: string): Promise<void> => {
+  setToken: (token: string): void => {
     cachedToken = token;
-    cachedRefreshToken = refreshToken;
     tokenCacheInitialized = true;
     safeSetItem(AUTH_TOKEN_KEY, token);
-    safeSetItem(REFRESH_TOKEN_KEY, refreshToken);
   },
   clearAuth: (): void => {
     cachedToken = null;
-    cachedRefreshToken = null;
     tokenCacheInitialized = true;
     safeRemoveItem(AUTH_TOKEN_KEY);
-    safeRemoveItem(REFRESH_TOKEN_KEY);
   },
-  // Storage events never reach a frozen, discarded or bfcached page, so its cache can
-  // hold a refresh token another tab already rotated away. Call before using it.
-  // Adopts only a present refresh token: a null here must not wipe tokens held in memory
-  // when storage is unwritable (a real remote sign-out arrives via the storage event).
-  syncFromStorage: (): void => {
-    initTokenCacheFromLocalStorage();
-    const storedRefresh = safeGetItem(REFRESH_TOKEN_KEY);
-    if (!storedRefresh || storedRefresh === cachedRefreshToken) return;
-    cachedRefreshToken = storedRefresh;
-    cachedToken = safeGetItem(AUTH_TOKEN_KEY) ?? cachedToken;
-  },
-  // Fires when another tab signs out (tokens removed). Not fired for this tab's own clearAuth.
+  // Fires when another tab signs out (token removed). Not fired for this tab's own clearAuth.
   onRemoteSignOut: (listener: () => void): (() => void) => {
     signOutListeners.add(listener);
     return () => signOutListeners.delete(listener);
   },
 };
 
-// Cross-tab: another tab rotating tokens must update this tab's memory cache
-// or the next refresh replays a rotated-away token after the grace window.
 if (typeof window !== 'undefined') {
   window.addEventListener('storage', (event) => {
     // key === null is localStorage.clear() in another tab.
-    const wasSignedIn = cachedToken !== null || cachedRefreshToken !== null;
-    if (event.key === null) {
-      cachedToken = null;
-      cachedRefreshToken = null;
-    } else if (event.key === AUTH_TOKEN_KEY) {
-      cachedToken = event.newValue;
-    } else if (event.key === REFRESH_TOKEN_KEY) {
-      cachedRefreshToken = event.newValue;
-    } else {
-      return;
-    }
-    if (wasSignedIn && cachedToken === null && cachedRefreshToken === null) {
+    if (event.key !== null && event.key !== AUTH_TOKEN_KEY) return;
+    const wasSignedIn = cachedToken !== null;
+    cachedToken = event.key === null ? null : event.newValue;
+    tokenCacheInitialized = true;
+    if (wasSignedIn && cachedToken === null) {
       signOutListeners.forEach((listener) => listener());
     }
   });

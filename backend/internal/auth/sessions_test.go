@@ -35,22 +35,17 @@ func TestListSessionsOnlyActiveOfCaller(t *testing.T) {
 	s := newService(t)
 	addOtherUser(t, s)
 	ctx := context.Background()
-	tok, a, _ := s.CreateRefreshToken(ctx, s.DB, testUser, "ua-a", "1.1.1.1")
-	_, b, _ := s.CreateRefreshToken(ctx, s.DB, testUser, "ua-b", "2.2.2.2")
-	gone, _, _ := s.CreateRefreshToken(ctx, s.DB, testUser, "ua", "ip")
-	_, expired, _ := s.CreateRefreshToken(ctx, s.DB, testUser, "ua", "ip")
-	_, _, _ = s.CreateRefreshToken(ctx, s.DB, otherUser, "ua", "ip")
-	if err := s.RevokeRefreshToken(ctx, gone); err != nil {
+	b, _ := s.CreateSession(ctx, testUser, "ua-b", "2.2.2.2")
+	time.Sleep(time.Millisecond)
+	a, _ := s.CreateSession(ctx, testUser, "ua-a", "1.1.1.1")
+	gone, _ := s.CreateSession(ctx, testUser, "ua", "ip")
+	expired, _ := s.CreateSession(ctx, testUser, "ua", "ip")
+	_, _ = s.CreateSession(ctx, otherUser, "ua", "ip")
+	if err := s.EndSession(ctx, gone); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.DB.Exec(`UPDATE refresh_tokens SET expires_at = ? WHERE session_id = ?`, db.T(time.Now().Add(-time.Minute)), expired); err != nil {
+	if _, err := s.DB.Exec(`UPDATE sessions SET created_at = ? WHERE id = ?`, db.T(time.Now().Add(-2*time.Hour)), expired); err != nil {
 		t.Fatal(err)
-	}
-	// Rotation keeps the session: same id, created_at, one active row.
-	var created db.Time
-	_ = s.DB.QueryRow(`SELECT created_at FROM refresh_tokens WHERE session_id = ?`, a).Scan(&created)
-	if _, _, sid, err := s.RotateRefreshToken(ctx, tok, "ua-a2", "3.3.3.3"); err != nil || sid != a {
-		t.Fatalf("rotate: %q %v", sid, err)
 	}
 	list, err := s.ListSessions(ctx, testUser, b)
 	if err != nil {
@@ -59,8 +54,8 @@ func TestListSessionsOnlyActiveOfCaller(t *testing.T) {
 	if ids := sessionIDs(list); len(ids) != 2 || ids[0] != a || ids[1] != b {
 		t.Fatalf("sessions %v, want [%s %s]", ids, a, b)
 	}
-	if x := list[0]; x.Current || x.UserAgent != "ua-a2" || x.IPAddress != "3.3.3.3" || !x.CreatedAt.Equal(created.Time) || x.LastUsedAt.Before(created.Time) {
-		t.Fatalf("rotated session: %+v (created %v)", x, created)
+	if x := list[0]; x.Current || x.UserAgent != "ua-a" || x.IPAddress != "1.1.1.1" {
+		t.Fatalf("session: %+v", x)
 	}
 	if !list[1].Current {
 		t.Fatal("current session not flagged")
@@ -71,9 +66,9 @@ func TestRevokeSession(t *testing.T) {
 	s := newService(t)
 	addOtherUser(t, s)
 	ctx := context.Background()
-	revoked, a, _ := s.CreateRefreshToken(ctx, s.DB, testUser, "ua", "ip")
-	kept, b, _ := s.CreateRefreshToken(ctx, s.DB, testUser, "ua", "ip")
-	_, theirs, _ := s.CreateRefreshToken(ctx, s.DB, otherUser, "ua", "ip")
+	revoked, a := login(t, s, testUser)
+	kept, _ := login(t, s, testUser)
+	_, theirs := login(t, s, otherUser)
 	if err := s.RevokeSession(ctx, testUser, theirs); !errors.Is(err, ErrSessionNotFound) {
 		t.Fatalf("revoked another user's session: %v", err)
 	}
@@ -83,12 +78,11 @@ func TestRevokeSession(t *testing.T) {
 	if err := s.RevokeSession(ctx, testUser, a); !errors.Is(err, ErrSessionNotFound) {
 		t.Fatalf("revoked twice: %v", err)
 	}
-	// The revoked device's refresh fails without signing out everyone else.
-	if _, _, _, err := s.RotateRefreshToken(ctx, revoked, "ua", "ip"); !errors.Is(err, ErrInvalidRefresh) {
-		t.Fatalf("revoked refresh: %v", err)
+	if _, err := s.Authenticate(ctx, revoked); err == nil {
+		t.Fatal("revoked session still works")
 	}
-	if _, _, sid, err := s.RotateRefreshToken(ctx, kept, "ua", "ip"); err != nil || sid != b {
-		t.Fatalf("other session: %q %v", sid, err)
+	if _, err := s.Authenticate(ctx, kept); err != nil {
+		t.Fatalf("other session: %v", err)
 	}
 	if list, _ := s.ListSessions(ctx, otherUser, ""); len(list) != 1 {
 		t.Fatalf("other user's sessions: %d", len(list))
@@ -99,10 +93,10 @@ func TestRevokeOtherSessionsKeepsCurrent(t *testing.T) {
 	s := newService(t)
 	addOtherUser(t, s)
 	ctx := context.Background()
-	_, cur, _ := s.CreateRefreshToken(ctx, s.DB, testUser, "ua", "ip")
-	_, _, _ = s.CreateRefreshToken(ctx, s.DB, testUser, "ua", "ip")
-	_, _, _ = s.CreateRefreshToken(ctx, s.DB, testUser, "ua", "ip")
-	_, _, _ = s.CreateRefreshToken(ctx, s.DB, otherUser, "ua", "ip")
+	cur, _ := s.CreateSession(ctx, testUser, "ua", "ip")
+	_, _ = s.CreateSession(ctx, testUser, "ua", "ip")
+	_, _ = s.CreateSession(ctx, testUser, "ua", "ip")
+	_, _ = s.CreateSession(ctx, otherUser, "ua", "ip")
 	if err := s.RevokeOtherSessions(ctx, testUser, cur); err != nil {
 		t.Fatal(err)
 	}
@@ -187,35 +181,28 @@ func TestSessionEndpoints(t *testing.T) {
 	if rec := do("DELETE", "/api/v1/auth/sessions/"+laptopID, me.AccessToken, ""); rec.Code != http.StatusNoContent {
 		t.Fatalf("revoke: %d %s", rec.Code, rec.Body)
 	}
-	if rec := do("POST", "/api/v1/auth/jwt/refresh", "", `{"refresh_token":"`+laptop.RefreshToken+`"}`); rec.Code != http.StatusUnauthorized {
-		t.Fatalf("revoked session refresh: %d", rec.Code)
+	if rec := do("GET", "/api/v1/auth/me", laptop.AccessToken, ""); rec.Code != http.StatusUnauthorized {
+		t.Fatalf("revoked session: %d", rec.Code)
 	}
 
-	// The refreshed access token still identifies the same session.
-	rec := do("POST", "/api/v1/auth/jwt/refresh", "", `{"refresh_token":"`+me.RefreshToken+`"}`)
-	if rec.Code != http.StatusOK {
-		t.Fatalf("refresh: %d %s", rec.Code, rec.Body)
-	}
-	_ = json.Unmarshal(rec.Body.Bytes(), &me)
 	if rec := do("DELETE", "/api/v1/auth/sessions", me.AccessToken, ""); rec.Code != http.StatusNoContent {
 		t.Fatalf("revoke others: %d %s", rec.Code, rec.Body)
 	}
 	if left := list(me.AccessToken); len(left) != 1 || left[0].ID != current || !left[0].Current {
 		t.Fatalf("after revoke-all: %+v", left)
 	}
-	if rec := do("POST", "/api/v1/auth/jwt/refresh", "", `{"refresh_token":"`+phone.RefreshToken+`"}`); rec.Code != http.StatusUnauthorized {
-		t.Fatalf("revoked phone refresh: %d", rec.Code)
-	}
-	if rec := do("POST", "/api/v1/auth/jwt/refresh", "", `{"refresh_token":"`+me.RefreshToken+`"}`); rec.Code != http.StatusOK {
-		t.Fatalf("current session refresh after revoke-all: %d", rec.Code)
+	if rec := do("GET", "/api/v1/auth/me", phone.AccessToken, ""); rec.Code != http.StatusUnauthorized {
+		t.Fatalf("revoked phone: %d", rec.Code)
 	}
 	if len(list(theirs.AccessToken)) != 1 {
 		t.Fatal("revoke-all touched another user")
 	}
 
-	// Access tokens from before session ids can't revoke everything else.
-	legacy, _ := s.IssueAccessToken(otherUser)
-	if rec := do("DELETE", "/api/v1/auth/sessions", legacy, ""); rec.Code != http.StatusConflict {
-		t.Fatalf("legacy revoke-all: %d", rec.Code)
+	// Logout ends the session.
+	if rec := do("POST", "/api/v1/auth/jwt/logout", me.AccessToken, ""); rec.Code != http.StatusNoContent {
+		t.Fatalf("logout: %d %s", rec.Code, rec.Body)
+	}
+	if rec := do("GET", "/api/v1/auth/me", me.AccessToken, ""); rec.Code != http.StatusUnauthorized {
+		t.Fatalf("token after logout: %d", rec.Code)
 	}
 }

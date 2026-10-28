@@ -3,7 +3,6 @@ package auth
 import (
 	"context"
 	"database/sql"
-	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -23,9 +22,8 @@ import (
 )
 
 type tokenResponse struct {
-	AccessToken  string `json:"access_token"`
-	RefreshToken string `json:"refresh_token"`
-	TokenType    string `json:"token_type"`
+	AccessToken string `json:"access_token"`
+	TokenType   string `json:"token_type"`
 }
 
 type userRead struct {
@@ -47,8 +45,7 @@ func (s *Service) Routes(mux *http.ServeMux, prefix string) {
 	limiter := newRateLimiter(s.Cfg.TrustedProxies, s.BoxSubnets)
 	mux.HandleFunc("POST "+prefix+"/auth/jwt/login", httpx.Wrap(limiter.limit("login", 10, time.Minute, s.login)))
 	mux.HandleFunc("POST "+prefix+"/auth/register", httpx.Wrap(limiter.limit("register", 5, time.Minute, s.register)))
-	mux.HandleFunc("POST "+prefix+"/auth/jwt/refresh", httpx.Wrap(limiter.limit("refresh", 30, time.Minute, s.refresh)))
-	mux.HandleFunc("POST "+prefix+"/auth/jwt/logout", httpx.Wrap(s.logout))
+	mux.HandleFunc("POST "+prefix+"/auth/jwt/logout", s.Require(s.logout))
 	mux.HandleFunc("GET "+prefix+"/auth/me", s.Require(s.me))
 	mux.HandleFunc("GET "+prefix+"/auth/sessions", s.Require(s.listSessions))
 	mux.HandleFunc("DELETE "+prefix+"/auth/sessions", s.Require(s.revokeOtherSessions))
@@ -79,15 +76,15 @@ func (s *Service) login(w http.ResponseWriter, r *http.Request) error {
 }
 
 func (s *Service) issueTokens(w http.ResponseWriter, r *http.Request, u *models.User) error {
-	refresh, sessionID, err := s.CreateRefreshToken(r.Context(), s.DB, u.ID, r.UserAgent(), httpx.ClientIP(r, s.Cfg.TrustedProxies, s.BoxSubnets))
+	sessionID, err := s.CreateSession(r.Context(), u.ID, r.UserAgent(), httpx.ClientIP(r, s.Cfg.TrustedProxies, s.BoxSubnets))
 	if err != nil {
 		return err
 	}
-	access, err := s.issueSessionToken(u.ID, sessionID)
+	token, err := s.IssueSessionToken(u.ID, sessionID)
 	if err != nil {
 		return err
 	}
-	return httpx.OK(w, tokenResponse{AccessToken: access, RefreshToken: refresh, TokenType: "bearer"})
+	return httpx.OK(w, tokenResponse{AccessToken: token, TokenType: "bearer"})
 }
 
 func (s *Service) register(w http.ResponseWriter, r *http.Request) error {
@@ -168,37 +165,8 @@ func (s *Service) me(w http.ResponseWriter, r *http.Request) error {
 	return httpx.OK(w, map[string]any{"id": u.ID, "email": u.Email, "username": u.Username, "is_verified": u.IsVerified, "is_superuser": u.IsSuperuser})
 }
 
-func (s *Service) refresh(w http.ResponseWriter, r *http.Request) error {
-	var body struct {
-		RefreshToken string `json:"refresh_token"`
-	}
-	if err := httpx.Decode(r, &body); err != nil {
-		return err
-	}
-	u, newRefresh, sessionID, err := s.RotateRefreshToken(r.Context(), body.RefreshToken, r.UserAgent(), httpx.ClientIP(r, s.Cfg.TrustedProxies, s.BoxSubnets))
-	if errors.Is(err, ErrInvalidRefresh) {
-		return httpx.Unauthorized("Invalid or expired refresh token")
-	}
-	// Anything else (e.g. a database error) is a 500: the client keeps its
-	// session and retries, where a 401 would sign it out.
-	if err != nil {
-		return err
-	}
-	access, err := s.issueSessionToken(u.ID, sessionID)
-	if err != nil {
-		return err
-	}
-	return httpx.OK(w, tokenResponse{AccessToken: access, RefreshToken: newRefresh, TokenType: "bearer"})
-}
-
 func (s *Service) logout(w http.ResponseWriter, r *http.Request) error {
-	var body struct {
-		RefreshToken string `json:"refresh_token"`
-	}
-	if err := httpx.Decode(r, &body); err != nil {
-		return err
-	}
-	if err := s.RevokeRefreshToken(r.Context(), body.RefreshToken); err != nil {
+	if err := s.EndSession(r.Context(), SessionFrom(r.Context())); err != nil {
 		return err
 	}
 	return httpx.NoContent(w)

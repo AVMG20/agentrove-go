@@ -5,16 +5,15 @@ const h = vi.hoisted(() => ({
   post: vi.fn(),
   get: vi.fn(),
   del: vi.fn(),
-  getRefreshToken: vi.fn<() => string | null>(() => 'refresh'),
+  getToken: vi.fn<() => string | null>(() => 'tok'),
   clearAuth: vi.fn(),
 }));
 
 vi.mock('@/lib/api', () => ({ apiClient: { post: h.post, get: h.get, delete: h.del } }));
 vi.mock('@/utils/storage', () => ({
   authStorage: {
-    getToken: vi.fn(),
-    getRefreshToken: h.getRefreshToken,
-    setTokens: vi.fn(),
+    getToken: h.getToken,
+    setToken: vi.fn(),
     clearAuth: h.clearAuth,
   },
 }));
@@ -24,16 +23,16 @@ import { authService } from './authService';
 
 beforeEach(() => {
   vi.clearAllMocks();
-  h.getRefreshToken.mockReturnValue('refresh');
+  h.getToken.mockReturnValue('tok');
 });
 
 describe('authService.logout', () => {
-  it('revokes the refresh token and clears local auth', async () => {
+  it('ends the session and clears local auth', async () => {
     h.post.mockResolvedValueOnce(null);
 
     await authService.logout();
 
-    expect(h.post).toHaveBeenCalledWith('/auth/jwt/logout', { refresh_token: 'refresh' });
+    expect(h.post).toHaveBeenCalledWith('/auth/jwt/logout');
     expect(h.clearAuth).toHaveBeenCalledTimes(1);
   });
 

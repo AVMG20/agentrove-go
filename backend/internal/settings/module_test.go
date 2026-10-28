@@ -29,7 +29,7 @@ func TestBrowserSettings(t *testing.T) {
 		t.Fatal(err)
 	}
 	keys, _ := auth.NewKeys(strings.Repeat("k", 40))
-	cfg := &config.Config{APIPrefix: "/api/v1", AccessTokenTTL: time.Hour, BrowserEnabled: true}
+	cfg := &config.Config{APIPrefix: "/api/v1", SessionTTL: time.Hour, BrowserEnabled: true}
 	a := &app.App{Cfg: cfg, DB: d, Keys: keys, Store: &store.Store{DB: d, Keys: keys}, Sandboxes: &sandbox.Manager{}}
 	m := New(a)
 	call := func(method, body string) (int, map[string]any) {
@@ -82,7 +82,7 @@ func TestManagedEnvVarsOnlyStayAsTheyWere(t *testing.T) {
 		t.Fatal(err)
 	}
 	keys, _ := auth.NewKeys(strings.Repeat("k", 40))
-	cfg := &config.Config{APIPrefix: "/api/v1", AccessTokenTTL: time.Hour}
+	cfg := &config.Config{APIPrefix: "/api/v1", SessionTTL: time.Hour}
 	a := &app.App{Cfg: cfg, DB: d, Keys: keys, Store: &store.Store{DB: d, Keys: keys}, Sandboxes: &sandbox.Manager{}}
 	m := New(a)
 	patch := func(body string) error {

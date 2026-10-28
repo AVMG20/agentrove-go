@@ -4,30 +4,27 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"time"
 
 	"agentrove/internal/db"
 	"agentrove/internal/httpx"
 )
 
-// Session is one login of a user: its active refresh token, whose
-// session_id survives rotation.
+// Session is one login of a user.
 type Session struct {
 	ID        string  `json:"id"`
 	UserAgent string  `json:"user_agent"`
 	IPAddress string  `json:"ip_address"`
 	CreatedAt db.Time `json:"created_at"`
-	// LastUsedAt is the session's last refresh (the active row's updated_at),
-	// so it trails real activity by at most the access token lifetime.
-	LastUsedAt db.Time `json:"last_used_at"`
-	Current    bool    `json:"current"`
+	Current   bool    `json:"current"`
 }
 
 var ErrSessionNotFound = errors.New("session not found")
 
-// ListSessions returns the user's active sessions, most recently used first.
+// ListSessions returns the user's unexpired sessions, newest first.
 func (s *Service) ListSessions(ctx context.Context, userID, currentID string) ([]Session, error) {
-	rows, err := s.DB.QueryContext(ctx, `SELECT session_id, COALESCE(user_agent, ''), COALESCE(ip_address, ''), created_at, updated_at
-		FROM refresh_tokens WHERE user_id = ? AND revoked_at IS NULL AND expires_at > ? ORDER BY updated_at DESC`, userID, db.Now())
+	rows, err := s.DB.QueryContext(ctx, `SELECT id, COALESCE(user_agent, ''), COALESCE(ip_address, ''), created_at
+		FROM sessions WHERE user_id = ? AND created_at > ? ORDER BY created_at DESC`, userID, db.T(time.Now().Add(-s.Cfg.SessionTTL)))
 	if err != nil {
 		return nil, err
 	}
@@ -35,7 +32,7 @@ func (s *Service) ListSessions(ctx context.Context, userID, currentID string) ([
 	out := []Session{}
 	for rows.Next() {
 		var x Session
-		if err := rows.Scan(&x.ID, &x.UserAgent, &x.IPAddress, &x.CreatedAt, &x.LastUsedAt); err != nil {
+		if err := rows.Scan(&x.ID, &x.UserAgent, &x.IPAddress, &x.CreatedAt); err != nil {
 			return nil, err
 		}
 		x.Current = x.ID == currentID
@@ -44,12 +41,9 @@ func (s *Service) ListSessions(ctx context.Context, userID, currentID string) ([
 	return out, rows.Err()
 }
 
-// RevokeSession ends one active session of the user. The reason 'revoked'
-// makes a later refresh with its token fail without counting as theft.
+// RevokeSession ends one session of the user.
 func (s *Service) RevokeSession(ctx context.Context, userID, sessionID string) error {
-	now := db.Now()
-	res, err := s.DB.ExecContext(ctx, `UPDATE refresh_tokens SET revoked_at = ?, revoked_reason = 'revoked', updated_at = ?
-		WHERE user_id = ? AND session_id = ? AND revoked_at IS NULL AND expires_at > ?`, now, now, userID, sessionID, now)
+	res, err := s.DB.ExecContext(ctx, `DELETE FROM sessions WHERE user_id = ? AND id = ?`, userID, sessionID)
 	if err != nil {
 		return err
 	}
@@ -61,11 +55,9 @@ func (s *Service) RevokeSession(ctx context.Context, userID, sessionID string) e
 	return nil
 }
 
-// RevokeOtherSessions ends every active session of the user but keepID.
+// RevokeOtherSessions ends every session of the user but keepID.
 func (s *Service) RevokeOtherSessions(ctx context.Context, userID, keepID string) error {
-	now := db.Now()
-	_, err := s.DB.ExecContext(ctx, `UPDATE refresh_tokens SET revoked_at = ?, revoked_reason = 'revoked', updated_at = ?
-		WHERE user_id = ? AND session_id != ? AND revoked_at IS NULL`, now, now, userID, keepID)
+	_, err := s.DB.ExecContext(ctx, `DELETE FROM sessions WHERE user_id = ? AND id != ?`, userID, keepID)
 	return err
 }
 
@@ -92,12 +84,7 @@ func (s *Service) revokeSession(w http.ResponseWriter, r *http.Request) error {
 }
 
 func (s *Service) revokeOtherSessions(w http.ResponseWriter, r *http.Request) error {
-	current := SessionFrom(r.Context())
-	if current == "" {
-		// Tokens from before session ids can't tell which session to keep.
-		return httpx.Conflict("This session can't be identified yet; try again in a few minutes")
-	}
-	if err := s.RevokeOtherSessions(r.Context(), UserFrom(r.Context()).ID, current); err != nil {
+	if err := s.RevokeOtherSessions(r.Context(), UserFrom(r.Context()).ID, SessionFrom(r.Context())); err != nil {
 		return err
 	}
 	return httpx.NoContent(w)

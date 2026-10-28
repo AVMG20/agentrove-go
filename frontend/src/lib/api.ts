@@ -10,22 +10,6 @@ interface RequestOptions extends RequestInit {
   signal?: AbortSignal;
 }
 
-interface TokenResponse {
-  access_token: string;
-  refresh_token: string;
-  token_type: string;
-}
-
-class RefreshTokenError extends Error {
-  status: number;
-
-  constructor(status: number, message = 'Token refresh failed') {
-    super(message);
-    this.name = 'RefreshTokenError';
-    this.status = status;
-  }
-}
-
 export type { ApiStreamResponse as StreamResponse } from '@/types/stream.types';
 
 export const trimTrailingSlash = (url: string): string => url.replace(/\/+$/, '');
@@ -41,47 +25,21 @@ const resolveWsBaseUrl = (rawUrl: string): string => {
 
 interface ClientAuth {
   getToken: () => string | null;
-  getRefreshToken: () => string | null;
-  setTokens: (accessToken: string, refreshToken: string) => Promise<void>;
-  // Re-read tokens another tab may have rotated while this one missed the storage event.
-  syncFromStorage: () => void;
   onSessionExpired: () => void;
 }
 
 const localAuth: ClientAuth = {
   getToken: () => authStorage.getToken(),
-  getRefreshToken: () => authStorage.getRefreshToken(),
-  setTokens: (accessToken, refreshToken) => authStorage.setTokens(accessToken, refreshToken),
-  syncFromStorage: () => authStorage.syncFromStorage(),
   onSessionExpired: invalidateSessionAndRedirect,
 };
 
-// A stale refresh token (e.g. after a backend identity reset) gets a 401; that's terminal.
-function shouldInvalidateSession(error: unknown): boolean {
-  return error instanceof RefreshTokenError && error.status === 401;
-}
-
-const ACCESS_TOKEN_EXPIRY_BUFFER_MS = 30_000;
-
-// How long to wait for another tab to store the token it just rotated (total ~1s).
-const ROTATION_WAIT_MS = [100, 300, 600];
-
-// Retries of a refresh that failed on the network (total ~12s). The server may have rotated
-// before the response was lost (e.g. waking from sleep); a retry within its grace window gets
-// the same replacement back, while giving up and retrying later would sign the user out.
-const NETWORK_RETRY_MS = [1_000, 3_000, 8_000];
-
-const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
-
-// Missing/undecodable claims or exp within buffer → don't open long-lived connections on it.
-function accessTokenExpiresSoon(token: string): boolean {
+function tokenExpired(token: string): boolean {
   try {
     const base64 = token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
-    const claims = JSON.parse(atob(base64 + '='.repeat((4 - (base64.length % 4)) % 4)));
-    if (typeof claims.exp !== 'number') return true;
-    return claims.exp * 1000 - Date.now() < ACCESS_TOKEN_EXPIRY_BUFFER_MS;
+    const { exp } = JSON.parse(atob(base64 + '='.repeat((4 - (base64.length % 4)) % 4)));
+    return typeof exp === 'number' && exp * 1000 <= Date.now();
   } catch {
-    return true;
+    return false;
   }
 }
 
@@ -101,7 +59,6 @@ const extractErrorMessage = async (response: Response): Promise<string> => {
 class APIClient {
   private baseURL: string;
   private auth: ClientAuth;
-  private refreshingPromise: Promise<TokenResponse> | null = null;
 
   constructor(baseURL: string, auth: ClientAuth) {
     this.baseURL = baseURL;
@@ -117,23 +74,15 @@ class APIClient {
     return this.auth.getToken();
   }
 
-  // For SSE openers that bypass request(): may need a refresh after restart / dead feed.
+  // For SSE and WebSocket openers that bypass request(). Null (and signed out) once the
+  // token has expired, so they stop reconnecting.
   async getValidToken(): Promise<string | null> {
-    this.auth.syncFromStorage();
-    const cached = this.auth.getToken();
-    if (!this.auth.getRefreshToken()) return cached;
-    // Don't rotate on every open — churns refresh tokens and can strand clients mid-rotation.
-    if (cached && !accessTokenExpiresSoon(cached)) return cached;
-    try {
-      return (await this.refreshTokenIfNeeded()).access_token;
-    } catch (error) {
-      // Terminal refresh failure: tear down so SSE reopen loops don't retry forever.
-      if (shouldInvalidateSession(error)) {
-        this.auth.onSessionExpired();
-        return null;
-      }
-      throw error;
+    const token = this.auth.getToken();
+    if (token && tokenExpired(token)) {
+      this.auth.onSessionExpired();
+      return null;
     }
+    return token;
   }
 
   private authHeaders(includeContentType = true): Record<string, string> {
@@ -144,70 +93,10 @@ class APIClient {
     };
   }
 
-  private async performTokenRefresh(): Promise<TokenResponse> {
-    let networkRetries = 0;
-    for (;;) {
-      // A stale refresh token (rotated by another tab beyond the server grace window) 401s
-      // and would sign every tab out, so use the freshest one.
-      this.auth.syncFromStorage();
-      const refreshToken = this.auth.getRefreshToken();
-      if (!refreshToken) {
-        throw new RefreshTokenError(401, 'No refresh token available');
-      }
-
-      let response: Response;
-      try {
-        response = await fetch(`${this.baseURL}/auth/jwt/refresh`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ refresh_token: refreshToken }),
-        });
-      } catch {
-        if (networkRetries < NETWORK_RETRY_MS.length) {
-          await wait(NETWORK_RETRY_MS[networkRetries++]);
-          continue;
-        }
-        throw new RefreshTokenError(0);
-      }
-
-      // Two tabs refreshing at once (e.g. after a wake): the loser's 401 can arrive before the
-      // winner has stored its replacement, so wait for that instead of signing everyone out.
-      if (response.status === 401 && (await this.awaitRotatedToken(refreshToken))) {
-        continue;
-      }
-
-      if (!response.ok) {
-        throw new RefreshTokenError(response.status);
-      }
-
-      const data: TokenResponse = await response.json();
-      await this.auth.setTokens(data.access_token, data.refresh_token);
-      return data;
-    }
-  }
-
-  // True once another tab has stored a different refresh token than staleToken.
-  private async awaitRotatedToken(staleToken: string): Promise<boolean> {
-    for (const delayMs of ROTATION_WAIT_MS) {
-      await wait(delayMs);
-      this.auth.syncFromStorage();
-      if (this.auth.getRefreshToken() !== staleToken) return true;
-    }
-    return false;
-  }
-
-  private async refreshTokenIfNeeded(): Promise<TokenResponse> {
-    if (this.refreshingPromise) {
-      return this.refreshingPromise;
-    }
-
-    this.refreshingPromise = this.performTokenRefresh();
-
-    try {
-      return await this.refreshingPromise;
-    } finally {
-      this.refreshingPromise = null;
-    }
+  // Only a missing, expired or signed-out session gets a 401 from the API.
+  private sessionExpired(): never {
+    this.auth.onSessionExpired();
+    throw new Error('Session expired');
   }
 
   private async handleResponse<T>(response: Response): Promise<T | null> {
@@ -227,7 +116,6 @@ class APIClient {
     method: RequestMethod = 'GET',
     options: RequestOptions = {},
     additionalHeaders: Record<string, string> = {},
-    isRetry = false,
   ): Promise<T | null> {
     const { data, formData, signal, ...customConfig } = options;
 
@@ -259,23 +147,8 @@ class APIClient {
       throw new NetworkError();
     }
 
-    if (response.status === 401 && !isRetry && !endpoint.includes('/auth/jwt/')) {
-      const hasRefreshToken = !!this.auth.getRefreshToken();
-      if (hasRefreshToken) {
-        try {
-          await this.refreshTokenIfNeeded();
-          return this.request<T>(endpoint, method, options, additionalHeaders, true);
-        } catch (error) {
-          if (shouldInvalidateSession(error)) {
-            this.auth.onSessionExpired();
-            throw new Error('Session expired');
-          }
-          throw error;
-        }
-      }
-      // 401 without refresh → session dead; don't leave UI looking connected.
-      this.auth.onSessionExpired();
-      throw new Error('Session expired');
+    if (response.status === 401 && endpoint !== '/auth/jwt/login') {
+      this.sessionExpired();
     }
 
     return this.handleResponse(response);
@@ -305,27 +178,15 @@ class APIClient {
     return this.request(endpoint, 'DELETE', { signal });
   }
 
-  async getBlob(endpoint: string, signal?: AbortSignal, isRetry = false): Promise<Blob> {
+  async getBlob(endpoint: string, signal?: AbortSignal): Promise<Blob> {
     const response = await fetch(`${this.baseURL}${endpoint}`, {
       method: 'GET',
       headers: this.authHeaders(false),
       signal,
     });
 
-    if (response.status === 401 && !isRetry) {
-      const hasRefreshToken = !!this.auth.getRefreshToken();
-      if (hasRefreshToken) {
-        try {
-          await this.refreshTokenIfNeeded();
-          return this.getBlob(endpoint, signal, true);
-        } catch (error) {
-          if (shouldInvalidateSession(error)) {
-            this.auth.onSessionExpired();
-            throw new Error('Session expired');
-          }
-          throw error;
-        }
-      }
+    if (response.status === 401) {
+      this.sessionExpired();
     }
 
     if (!response.ok) {

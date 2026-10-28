@@ -83,7 +83,7 @@ func run() error {
 		t := time.NewTicker(6 * time.Hour)
 		defer t.Stop()
 		for {
-			a.Auth.PurgeExpiredRefreshTokens(ctx)
+			a.Auth.PurgeExpiredSessions(ctx)
 			select {
 			case <-ctx.Done():
 				return

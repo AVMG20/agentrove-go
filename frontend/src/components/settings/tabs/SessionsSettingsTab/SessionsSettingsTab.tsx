@@ -59,8 +59,7 @@ export function SessionsSettingsTab() {
         <div>
           <h2 className={styles.title}>Sessions</h2>
           <p className={styles.description}>
-            Devices signed in to your account. Revoking a session signs that device out within a few
-            minutes.
+            Devices signed in to your account. Revoking a session signs that device out right away.
           </p>
         </div>
         {otherCount > 0 && (
@@ -104,14 +103,6 @@ export function SessionsSettingsTab() {
                     <span title={formatFullTimestamp(session.created_at)}>
                       Signed in {formatRelativeTime(session.created_at)}
                     </span>
-                    {!session.current && (
-                      <span
-                        className={styles.muted}
-                        title={formatFullTimestamp(session.last_used_at)}
-                      >
-                        Last active {formatRelativeTime(session.last_used_at)}
-                      </span>
-                    )}
                   </div>
                 </div>
                 {!session.current && (

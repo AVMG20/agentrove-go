@@ -21,7 +21,6 @@ const session = (id: string, userAgent: string, current = false): AuthSession =>
   user_agent: userAgent,
   ip_address: `10.0.0.${id.length}`,
   created_at: '2026-10-25T00:00:00Z',
-  last_used_at: '2026-10-26T00:00:00Z',
   current,
 });
 

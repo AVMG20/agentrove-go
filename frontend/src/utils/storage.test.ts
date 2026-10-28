@@ -32,121 +32,63 @@ describe('safe localStorage helpers', () => {
 });
 
 describe('authStorage', () => {
-  it('persists and reads back both tokens', async () => {
+  it('persists and reads back the token', async () => {
     const { authStorage } = await load();
-    await authStorage.setTokens('tok', 'refresh');
+    authStorage.setToken('tok');
     expect(authStorage.getToken()).toBe('tok');
-    expect(authStorage.getRefreshToken()).toBe('refresh');
     expect(localStorage.getItem('auth_token')).toBe('tok');
-    expect(localStorage.getItem('refresh_token')).toBe('refresh');
   });
 
-  it('hydrates the token cache from pre-existing localStorage', async () => {
+  it('reads a token stored by an earlier page load', async () => {
     localStorage.setItem('auth_token', 'existing');
     const { authStorage } = await load();
     expect(authStorage.getToken()).toBe('existing');
   });
 
-  it('clears both tokens on clearAuth', async () => {
+  it('clears the token from memory and storage', async () => {
     const { authStorage } = await load();
-    await authStorage.setTokens('a', 'r');
-
+    authStorage.setToken('a');
     authStorage.clearAuth();
     expect(authStorage.getToken()).toBeNull();
-    expect(authStorage.getRefreshToken()).toBeNull();
     expect(localStorage.getItem('auth_token')).toBeNull();
-    expect(localStorage.getItem('refresh_token')).toBeNull();
   });
 
-  it('applies token changes from other tabs via the storage event', async () => {
+  it('adopts a token another tab stored', async () => {
     const { authStorage } = await load();
-    await authStorage.setTokens('tok', 'refresh');
-
-    window.dispatchEvent(
-      new StorageEvent('storage', { key: 'refresh_token', newValue: 'rotated' }),
-    );
-    window.dispatchEvent(new StorageEvent('storage', { key: 'auth_token', newValue: 'fresh' }));
-
-    expect(authStorage.getRefreshToken()).toBe('rotated');
-    expect(authStorage.getToken()).toBe('fresh');
+    authStorage.setToken('tok');
+    window.dispatchEvent(new StorageEvent('storage', { key: 'auth_token', newValue: 'renewed' }));
+    expect(authStorage.getToken()).toBe('renewed');
   });
 
-  it('adopts tokens rotated by another tab when the storage event was missed', async () => {
+  it('notifies listeners when another tab signs out', async () => {
     const { authStorage } = await load();
-    await authStorage.setTokens('old-access', 'old-refresh');
-    // Another tab rotated while this page was frozen/bfcached: no event delivered.
-    localStorage.setItem('auth_token', 'new-access');
-    localStorage.setItem('refresh_token', 'new-refresh');
-
-    expect(authStorage.getRefreshToken()).toBe('old-refresh');
-    authStorage.syncFromStorage();
-
-    expect(authStorage.getRefreshToken()).toBe('new-refresh');
-    expect(authStorage.getToken()).toBe('new-access');
-  });
-
-  it('keeps in-memory tokens when storage holds none (e.g. unwritable storage)', async () => {
-    const { authStorage } = await load();
-    await authStorage.setTokens('tok', 'refresh');
-    localStorage.clear();
-
-    authStorage.syncFromStorage();
-
-    expect(authStorage.getToken()).toBe('tok');
-    expect(authStorage.getRefreshToken()).toBe('refresh');
-  });
-
-  it('notifies listeners once another tab has removed both tokens', async () => {
-    const { authStorage } = await load();
-    await authStorage.setTokens('tok', 'refresh');
+    authStorage.setToken('tok');
     const listener = vi.fn();
     const unsubscribe = authStorage.onRemoteSignOut(listener);
-
     window.dispatchEvent(new StorageEvent('storage', { key: 'auth_token', newValue: null }));
-    expect(listener).not.toHaveBeenCalled();
-    window.dispatchEvent(new StorageEvent('storage', { key: 'refresh_token', newValue: null }));
     expect(listener).toHaveBeenCalledTimes(1);
-
+    expect(authStorage.getToken()).toBeNull();
     unsubscribe();
-  });
-
-  it('does not notify on a token rotation or while already signed out', async () => {
-    const { authStorage } = await load();
-    const listener = vi.fn();
-    authStorage.onRemoteSignOut(listener);
-
-    // Signed out already: cache is empty, so a stray null event is not a sign-out.
-    window.dispatchEvent(new StorageEvent('storage', { key: 'refresh_token', newValue: null }));
-    expect(listener).not.toHaveBeenCalled();
-
-    await authStorage.setTokens('tok', 'refresh');
-    window.dispatchEvent(
-      new StorageEvent('storage', { key: 'refresh_token', newValue: 'rotated' }),
-    );
-    expect(listener).not.toHaveBeenCalled();
   });
 
   it('treats localStorage.clear() in another tab as a sign-out', async () => {
     const { authStorage } = await load();
-    await authStorage.setTokens('tok', 'refresh');
+    authStorage.setToken('tok');
     const listener = vi.fn();
     authStorage.onRemoteSignOut(listener);
-
     window.dispatchEvent(new StorageEvent('storage', { key: null }));
-
     expect(listener).toHaveBeenCalledTimes(1);
-    expect(authStorage.getToken()).toBeNull();
   });
 
-  it('drops cached tokens when another tab logs out', async () => {
+  it('does not notify when already signed out or for unrelated keys', async () => {
     const { authStorage } = await load();
-    await authStorage.setTokens('tok', 'refresh');
-
+    const listener = vi.fn();
+    authStorage.onRemoteSignOut(listener);
     window.dispatchEvent(new StorageEvent('storage', { key: 'auth_token', newValue: null }));
-    window.dispatchEvent(new StorageEvent('storage', { key: 'refresh_token', newValue: null }));
-
-    expect(authStorage.getToken()).toBeNull();
-    expect(authStorage.getRefreshToken()).toBeNull();
+    authStorage.setToken('tok');
+    window.dispatchEvent(new StorageEvent('storage', { key: 'other', newValue: null }));
+    expect(listener).not.toHaveBeenCalled();
+    expect(authStorage.getToken()).toBe('tok');
   });
 });
 

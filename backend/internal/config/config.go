@@ -25,8 +25,7 @@ type Config struct {
 	FrontendDir string
 
 	SecretKey                string
-	AccessTokenTTL           time.Duration
-	RefreshTokenTTL          time.Duration
+	SessionTTL               time.Duration
 	RequireEmailVerification bool
 	RegistrationDisabled     bool
 
@@ -107,8 +106,7 @@ func Load() (*Config, error) {
 		APIPrefix:                "/api/v1",
 		FrontendDir:              env("FRONTEND_DIR", ""),
 		SecretKey:                env("SECRET_KEY", ""),
-		AccessTokenTTL:           time.Duration(envInt("ACCESS_TOKEN_EXPIRE_MINUTES", 15)) * time.Minute,
-		RefreshTokenTTL:          time.Duration(envInt("REFRESH_TOKEN_EXPIRE_DAYS", 30)) * 24 * time.Hour,
+		SessionTTL:               time.Duration(envInt("SESSION_EXPIRE_DAYS", 30)) * 24 * time.Hour,
 		RequireEmailVerification: envBool("REQUIRE_EMAIL_VERIFICATION", false),
 		RegistrationDisabled:     envBool("REGISTRATION_DISABLED", false),
 		StoragePath:              env("STORAGE_PATH", "/data/agentrove/storage"),

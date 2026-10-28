@@ -1,6 +1,7 @@
 package artifact
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -25,7 +26,7 @@ func setup(t *testing.T) (*Module, *http.ServeMux) {
 	}
 	t.Cleanup(func() { d.Close() })
 	keys, _ := auth.NewKeys(strings.Repeat("k", 40))
-	cfg := &config.Config{APIPrefix: "/api/v1", ArtifactViewTokenTTL: time.Minute}
+	cfg := &config.Config{APIPrefix: "/api/v1", ArtifactViewTokenTTL: time.Minute, SessionTTL: time.Hour}
 	a := &app.App{Cfg: cfg, DB: d, Keys: keys, Auth: &auth.Service{DB: d, Cfg: cfg, Keys: keys}}
 	now := db.Now()
 	for i, id := range []string{owner, "22222222-2222-2222-2222-222222222222"} {
@@ -40,6 +41,16 @@ func setup(t *testing.T) (*Module, *http.ServeMux) {
 	return m, mux
 }
 
+// sessionToken signs userID in and returns the session's token.
+func sessionToken(t *testing.T, m *Module, userID string) (string, error) {
+	t.Helper()
+	sid, err := m.a.Auth.CreateSession(context.Background(), userID, "ua", "ip")
+	if err != nil {
+		t.Fatal(err)
+	}
+	return m.a.Auth.IssueSessionToken(userID, sid)
+}
+
 func do(mux *http.ServeMux, method, path, token, body string) *httptest.ResponseRecorder {
 	req := httptest.NewRequest(method, path, strings.NewReader(body))
 	if token != "" {
@@ -52,9 +63,9 @@ func do(mux *http.ServeMux, method, path, token, body string) *httptest.Response
 
 func TestArtifactLifecycle(t *testing.T) {
 	m, mux := setup(t)
-	session, _ := m.a.Keys.IssueToken(owner, auth.AudienceSession, time.Hour)
+	session, _ := sessionToken(t, m, owner)
 	agent, _ := m.a.Keys.IssueToken(owner, auth.AudienceArtifactAgent, time.Hour)
-	other, _ := m.a.Keys.IssueToken("22222222-2222-2222-2222-222222222222", auth.AudienceSession, time.Hour)
+	other, _ := sessionToken(t, m, "22222222-2222-2222-2222-222222222222")
 
 	rec := do(mux, "POST", "/api/v1/artifacts", agent, `{"title":"T","html":"<p>1</p>"}`)
 	if rec.Code != http.StatusCreated {
@@ -200,8 +211,8 @@ func TestHistoryErrorsAndState(t *testing.T) {
 	}
 
 	cur, _ := svc.Get(ctx, a.ID, owner)
-	session, _ := m.a.Keys.IssueToken(owner, auth.AudienceSession, time.Hour)
-	other, _ := m.a.Keys.IssueToken("22222222-2222-2222-2222-222222222222", auth.AudienceSession, time.Hour)
+	session, _ := sessionToken(t, m, owner)
+	other, _ := sessionToken(t, m, "22222222-2222-2222-2222-222222222222")
 	base := "/api/v1/artifacts/" + a.ID
 	body := `{"version":` + strconv.Itoa(cur.Version) + `,"messages":["boom","boom"," "]}`
 	if rec := do(mux, "POST", base+"/errors", session, body); rec.Code != 204 {
@@ -282,7 +293,7 @@ func TestListSearchAndPages(t *testing.T) {
 	}
 
 	// A pinned artifact leads the list and keeps its version and updated_at.
-	session, _ := m.a.Keys.IssueToken(owner, auth.AudienceSession, time.Hour)
+	session, _ := sessionToken(t, m, owner)
 	all, _ := m.svc.List(ctx, owner, ListOptions{})
 	last := all[len(all)-1]
 	if rec := do(mux, "PATCH", "/api/v1/artifacts/"+last.ID, session, `{"pinned":true}`); rec.Code != 200 || !strings.Contains(rec.Body.String(), `"pinned_at":"`) {

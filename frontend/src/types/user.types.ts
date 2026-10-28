@@ -18,18 +18,15 @@ export interface AuthConfig {
 
 export interface AuthResponse {
   access_token: string;
-  refresh_token: string;
   token_type: string;
 }
 
-// GET /auth/sessions — one per signed-in device; the id survives token refreshes.
+// GET /auth/sessions — one per signed-in device.
 export interface AuthSession {
   id: string;
   user_agent: string;
   ip_address: string;
   created_at: string;
-  // Last token refresh, so it trails real activity by up to the access token lifetime.
-  last_used_at: string;
   current: boolean;
 }
 

@@ -73,7 +73,7 @@ async function signup(data: SignupRequest): Promise<User> {
 
     const loginResponse = await apiClient.postForm<AuthResponse>('/auth/jwt/login', formData);
     const auth = ensureResponse(loginResponse, 'Invalid response from server');
-    await authStorage.setTokens(auth.access_token, auth.refresh_token);
+    authStorage.setToken(auth.access_token);
 
     return user;
   });
@@ -91,7 +91,7 @@ async function login(data: LoginRequest): Promise<AuthResponse> {
     const response = await apiClient.postForm<AuthResponse>('/auth/jwt/login', formData);
     const payload = ensureResponse(response, 'Invalid response from server');
 
-    await authStorage.setTokens(payload.access_token, payload.refresh_token);
+    authStorage.setToken(payload.access_token);
     return payload;
   });
 }
@@ -104,10 +104,9 @@ async function getCurrentUser(): Promise<User> {
 }
 
 async function logout(): Promise<void> {
-  const currentRefreshToken = authStorage.getRefreshToken();
   try {
-    if (currentRefreshToken) {
-      await apiClient.post('/auth/jwt/logout', { refresh_token: currentRefreshToken });
+    if (authStorage.getToken()) {
+      await apiClient.post('/auth/jwt/logout');
     }
   } catch (error) {
     // Revocation is best effort. Failing here (offline, 401 on an expired access token)
