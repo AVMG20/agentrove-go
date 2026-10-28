@@ -20,6 +20,7 @@ import type {
 import type { ToolEventPayload } from '@/types/tools.types';
 import type { QueueProcessingData, StreamEnvelope, StreamState } from '@/types/stream.types';
 import { useMessageCache } from '@/hooks/useMessageCache';
+import { useMessageQueueStore } from '@/store/messageQueueStore';
 import { streamService } from '@/services/streamService';
 import type { StreamOptions } from '@/services/streamService';
 import { useChatSettingsStore, type PermissionMode } from '@/store/chatSettingsStore';
@@ -430,6 +431,14 @@ export function useStreamCallbacks({
       queryClient.invalidateQueries({ queryKey: queryKeys.chatsSearchAll });
       // The session panel lists artifacts the turn published.
       queryClient.invalidateQueries({ queryKey: queryKeys.artifacts });
+      // Messages sent into the turn are in the chat now or, after a stop, back
+      // in the server's queue.
+      if (targetChatId) {
+        const queueStore = useMessageQueueStore.getState();
+        if (queueStore.getQueue(targetChatId).some((m) => m.awaitingPickup)) {
+          void queueStore.fetchQueue(targetChatId, true);
+        }
+      }
 
       // Server mutates title/updated_at/context during the turn — refresh even if off-screen.
       if (targetChatId) {

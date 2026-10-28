@@ -100,9 +100,10 @@ type turn struct {
 	cancelled atomic.Bool
 	done      chan struct{}
 
-	in   *inbox
-	tr   *claude.Translator
-	sess *claude.Session
+	in    *inbox
+	tr    *claude.Translator
+	sess  *claude.Session
+	steer *steering
 
 	mu             sync.Mutex
 	buf            []bufferedEvent
@@ -138,7 +139,7 @@ func newTurn(m *Module, req *turnRequest) *turn {
 	t := &turn{
 		m: m, req: req, chatID: req.chat.ID, streamID: uuid.NewString(),
 		ctx: ctx, cancel: cancel, done: make(chan struct{}),
-		in: newInbox(), tr: claude.NewTranslator(),
+		in: newInbox(), tr: claude.NewTranslator(), steer: newSteering(),
 		perms: map[string]*pendingPerm{}, elicits: map[string]*pendingElicit{},
 		lastFlush: time.Now(), lastCheckpoint: time.Now(), publish: req.userID,
 	}
@@ -421,12 +422,20 @@ func (t *turn) execute() (*claude.Result, error) {
 			return nil, err
 		}
 	}
-	echoSeen := echo == ""
+	c := newCycle(echo)
+	// Messages steered in from the queue but never sent go back to it: they
+	// run next, as send-now would have, unless the user stopped the turn.
+	t.steer.start()
+	defer func() {
+		for _, q := range t.steer.close() {
+			t.requeueSteered(q, !t.cancelled.Load())
+		}
+	}()
 	// handle consumes one message and returns the turn's result, if it ended.
 	handle := func(msg claude.Message) *claude.Result {
 		if msg.Type == "user" && msg.IsReplay {
-			if msg.UUID == echo {
-				echoSeen = true
+			if q := c.replayed(msg.UUID); q != nil {
+				t.emitSteered(q)
 			}
 			return nil
 		}
@@ -434,7 +443,7 @@ func (t *turn) execute() (*claude.Result, error) {
 		for _, e := range evs {
 			t.process(e)
 		}
-		if res == nil || (!echoSeen && !t.cancelled.Load()) {
+		if res == nil || (!c.settled() && !t.cancelled.Load()) {
 			return nil
 		}
 		t.mu.Lock()
@@ -456,6 +465,8 @@ func (t *turn) execute() (*claude.Result, error) {
 			if res := t.drain(handle); res != nil {
 				return res, nil
 			}
+		case <-t.steer.ready:
+			t.sendSteered(sb, sess, c)
 		case <-sess.Done():
 			// The reader may have queued the final messages just before exit.
 			if res := t.drain(handle); res != nil {
@@ -468,10 +479,30 @@ func (t *turn) execute() (*claude.Result, error) {
 		case <-ctxDone:
 			ctxDone = nil
 			t.denyPending("The user interrupted this turn.")
+			// Steered messages Claude hasn't started on are dropped with the
+			// turn and go back to the user's queue (not run: this is a stop).
+			steered := c.unechoed()
 			go func() {
 				ictx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 				defer cancel()
-				_ = sess.Interrupt(ictx)
+				if len(steered) == 0 {
+					_ = sess.Interrupt(ictx)
+					return
+				}
+				dropped, err := sess.InterruptCancelQueued(ictx)
+				if err != nil {
+					// No answer: the process is likely being killed, taking them with it.
+					slog.Warn("interrupt with steered messages", "chat", t.chatID, "err", err)
+					for _, q := range steered {
+						t.requeueSteered(q, false)
+					}
+					return
+				}
+				for _, id := range dropped {
+					if q := steered[id]; q != nil {
+						t.requeueSteered(q, false)
+					}
+				}
 			}()
 			interruptDeadline = time.After(interruptGrace)
 		case <-interruptDeadline:

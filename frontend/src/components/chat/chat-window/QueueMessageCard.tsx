@@ -279,6 +279,14 @@ export const QueueMessageCard = memo(function QueueMessageCard({
               <Spinner size="xs" />
               Sending...
             </span>
+          ) : message.awaitingPickup ? (
+            <span
+              className={styles.sending}
+              title="Claude reads it at its next step; running subagents keep going"
+            >
+              <Spinner size="xs" />
+              Waiting for Claude…
+            </span>
           ) : isEditing ? (
             <>
               <Button

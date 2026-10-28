@@ -28,7 +28,9 @@ interface MessageQueueState<AddArgs extends unknown[]> {
   getQueue: (chatId: string) => LocalQueuedMessage[];
   sendNow: (chatId: string, messageId: string) => Promise<boolean>;
   clearQueue: (chatId: string) => void;
-  fetchQueue: (chatId: string) => Promise<void>;
+  // settle: the turn ended, so items awaiting pickup are either in the chat or
+  // back in the server's queue; drop the local copies.
+  fetchQueue: (chatId: string, settle?: boolean) => Promise<void>;
   removeLocalOnly: (chatId: string, messageId: string) => void;
   // Resend an item that failed to reach the server. Resolves to the server id, or
   // null if it failed on the network again; rejects (and drops the item) when the
@@ -223,6 +225,17 @@ const createQueueStore = <AddArgs extends unknown[]>(api: QueueApi<AddArgs>) => 
         try {
           await api.sendNow(chatId, messageId);
           clearTimeout(timeout);
+          set((state) => {
+            const nextQueues = new Map(state.queues);
+            const currentQueue = nextQueues.get(chatId) || [];
+            nextQueues.set(
+              chatId,
+              currentQueue.map((msg) =>
+                msg.id === messageId ? { ...msg, sendingNow: false, awaitingPickup: true } : msg,
+              ),
+            );
+            return { queues: nextQueues };
+          });
           return true;
         } catch (error) {
           console.error('Failed to send now:', error);
@@ -270,7 +283,7 @@ const createQueueStore = <AddArgs extends unknown[]>(api: QueueApi<AddArgs>) => 
       },
 
       // Server messages win; unsynced locals without a server counterpart are kept.
-      fetchQueue: async (chatId: string) => {
+      fetchQueue: async (chatId: string, settle = false) => {
         try {
           const serverMessages = await api.getQueue(chatId);
 
@@ -279,7 +292,10 @@ const createQueueStore = <AddArgs extends unknown[]>(api: QueueApi<AddArgs>) => 
             const existingQueue = nextQueues.get(chatId) || [];
 
             const serverIds = new Set(serverMessages.map((m) => m.id));
-            const pendingMessages = existingQueue.filter((m) => !m.synced && !serverIds.has(m.id));
+            // Items awaiting pickup left the server queue but aren't in the chat yet.
+            const pendingMessages = existingQueue.filter(
+              (m) => (!m.synced || (m.awaitingPickup && !settle)) && !serverIds.has(m.id),
+            );
 
             const syncedMessages: LocalQueuedMessage[] = serverMessages.map((msg) => ({
               id: msg.id,

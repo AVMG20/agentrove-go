@@ -47,4 +47,7 @@ export interface LocalQueuedMessage {
   // Never reached the server (network error); retried by hand or on reconnect.
   failed?: boolean;
   sendingNow: boolean;
+  // Sent into the running turn; Claude takes it at its next step (running
+  // subagents keep going), and it moves into the chat then (user_steering).
+  awaitingPickup?: boolean;
 }

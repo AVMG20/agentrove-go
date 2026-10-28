@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"strings"
 	"sync"
@@ -20,6 +21,10 @@ type fakeProc struct {
 	stderrR *io.PipeReader
 	stderrW *io.PipeWriter
 	exited  chan struct{}
+	// Control requests the fake has seen, and an optional reply per subtype.
+	mu       sync.Mutex
+	controls []map[string]any
+	replies  map[string]string
 }
 
 func newFakeProc(t *testing.T) *fakeProc {
@@ -32,11 +37,19 @@ func newFakeProc(t *testing.T) *fakeProc {
 		sc := bufio.NewScanner(p.stdinR)
 		for sc.Scan() {
 			var req struct {
-				Type      string `json:"type"`
-				RequestID string `json:"request_id"`
+				Type      string         `json:"type"`
+				RequestID string         `json:"request_id"`
+				Request   map[string]any `json:"request"`
 			}
 			if json.Unmarshal(sc.Bytes(), &req) == nil && req.Type == "control_request" {
-				p.line(`{"type":"control_response","response":{"subtype":"success","request_id":"` + req.RequestID + `","response":{}}}`)
+				p.mu.Lock()
+				p.controls = append(p.controls, req.Request)
+				reply := p.replies[fmt.Sprint(req.Request["subtype"])]
+				p.mu.Unlock()
+				if reply == "" {
+					reply = "{}"
+				}
+				p.line(`{"type":"control_response","response":{"subtype":"success","request_id":"` + req.RequestID + `","response":` + reply + `}}`)
 			}
 		}
 	}()
@@ -145,5 +158,31 @@ func TestOneShotEnvDropsHostSecretsAndUnsafeUserVars(t *testing.T) {
 		if got[k] != v {
 			t.Fatalf("env[%s] = %q, want %q (env %v)", k, got[k], v, got)
 		}
+	}
+}
+
+// A stop with steered messages pending asks the CLI to drop them and reports
+// which it dropped, so they can go back to the user's queue.
+func TestInterruptCancelQueuedReportsDropped(t *testing.T) {
+	p := newFakeProc(t)
+	p.mu.Lock()
+	p.replies = map[string]string{"interrupt": `{"still_queued":[],"cancelled":["u1"]}`}
+	p.mu.Unlock()
+	s, _ := startFake(t, p)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	dropped, err := s.InterruptCancelQueued(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(dropped) != 1 || dropped[0] != "u1" {
+		t.Fatalf("dropped = %v, want [u1]", dropped)
+	}
+	p.mu.Lock()
+	last := p.controls[len(p.controls)-1]
+	p.mu.Unlock()
+	if last["subtype"] != "interrupt" || last["cancel_queued"] != true {
+		t.Fatalf("control request = %v, want interrupt with cancel_queued", last)
 	}
 }

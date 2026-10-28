@@ -1,4 +1,4 @@
-// @vitest-environment jsdom
+// @vitest-environment happy-dom
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { useMessageQueueStore, EMPTY_QUEUE } from './messageQueueStore';
 import { queueService } from '@/services/queueService';
@@ -244,15 +244,15 @@ describe('sendNow', () => {
     expect(await useMessageQueueStore.getState().sendNow('c1', 'missing')).toBe(false);
   });
 
-  it('sends a synced message and leaves sendingNow set on success', async () => {
+  it('sends a synced message and waits for the turn to pick it up', async () => {
     svc.sendNow.mockResolvedValue(undefined);
     seed('c1', [localMsg({ id: 'm1', synced: true })]);
     const ok = await useMessageQueueStore.getState().sendNow('c1', 'm1');
 
     expect(ok).toBe(true);
     expect(svc.sendNow).toHaveBeenCalledWith('c1', 'm1');
-    // Flag stays set until the stream actually processes and removes the message.
-    expect(queueOf('c1')[0].sendingNow).toBe(true);
+    // Stays listed until the stream takes it (user_steering or queue_processing).
+    expect(queueOf('c1')[0]).toMatchObject({ sendingNow: false, awaitingPickup: true });
   });
 
   it('resets sendingNow and returns false when the send fails', async () => {
@@ -306,6 +306,17 @@ describe('fetchQueue', () => {
     expect(queue[0]).toMatchObject({ content: 'fresh', synced: true });
     expect(queue[0].queuedAt).toBe(new Date('2020-01-01T00:00:00Z').getTime());
     expect(queue[1]).toMatchObject({ id: 'temp', synced: false });
+  });
+
+  it('keeps an item awaiting pickup until the turn settles', async () => {
+    seed('c1', [localMsg({ id: 's1', synced: true, awaitingPickup: true })]);
+    svc.getQueue.mockResolvedValue([]);
+
+    await useMessageQueueStore.getState().fetchQueue('c1');
+    expect(queueOf('c1').map((m) => m.id)).toEqual(['s1']);
+
+    await useMessageQueueStore.getState().fetchQueue('c1', true);
+    expect(useMessageQueueStore.getState().queues.has('c1')).toBe(false);
   });
 
   it('drops the bucket when the server has nothing and no locals are pending', async () => {

@@ -110,8 +110,9 @@ func (m *Module) clearQueue(w http.ResponseWriter, r *http.Request) error {
 	return httpx.NoContent(w)
 }
 
-// sendNow flags a queued message to run next: a running turn is interrupted
-// and the message takes over its stream; an idle chat starts it directly.
+// sendNow flags a queued message to run next: a running Claude turn takes it
+// as a steer (see steer.go), any other running turn is interrupted and the
+// message takes over its stream; an idle chat starts it directly.
 func (m *Module) sendNow(w http.ResponseWriter, r *http.Request) error {
 	u := user(r)
 	c, err := m.a.Store.GetChat(r.Context(), u.ID, r.PathValue("chat_id"))
@@ -126,8 +127,9 @@ func (m *Module) sendNow(w http.ResponseWriter, r *http.Request) error {
 		return httpx.NotFound("Queued message not found")
 	}
 	if t := m.activeTurn(c.ID); t != nil {
-		t.cancelled.Store(true)
-		t.cancel()
+		if err := m.sendNowRunning(r.Context(), t, c.ID, r.PathValue("message_id")); err != nil {
+			return err
+		}
 		return httpx.NoContent(w)
 	}
 	if err := m.runQueued(c.ID, u.ID, true); err != nil {

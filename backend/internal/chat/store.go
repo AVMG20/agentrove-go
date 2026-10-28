@@ -74,18 +74,27 @@ func (s *store) createMessage(ctx context.Context, q db.Querier, chatID, role, c
 	if err != nil {
 		return nil, err
 	}
-	m.Attachments = []Attachment{}
+	if m.Attachments, err = insertAttachments(ctx, q, m.ID, atts); err != nil {
+		return nil, err
+	}
+	return m, nil
+}
+
+// insertAttachments stores uploaded files as attachments of messageID.
+func insertAttachments(ctx context.Context, q db.Querier, messageID string, atts []models.Attachment) ([]Attachment, error) {
+	now := db.Now()
+	out := []Attachment{}
 	for _, a := range atts {
 		id := uuid.NewString()
 		url := "/api/v1/attachments/" + id + "/preview"
 		_, err := q.ExecContext(ctx, `INSERT INTO message_attachments (id, message_id, file_url, file_path, file_type, filename, created_at, updated_at)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?)`, id, m.ID, url, db.Deref(a.FilePath), a.FileType, db.Deref(a.Filename), now, now)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?)`, id, messageID, url, db.Deref(a.FilePath), a.FileType, db.Deref(a.Filename), now, now)
 		if err != nil {
 			return nil, err
 		}
-		m.Attachments = append(m.Attachments, Attachment{ID: id, MessageID: m.ID, FileURL: url, FileType: a.FileType, Filename: a.Filename, CreatedAt: now})
+		out = append(out, Attachment{ID: id, MessageID: messageID, FileURL: url, FileType: a.FileType, Filename: a.Filename, CreatedAt: now})
 	}
-	return m, nil
+	return out, nil
 }
 
 func (s *store) softDeleteMessage(ctx context.Context, id string) {
@@ -541,6 +550,26 @@ func (s *store) popQueued(ctx context.Context, chatID string, sendNowOnly bool) 
 		}
 		q += ` ORDER BY send_now DESC, position LIMIT 1`
 		m, err := scanQueued(tx.QueryRowContext(ctx, q, chatID))
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		if _, err := tx.ExecContext(ctx, `DELETE FROM queued_messages WHERE id = ?`, m.ID); err != nil {
+			return err
+		}
+		out = m
+		return nil
+	})
+	return out, err
+}
+
+// takeQueued removes one queued message and returns it (nil if it's gone).
+func (s *store) takeQueued(ctx context.Context, chatID, id string) (*QueuedMessage, error) {
+	var out *QueuedMessage
+	err := s.db.Tx(ctx, func(tx *sql.Tx) error {
+		m, err := scanQueued(tx.QueryRowContext(ctx, `SELECT `+queueColumns+` FROM queued_messages WHERE id = ? AND chat_id = ?`, id, chatID))
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil
 		}

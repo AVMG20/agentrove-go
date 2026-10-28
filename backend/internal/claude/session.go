@@ -443,6 +443,21 @@ func (s *Session) Interrupt(ctx context.Context) error {
 	return err
 }
 
+// InterruptCancelQueued interrupts like Interrupt and also drops user
+// messages sent mid-turn that the CLI hasn't started on; it returns their
+// uuids, so the caller can hand them back to the user.
+func (s *Session) InterruptCancelQueued(ctx context.Context) ([]string, error) {
+	raw, err := s.Control(ctx, map[string]any{"subtype": "interrupt", "cancel_queued": true})
+	if err != nil {
+		return nil, err
+	}
+	var resp struct {
+		Cancelled []string `json:"cancelled"`
+	}
+	_ = json.Unmarshal(raw, &resp)
+	return resp.Cancelled, nil
+}
+
 func (s *Session) SetModel(ctx context.Context, model string) error {
 	s.mu.Lock()
 	same := s.model == model
