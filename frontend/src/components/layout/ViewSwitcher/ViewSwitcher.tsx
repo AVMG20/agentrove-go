@@ -9,7 +9,7 @@ import {
   formatShortcut,
   SESSION_PANEL_SHORTCUT,
 } from '@/components/ui/command-menu/commandRegistry';
-import { isArtifactOnScreen, isSessionPanelShown, useUIStore } from '@/store/uiStore';
+import { isSessionPanelShown, useUIStore } from '@/store/uiStore';
 import { useIsMobile } from '@/hooks/useIsMobile';
 import { isCoarsePointer } from '@/utils/device';
 import { useSettingsQuery } from '@/hooks/queries/useSettingsQueries';
@@ -130,7 +130,6 @@ function ArtifactButton({ chatId, showTooltip }: { chatId: string; showTooltip: 
   const { data: artifacts } = useChatArtifactsQuery(chatId);
   const newest = latestArtifact(artifacts)?.updated_at;
   const seen = useUIStore((s) => s.artifactSeenByChat[chatId]);
-  const onScreen = useUIStore((s) => isArtifactOnScreen(s, false));
   const isActive = useUIStore((s) =>
     s.visibleLayout.flat().includes(artifactTileFor(chatId, s.splitChatIds)),
   );
@@ -141,7 +140,7 @@ function ArtifactButton({ chatId, showTooltip }: { chatId: string; showTooltip: 
     }
   }, [artifacts, chatId, newest, seen]);
   if (!artifacts?.length) return null;
-  const unseen = !onScreen && seen !== undefined && !!newest && newest > seen;
+  const unseen = !isActive && seen !== undefined && !!newest && newest > seen;
 
   const button = (
     <Button

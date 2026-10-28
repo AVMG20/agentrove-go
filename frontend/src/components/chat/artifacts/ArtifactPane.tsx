@@ -42,11 +42,6 @@ export function ArtifactPane({ chatId, tileId, isVisible }: ArtifactPaneProps) {
     if (!pickedId && latest) pick(chatId, latest.id);
   }, [chatId, pickedId, latest]);
 
-  const newest = latestArtifact(artifacts)?.updated_at;
-  useEffect(() => {
-    if (isVisible && newest) useUIStore.getState().markArtifactsSeen(chatId, newest);
-  }, [chatId, isVisible, newest]);
-
   if (!artifactId) {
     return (
       <Shell onClose={close}>
@@ -80,12 +75,27 @@ function ArtifactDetail({
   isVisible: boolean;
   onClose: () => void;
 }) {
-  const { data: view, error, isLoading } = useArtifactViewQuery(artifactId, isVisible);
+  const { data: view, error, isLoading, refetch } = useArtifactViewQuery(artifactId, isVisible);
   const [reloadKey, setReloadKey] = useState(0);
+  // Only the version on screen counts as seen; edits to other artifacts keep
+  // the title bar dot.
+  const shownAt = isVisible ? view?.updated_at : undefined;
+  useEffect(() => {
+    if (shownAt) useUIStore.getState().markArtifactsSeen(chatId, shownAt);
+  }, [chatId, shownAt]);
+  // A pane hidden for a while holds an expired view token; fetch a fresh one.
+  const reload = async () => {
+    await refetch();
+    setReloadKey((k) => k + 1);
+  };
   const updated = useUpdatedFlash(view?.id, view?.version);
   const fresh = useFreshArtifact(artifacts, artifactId);
   const listed = artifacts.find((a) => a.id === artifactId);
   const title = view?.title ?? listed?.title ?? 'Artifact';
+  // An artifact from another chat that this one edited isn't in the list;
+  // keep it pickable next to the chat's own.
+  const current = listed ?? view;
+  const choices = listed || !view ? artifacts : [view, ...artifacts];
   const href = `/artifacts/${artifactId}`;
 
   const copyLink = async () => {
@@ -100,16 +110,16 @@ function ArtifactDetail({
   const header = (
     <>
       <div className={styles['header-text']}>
-        {listed && artifacts.length > 1 ? (
+        {current && choices.length > 1 ? (
           <div className={styles['switcher-slot']}>
             <Dropdown
-              value={listed}
-              items={artifacts}
+              value={current}
+              items={choices}
               getItemKey={(a) => a.id}
               getItemLabel={(a) => a.title}
               onSelect={(a) => pick(chatId, a.id)}
               triggerClassName={styles.switcher}
-              searchable={artifacts.length > 6}
+              searchable={choices.length > 6}
               searchPlaceholder="Find an artifact"
               width="18rem"
             />
@@ -140,7 +150,7 @@ function ArtifactDetail({
           </Button>
         </FloatingTooltip>
       )}
-      <IconButton label="Reload" onClick={() => setReloadKey((k) => k + 1)} disabled={!view}>
+      <IconButton label="Reload" onClick={() => void reload()} disabled={!view}>
         <RotateCw className={styles.glyph} />
       </IconButton>
       <IconButton label="Copy link" onClick={() => void copyLink()}>

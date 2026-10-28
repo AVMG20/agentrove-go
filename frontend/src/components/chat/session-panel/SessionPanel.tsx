@@ -173,7 +173,7 @@ function ArtifactsCard({ chatId }: { chatId: string }) {
             styles['thread-row'],
             artifact.id === openId && styles['thread-row--selected'],
           )}
-          aria-pressed={artifact.id === openId}
+          aria-current={artifact.id === openId || undefined}
           onClick={(e) => {
             if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
             e.preventDefault();

@@ -68,7 +68,7 @@ function ArtifactCard({
         <a
           href={href}
           className={styles.main}
-          aria-pressed={isOpen}
+          aria-current={isOpen || undefined}
           onClick={(e) => {
             if (!isPlainClick(e)) return;
             e.preventDefault();
@@ -95,6 +95,10 @@ function ArtifactCard({
   );
 }
 
+// Artifacts a card already asked about this session: one missing from the list
+// (deleted, or another chat's) shouldn't refetch it on every visit.
+const refreshedMissing = new Set<string>();
+
 // The panel list and an open viewer refresh when the turn ends; a card for a
 // version they don't have yet means the agent just published it, so refresh now
 // to show it while the turn is still running.
@@ -107,6 +111,10 @@ function useRefreshOnNewVersion(artifact: PublishedArtifact, chatId: string | un
     const list = queryClient.getQueryData<Artifact[]>(queryKeys.chatArtifacts(chatId));
     const listed = list?.find((a) => a.id === id);
     if (!list || (listed && listed.version >= version)) return;
+    if (!listed) {
+      if (refreshedMissing.has(id)) return;
+      refreshedMissing.add(id);
+    }
     void queryClient.invalidateQueries({ queryKey: queryKeys.chatArtifacts(chatId) });
     void queryClient.invalidateQueries({ queryKey: queryKeys.artifactView(id) });
   }, [queryClient, chatId, id, version]);

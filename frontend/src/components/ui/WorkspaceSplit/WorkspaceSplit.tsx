@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState, ReactNode } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, ReactNode } from 'react';
 import type { KeyboardEvent, PointerEvent as ReactPointerEvent } from 'react';
 import clsx from 'clsx';
 import type { TileId } from '@/types/ui.types';
@@ -52,6 +52,19 @@ function sizesOrEven(saved: number[] | undefined, count: number): number[] {
   return Array.from({ length: count }, () => 1 / count);
 }
 
+// A split saved on a wider screen can leave a pane below the minimum here:
+// lift those panes to it, taking the difference from the panes above it.
+function withMinimum(sizes: number[], min: number): number[] {
+  if (min * sizes.length >= 1 || sizes.every((size) => size >= min)) return sizes;
+  const deficit = sizes.reduce((acc, size) => acc + Math.max(0, min - size), 0);
+  const spare = sizes.reduce((acc, size) => acc + Math.max(0, size - min), 0);
+  return sizes.map((size) => (size < min ? min : size - (deficit * (size - min)) / spare));
+}
+
+// Below this a pair is too narrow for the minimums; it still moves, within
+// these fractions of its own size.
+const PAIR_MIN_FRACTION = 0.2;
+
 const offsets = (sizes: number[]) =>
   sizes.map((_, i) => sizes.slice(0, i).reduce((a, b) => a + b, 0));
 
@@ -70,18 +83,37 @@ export function WorkspaceSplit({
   // Live sizes while a divider is dragged; saved on release.
   const [draft, setDraft] = useState<{ key: string; sizes: number[] } | null>(null);
   const [dragAxis, setDragAxis] = useState<'x' | 'y' | null>(null);
+  // Container size, so saved splits respect the minimums on this screen.
+  const [box, setBox] = useState({ width: 0, height: 0 });
+  // Ends the drag in progress (listeners live on window, not the divider,
+  // which a layout change mid-drag can remove).
+  const endDragRef = useRef<(() => void) | null>(null);
+  useEffect(() => () => endDragRef.current?.(), []);
+  useLayoutEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const measure = () => setBox({ width: el.clientWidth, height: el.clientHeight });
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
 
   const { placements, dividers } = useMemo(() => {
-    const sizesFor = (key: string, count: number) =>
-      draft?.key === key ? draft.sizes : sizesOrEven(paneSizes[key], count);
+    const sizesFor = (key: string, count: number, minFraction: number) =>
+      draft?.key === key
+        ? draft.sizes
+        : withMinimum(sizesOrEven(paneSizes[key], count), minFraction);
+    const minWidth = box.width ? MIN_PANE_WIDTH / box.width : 0;
+    const minHeight = box.height ? MIN_PANE_HEIGHT / box.height : 0;
     const map = new Map<TileId, TilePlacement>();
     const lines: Divider[] = [];
     const rKey = rowKey(visibleLayout);
-    const rowSizes = sizesFor(rKey, visibleLayout.length);
+    const rowSizes = sizesFor(rKey, visibleLayout.length, minHeight);
     const rowTops = offsets(rowSizes);
     visibleLayout.forEach((row, r) => {
       const cKey = columnKey(row);
-      const colSizes = sizesFor(cKey, row.length);
+      const colSizes = sizesFor(cKey, row.length, minWidth);
       const colLefts = offsets(colSizes);
       row.forEach((tileId, c) => {
         map.set(tileId, {
@@ -117,14 +149,14 @@ export function WorkspaceSplit({
       }
     });
     return { placements: map, dividers: lines };
-  }, [visibleLayout, paneSizes, draft]);
+  }, [visibleLayout, paneSizes, draft, box]);
 
   // Moves the divider to `fraction` of the pair's start, kept off the minimums.
   const resized = (divider: Divider, delta: number, total: number) => {
     const { index, sizes } = divider;
     const pair = sizes[index] + sizes[index + 1];
     const minPx = divider.axis === 'x' ? MIN_PANE_WIDTH : MIN_PANE_HEIGHT;
-    const min = Math.min(minPx / total, pair / 2);
+    const min = Math.min(minPx / total, pair * PAIR_MIN_FRACTION);
     const first = Math.min(pair - min, Math.max(min, sizes[index] + delta));
     return sizes.map((size, i) => (i === index ? first : i === index + 1 ? pair - first : size));
   };
@@ -133,8 +165,7 @@ export function WorkspaceSplit({
     const rect = containerRef.current?.getBoundingClientRect();
     if (!rect || event.button !== 0) return;
     event.preventDefault();
-    const handle = event.currentTarget;
-    handle.setPointerCapture(event.pointerId);
+    endDragRef.current?.();
     const total = divider.axis === 'x' ? rect.width : rect.height;
     const origin = divider.axis === 'x' ? event.clientX : event.clientY;
     let latest = divider.sizes;
@@ -144,16 +175,20 @@ export function WorkspaceSplit({
       setDraft({ key: divider.key, sizes: latest });
     };
     const onEnd = () => {
-      handle.removeEventListener('pointermove', onMove);
-      handle.removeEventListener('pointerup', onEnd);
-      handle.removeEventListener('lostpointercapture', onEnd);
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onEnd);
+      window.removeEventListener('pointercancel', onEnd);
+      window.removeEventListener('blur', onEnd);
+      endDragRef.current = null;
       setDraft(null);
       setDragAxis(null);
       if (latest !== divider.sizes) onResize(divider.key, latest);
     };
-    handle.addEventListener('pointermove', onMove);
-    handle.addEventListener('pointerup', onEnd);
-    handle.addEventListener('lostpointercapture', onEnd);
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onEnd);
+    window.addEventListener('pointercancel', onEnd);
+    window.addEventListener('blur', onEnd);
+    endDragRef.current = onEnd;
     setDragAxis(divider.axis);
   };
 

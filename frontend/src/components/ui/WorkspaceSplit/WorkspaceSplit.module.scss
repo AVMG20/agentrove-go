@@ -67,26 +67,28 @@
     outline: none;
   }
 
+  // The grab area leans into the pane after the border, clear of the
+  // scrollbar at the edge of the pane before it.
   &--x {
     width: 9px;
-    transform: translateX(-4px);
+    transform: translateX(-2px);
     cursor: col-resize;
 
     &::after {
       top: 0;
       bottom: 0;
-      left: 3px;
+      left: 1px;
       width: 3px;
     }
   }
 
   &--y {
     height: 9px;
-    transform: translateY(-4px);
+    transform: translateY(-2px);
     cursor: row-resize;
 
     &::after {
-      top: 3px;
+      top: 1px;
       right: 0;
       left: 0;
       height: 3px;

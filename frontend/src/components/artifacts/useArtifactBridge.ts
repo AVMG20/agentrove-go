@@ -58,7 +58,10 @@ export function useArtifactBridge(
 
     const onMessage = (event: MessageEvent) => {
       const frame = frameRef.current?.contentWindow;
-      if (!frame || event.source !== frame || !isFrameMessage(event.data)) return;
+      // The sandbox gives the page an opaque origin; anything else means the
+      // frame navigated away to a real site, which gets no access.
+      if (!frame || event.source !== frame || event.origin !== 'null') return;
+      if (!isFrameMessage(event.data)) return;
       const data = event.data;
       switch (data.agentrove) {
         case 'error':
