@@ -25,7 +25,7 @@ Open http://localhost:8080 (`APP_PORT`). The frontend is embedded into the Go bi
 
 For production (e.g. Coolify), use `docker-compose-production.yml`. It builds the sandbox image and the app image (point the domain at `api`, port 8080) and keeps data in `/data/agentrove-go/storage`. Set `SECRET_KEY` and `APP_URL`.
 
-The API trusts `X-Forwarded-For` only from `TRUSTED_PROXIES` (default: loopback and private ranges, which covers Traefik on the Docker network). Requests from the box networks never count as a proxy, so code in a box can't forge its address. Don't publish the API port directly on a network where untrusted clients have private addresses.
+The API trusts `X-Forwarded-For` only from `TRUSTED_PROXIES` (default: loopback and private ranges, which covers Traefik on the Docker network). Requests from the box networks never count as a proxy, so code in a box can't forge its address. Don't publish the API port directly on a network where untrusted clients have private addresses. Behind Cloudflare's proxy no setup is needed: when the client turns out to be a Cloudflare edge, its `CF-Connecting-IP` is used instead.
 
 Box networking: each user's box gets its own bridge network. The API firewalls boxes on the host with nftables, so they reach the internet and `api:8080` but not the host, other containers, the LAN or cloud metadata. To do this it runs a short-lived `NET_ADMIN` helper container with host networking. `SANDBOX_EGRESS_FIREWALL=off` turns this off, and `dry-run` only validates the rules. To manage the rules on the host instead, use `deploy/agentrove-egress.sh`. `deploy/README.md` has the reachability map, settings (`SANDBOX_EGRESS_ALLOW` for LAN services boxes may use) and a verification checklist.
 

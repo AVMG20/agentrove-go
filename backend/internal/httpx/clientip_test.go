@@ -71,3 +71,34 @@ func TestClientIPBoxSubnets(t *testing.T) {
 		t.Fatalf("box hop: %q", got)
 	}
 }
+
+// A Cloudflare edge is replaced by CF-Connecting-IP; anyone else's is ignored.
+func TestClientIPCloudflare(t *testing.T) {
+	trusted := []netip.Prefix{netip.MustParsePrefix("10.0.0.0/8")}
+	ip := func(remote, xff, cf string) string {
+		r := httptest.NewRequest("GET", "/", nil)
+		r.RemoteAddr = remote
+		if xff != "" {
+			r.Header.Set("X-Forwarded-For", xff)
+		}
+		if cf != "" {
+			r.Header.Set("CF-Connecting-IP", cf)
+		}
+		return ClientIP(r, trusted, nil)
+	}
+	cases := []struct{ name, remote, xff, cf, want string }{
+		{"edge behind proxy", "10.0.0.2:80", "172.71.98.178", "198.51.100.7", "198.51.100.7"},
+		{"proxy trusting cloudflare", "10.0.0.2:80", "198.51.100.7, 162.159.113.74", "198.51.100.7", "198.51.100.7"},
+		{"edge direct", "141.101.76.111:443", "", "2001:db8::1", "2001:db8::1"},
+		{"v4-mapped edge", "[::ffff:172.71.98.178]:443", "", "198.51.100.7", "198.51.100.7"},
+		{"forged from non-edge", "10.0.0.2:80", "203.0.113.9", "198.51.100.7", "203.0.113.9"},
+		{"forged direct", "203.0.113.9:443", "", "198.51.100.7", "203.0.113.9"},
+		{"edge without header", "10.0.0.2:80", "172.71.98.178", "", "172.71.98.178"},
+		{"edge with garbage header", "10.0.0.2:80", "172.71.98.178", "nope", "172.71.98.178"},
+	}
+	for _, tc := range cases {
+		if got := ip(tc.remote, tc.xff, tc.cf); got != tc.want {
+			t.Errorf("%s: ClientIP = %q, want %q", tc.name, got, tc.want)
+		}
+	}
+}

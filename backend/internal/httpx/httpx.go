@@ -272,7 +272,8 @@ func Chain(h http.Handler, mws ...func(http.Handler) http.Handler) http.Handler 
 // then X-Forwarded-For is walked from the right, skipping trusted hops, since
 // only the entries appended by our own proxies can't be forged by the client.
 // untrusted (the box networks) overrides trusted: code in a box reaches the
-// API from a private address but is never a proxy.
+// API from a private address but is never a proxy. A client that turns out to
+// be a Cloudflare edge is replaced by its CF-Connecting-IP (viaCloudflare).
 func ClientIP(r *http.Request, trusted []netip.Prefix, untrusted *PrefixSet) string {
 	host := r.RemoteAddr
 	if h, _, err := net.SplitHostPort(host); err == nil {
@@ -280,7 +281,7 @@ func ClientIP(r *http.Request, trusted []netip.Prefix, untrusted *PrefixSet) str
 	}
 	peer, err := netip.ParseAddr(host)
 	if err != nil || !isTrusted(peer.Unmap(), trusted, untrusted) {
-		return host
+		return viaCloudflare(r, host)
 	}
 	var hops []string
 	for _, v := range r.Header.Values("X-Forwarded-For") {
@@ -299,12 +300,53 @@ func ClientIP(r *http.Request, trusted []netip.Prefix, untrusted *PrefixSet) str
 			return hops[i]
 		}
 		if !isTrusted(addr, trusted, untrusted) {
-			return addr.String()
+			return viaCloudflare(r, addr.String())
 		}
 	}
 	// Every hop is one of ours (an internal caller): the furthest one.
 	addr, _ := parseHop(hops[0])
 	return addr.String()
+}
+
+// cloudflare are Cloudflare's edge ranges (https://www.cloudflare.com/ips/).
+var cloudflare = []netip.Prefix{
+	netip.MustParsePrefix("173.245.48.0/20"),
+	netip.MustParsePrefix("103.21.244.0/22"),
+	netip.MustParsePrefix("103.22.200.0/22"),
+	netip.MustParsePrefix("103.31.4.0/22"),
+	netip.MustParsePrefix("141.101.64.0/18"),
+	netip.MustParsePrefix("108.162.192.0/18"),
+	netip.MustParsePrefix("190.93.240.0/20"),
+	netip.MustParsePrefix("188.114.96.0/20"),
+	netip.MustParsePrefix("197.234.240.0/22"),
+	netip.MustParsePrefix("198.41.128.0/17"),
+	netip.MustParsePrefix("162.158.0.0/15"),
+	netip.MustParsePrefix("104.16.0.0/13"),
+	netip.MustParsePrefix("104.24.0.0/14"),
+	netip.MustParsePrefix("172.64.0.0/13"),
+	netip.MustParsePrefix("131.0.72.0/22"),
+	netip.MustParsePrefix("2400:cb00::/32"),
+	netip.MustParsePrefix("2606:4700::/32"),
+	netip.MustParsePrefix("2803:f800::/32"),
+	netip.MustParsePrefix("2405:b500::/32"),
+	netip.MustParsePrefix("2405:8100::/32"),
+	netip.MustParsePrefix("2a06:98c0::/29"),
+	netip.MustParsePrefix("2c0f:f248::/32"),
+}
+
+// viaCloudflare swaps a Cloudflare edge for the client it proxied. Cloudflare
+// overwrites CF-Connecting-IP on every request it forwards, so the header is
+// only believed when the request really came from one of its edges; Coolify's
+// Traefik doesn't trust Cloudflare and leaves just the edge in X-Forwarded-For.
+func viaCloudflare(r *http.Request, ip string) string {
+	a, err := netip.ParseAddr(ip)
+	if err != nil || !slices.ContainsFunc(cloudflare, func(p netip.Prefix) bool { return p.Contains(a.Unmap()) }) {
+		return ip
+	}
+	if c, err := netip.ParseAddr(strings.TrimSpace(r.Header.Get("CF-Connecting-IP"))); err == nil {
+		return c.Unmap().String()
+	}
+	return ip
 }
 
 // parseHop accepts "ip", "ip:port" and "[v6]:port" entries.
