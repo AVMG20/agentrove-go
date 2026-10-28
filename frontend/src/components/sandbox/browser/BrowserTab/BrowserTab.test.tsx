@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+// jsdom, not happy-dom: under happy-dom a screencast frame never gets its ack, so the frame and command tests fail.
 
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';

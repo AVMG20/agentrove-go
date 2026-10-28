@@ -1,4 +1,4 @@
-// @vitest-environment jsdom
+// @vitest-environment happy-dom
 
 import { useState } from 'react';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';

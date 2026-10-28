@@ -1,4 +1,4 @@
-// @vitest-environment jsdom
+// @vitest-environment happy-dom
 import { describe, it, expect } from 'vitest';
 import { QueryClient, type Query } from '@tanstack/react-query';
 import { persistOptions } from './queryClient';

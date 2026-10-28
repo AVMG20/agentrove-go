@@ -6,12 +6,12 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "lint": "eslint .",
+    "lint": "eslint . --cache --cache-location node_modules/.cache/eslint/",
     "lint:fix": "eslint . --fix",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "preview": "vite preview",
-    "typecheck": "tsc --noEmit -p tsconfig.app.json",
+    "typecheck": "tsc --noEmit -p tsconfig.app.json --incremental --tsBuildInfoFile node_modules/.cache/tsc/app.tsbuildinfo",
     "test": "vitest run"
   },
   "dependencies": {
@@ -60,6 +60,7 @@
     "eslint-plugin-react-hooks": "^5.1.0-rc.0",
     "eslint-plugin-react-refresh": "^0.4.11",
     "globals": "^15.9.0",
+    "happy-dom": "^21.0.4",
     "jsdom": "^29.1.1",
     "postcss": "^8.5.6",
     "prettier": "^3.4.2",

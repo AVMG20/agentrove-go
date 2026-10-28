@@ -1,4 +1,4 @@
-// @vitest-environment jsdom
+// @vitest-environment happy-dom
 
 import { createContext } from 'react';
 import type { ReactNode } from 'react';

@@ -1,4 +1,4 @@
-// @vitest-environment jsdom
+// @vitest-environment happy-dom
 import { describe, it, expect, beforeEach } from 'vitest';
 import { filterOptions, addResolvedPermission, isPermissionResolved } from './permissionStorage';
 import type { PermissionOption } from '@/types/chat.types';
