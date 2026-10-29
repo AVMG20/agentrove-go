@@ -53,11 +53,22 @@ type Window struct {
 	WindowSeconds int         `json:"window_seconds"`
 }
 
+// Device is one device sharing a proxied plan, as the bitsec proxy reports
+// it: its share of this week's plan usage and its color slot (1-based).
+type Device struct {
+	Name        string  `json:"name"`
+	Color       int     `json:"color"`
+	UsedPercent float64 `json:"used_percent"`
+	Blocked     bool    `json:"blocked"`
+}
+
 type Response struct {
 	Status   string  `json:"status"`
 	Provider *string `json:"provider"`
 	// Windows are shortest first.
-	Windows   []Window `json:"windows"`
+	Windows []Window `json:"windows"`
+	// Devices is set when a proxy splits the plan between devices.
+	Devices   []Device `json:"devices,omitempty"`
 	Error     *string  `json:"error"`
 	FetchedAt db.Time  `json:"fetched_at"`
 }
@@ -240,7 +251,28 @@ func ParseBody(provider string, body any) Response {
 	if session == nil && weekly == nil {
 		return errorResponse(provider, "Usage response had no 5-hour or weekly window")
 	}
-	return okResponse(p, session, weekly)
+	res := okResponse(p, session, weekly)
+	res.Devices = parseDevices(m["devices"])
+	return res
+}
+
+// parseDevices reads a proxy's per-device split (name, color,
+// usedPercentOfPlan, blocked); entries without a name or number are skipped.
+func parseDevices(raw any) []Device {
+	list, _ := raw.([]any)
+	var out []Device
+	for _, item := range list {
+		d, _ := item.(map[string]any)
+		name, _ := d["name"].(string)
+		used, ok := d["usedPercentOfPlan"].(float64)
+		if strings.TrimSpace(name) == "" || !ok || math.IsNaN(used) || math.IsInf(used, 0) {
+			continue
+		}
+		color, _ := d["color"].(float64)
+		blocked, _ := d["blocked"].(bool)
+		out = append(out, Device{Name: name, Color: int(color), UsedPercent: math.Min(100, math.Max(0, used)), Blocked: blocked})
+	}
+	return out
 }
 
 // ParseCodexBody reads ChatGPT's rate limits (rate_limit.primary_window and

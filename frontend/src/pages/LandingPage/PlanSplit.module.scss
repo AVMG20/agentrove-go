@@ -1,0 +1,95 @@
+@use '@/styles/globals/typography' as type;
+
+.split {
+  display: flex;
+  width: 100%;
+  max-width: var(--space-72);
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-1-5);
+  margin-top: var(--space-3);
+}
+
+.bar {
+  display: flex;
+  width: 100%;
+  height: var(--space-1-5);
+  overflow: hidden;
+  border-radius: var(--radius-full);
+  background-color: var(--theme-surface-active);
+}
+
+.segment {
+  height: 100%;
+  background-color: currentColor;
+  transition: width 300ms ease;
+
+  & + & {
+    box-shadow: inset 2px 0 0 var(--theme-surface);
+  }
+}
+
+.legend {
+  @include type.type-meta;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  column-gap: var(--space-3);
+  row-gap: var(--space-0-5);
+  color: var(--theme-text-secondary);
+}
+
+.person {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.dot {
+  width: var(--space-2);
+  height: var(--space-2);
+  border-radius: var(--radius-full);
+  background-color: currentColor;
+}
+
+.figure {
+  color: var(--theme-text-tertiary);
+  font-variant-numeric: tabular-nums;
+}
+
+.blocked {
+  color: var(--theme-error);
+}
+
+.left {
+  color: var(--theme-text-quaternary);
+  font-variant-numeric: tabular-nums;
+}
+
+// Slot 1 blue, 2 clay, 3 green, as on the proxy's admin page.
+.color--0 {
+  color: var(--theme-info);
+}
+
+.color--1 {
+  color: var(--theme-accent);
+}
+
+.color--2 {
+  color: var(--theme-success);
+}
+
+.color--3 {
+  color: var(--theme-warning);
+}
+
+.color--4 {
+  color: var(--theme-error);
+}
+
+.reset {
+  @include type.type-meta;
+  margin-top: calc(-1 * var(--space-1));
+  color: var(--theme-text-quaternary);
+  font-variant-numeric: tabular-nums;
+}

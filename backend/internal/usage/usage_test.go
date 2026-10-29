@@ -139,9 +139,20 @@ func TestParseBody(t *testing.T) {
 	if !weekly.ResetsAt.Valid || weekly.ResetsAt.Time.Unix() != 1767323045 {
 		t.Errorf("weekly reset = %+v", weekly.ResetsAt)
 	}
+	if r.Devices != nil {
+		t.Errorf("devices = %+v", r.Devices)
+	}
 	_ = json.Unmarshal([]byte(`{"five_hour":null,"seven_day":{"utilization":5}}`), &body)
 	if r := ParseBody("p", body); r.Status != "ok" || len(r.Windows) != 1 || r.Windows[0].WindowSeconds != 604800 {
 		t.Errorf("weekly only: %+v", r)
+	}
+	_ = json.Unmarshal([]byte(`{"seven_day":{"utilization":63},"devices":[
+		{"name":"Arno","color":2,"usedPercentOfPlan":15.4,"blocked":false},
+		{"name":"Ramon Linux","color":3,"usedPercentOfPlan":47.6,"blocked":true},
+		{"name":"","usedPercentOfPlan":1},{"name":"No number"}]}`), &body)
+	r = ParseBody("p", body)
+	if len(r.Devices) != 2 || r.Devices[0] != (Device{Name: "Arno", Color: 2, UsedPercent: 15.4}) || !r.Devices[1].Blocked {
+		t.Errorf("devices = %+v", r.Devices)
 	}
 	if r := ParseBody("p", []any{}); r.Status != "error" {
 		t.Errorf("non-object: %+v", r)

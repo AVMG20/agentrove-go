@@ -40,6 +40,7 @@ import { tileIdToViewType } from '@/utils/tileHelpers';
 import { useCurrentUserQuery } from '@/hooks/queries/useAuthQueries';
 import { useSidebarChatLists } from '@/hooks/queries/useSidebarChatLists';
 import { defaultWorkspaceId } from '@/utils/defaultWorkspace';
+import { PlanSplit } from './PlanSplit';
 import { RecentChats } from './RecentChats';
 import iconDark from '/brand/icon-dark.svg';
 import iconLight from '/brand/icon-white.svg';
@@ -321,6 +322,7 @@ export function LandingPage() {
                     {greetingName && `, ${greetingName}`}
                   </h1>
                   <p className={styles['greeting-subtitle']}>What are we building today?</p>
+                  {landingProfile?.id && <PlanSplit profileId={landingProfile.id} />}
                 </div>
 
                 {composerSelectors}
