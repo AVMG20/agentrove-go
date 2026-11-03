@@ -209,3 +209,17 @@ func TestOneShotEnvCredentialsSkipFiles(t *testing.T) {
 		t.Errorf("login files staged although the env has credentials: %v", got)
 	}
 }
+
+func TestOneShotEntrypoint(t *testing.T) {
+	bin := filepath.Join(t.TempDir(), "claude")
+	mustWrite(t, bin, "#!/bin/sh\ncat >/dev/null\nprintf '{\"result\":\"%s\"}' \"$CLAUDE_CODE_ENTRYPOINT\"\n")
+	if err := os.Chmod(bin, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for env, want := range map[string]string{"": "bitbox", "mine": "mine"} {
+		got, err := OneShot{Binary: bin, Env: map[string]string{EntrypointEnv: env}}.Run(context.Background(), "haiku", "", "hi")
+		if err != nil || got != want {
+			t.Errorf("env %q: entrypoint = %q, %v; want %q", env, got, err, want)
+		}
+	}
+}

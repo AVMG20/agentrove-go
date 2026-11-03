@@ -77,7 +77,11 @@ func (o OneShot) Run(ctx context.Context, model, systemPrompt, prompt string) (s
 		}
 	}
 	env := oneShotEnv(os.Environ(), o.Env)
-	env = append(env, "CLAUDE_CONFIG_DIR="+cfgDir)
+	entrypoint := o.Env[EntrypointEnv]
+	if entrypoint == "" {
+		entrypoint = Entrypoint
+	}
+	env = append(env, "CLAUDE_CONFIG_DIR="+cfgDir, EntrypointEnv+"="+entrypoint)
 	if home := o.HomeDir; home != "" {
 		env = append(env, "HOME="+home)
 	} else {

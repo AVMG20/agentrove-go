@@ -81,3 +81,30 @@ func TestSessionConfigKeepsUserAliasesOnProfiles(t *testing.T) {
 		t.Fatalf("unset %v, unset global %v", cfg.Unset, cfg.UnsetGlobal)
 	}
 }
+
+// Sessions name Bitbox as their entrypoint unless the user's or the
+// deployment's env names one.
+func TestSessionConfigEntrypoint(t *testing.T) {
+	m, d := newTestModule(t)
+	m.a = &app.App{Cfg: &config.Config{}, DB: d, Store: &appstore.Store{DB: d}}
+	if _, err := m.a.Store.GetUserSettings(t.Context(), testUser); err != nil {
+		t.Fatal(err)
+	}
+	sb := &sandbox.Sandbox{Kind: sandbox.KindDocker, Root: "/home/user/projects/p"}
+	req := &turnRequest{chat: &models.Chat{ID: testChat}, userID: testUser}
+
+	if got := m.sessionConfig(sb, req).Env["CLAUDE_CODE_ENTRYPOINT"]; got != "bitbox" {
+		t.Fatalf("default entrypoint = %q", got)
+	}
+	m.a.Cfg.AgentEnv = map[string]string{"CLAUDE_CODE_ENTRYPOINT": "deploy"}
+	if got, ok := m.sessionConfig(sb, req).Env["CLAUDE_CODE_ENTRYPOINT"]; ok {
+		t.Fatalf("overrode the deployment's entrypoint with %q", got)
+	}
+	if _, err := d.Exec(`UPDATE user_settings SET custom_env_vars = ? WHERE user_id = ?`,
+		`[{"key":"CLAUDE_CODE_ENTRYPOINT","value":"mine"}]`, testUser); err != nil {
+		t.Fatal(err)
+	}
+	if got := m.sessionConfig(sb, req).Env["CLAUDE_CODE_ENTRYPOINT"]; got != "mine" {
+		t.Fatalf("user entrypoint = %q", got)
+	}
+}

@@ -21,6 +21,23 @@ import (
 	"github.com/google/uuid"
 )
 
+// EntrypointEnv names the client in the CLI's requests (cc_entrypoint).
+// Unset, `claude -p` reports itself as the generic "sdk-cli"; Entrypoint is
+// ours. A value in the user's or deployment's env wins.
+const (
+	EntrypointEnv = "CLAUDE_CODE_ENTRYPOINT"
+	Entrypoint    = "bitbox"
+)
+
+// WithEntrypoint sets EntrypointEnv to Entrypoint in env unless env or
+// fallback (env the process inherits besides env) already sets it.
+func WithEntrypoint(env, fallback map[string]string) map[string]string {
+	if env[EntrypointEnv] == "" && fallback[EntrypointEnv] == "" {
+		env[EntrypointEnv] = Entrypoint
+	}
+	return env
+}
+
 // Message is one raw stdout line from the CLI.
 type Message struct {
 	Type            string          `json:"type"`

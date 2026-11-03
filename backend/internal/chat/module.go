@@ -525,7 +525,7 @@ func (m *Module) cancelTurn(chatID string, timeout time.Duration) {
 func (m *Module) sessionEnv(req *turnRequest) map[string]string {
 	env := m.a.Store.UserEnv(context.Background(), req.userID)
 	env["AGENTROVE_CHAT_ID"] = req.chat.ID
-	return env
+	return claude.WithEntrypoint(env, m.a.Cfg.AgentGlobalEnv())
 }
 
 // sessionConfig builds the CLI launch config for a turn.
