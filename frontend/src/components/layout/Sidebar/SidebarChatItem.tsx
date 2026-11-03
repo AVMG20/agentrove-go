@@ -1,5 +1,5 @@
 import { memo, useEffect, useRef, type MouseEvent } from 'react';
-import { Zap } from 'lucide-react';
+import { Archive, Zap } from 'lucide-react';
 import { AsciiSpinner } from '@/components/ui/AsciiSpinner/AsciiSpinner';
 import { ChatStatusDot } from '@/components/ui/ChatStatusDot/ChatStatusDot';
 import { chatStatusTone, CHAT_STATUS_LABEL, type ChatStatusTone } from '@/utils/message';
@@ -27,6 +27,7 @@ interface SidebarChatItemProps {
   onOpenInSplit?: (chatId: string) => void;
   canOpenInSplit?: boolean;
   onDropdownClick: (e: React.MouseEvent<HTMLButtonElement>, chat: Chat) => void;
+  onArchive?: (chat: Chat) => void;
 }
 
 export const SidebarChatItem = memo(function SidebarChatItem({
@@ -42,6 +43,7 @@ export const SidebarChatItem = memo(function SidebarChatItem({
   onOpenInSplit,
   canOpenInSplit = false,
   onDropdownClick,
+  onArchive,
 }: SidebarChatItemProps) {
   // Keep the active chat visible when navigation lands on an off-screen row
   const rowRef = useRef<HTMLDivElement>(null);
@@ -149,6 +151,9 @@ export const SidebarChatItem = memo(function SidebarChatItem({
       timestamp={getRelativeTime(chat.updated_at)}
       dropdownLabel="Chat options"
       onDropdownClick={(e) => onDropdownClick(e, chat)}
+      hoverAction={
+        onArchive && { icon: Archive, label: 'Archive thread', onClick: () => onArchive(chat) }
+      }
     />
   );
 });

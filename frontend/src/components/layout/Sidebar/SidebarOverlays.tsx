@@ -28,6 +28,7 @@ export function SidebarOverlays({ chat, workspace, workspaces }: SidebarOverlays
           onRename={chat.handleRenameClick}
           onDelete={chat.handleDeleteChat}
           onTogglePin={chat.handleTogglePin}
+          onArchive={chat.handleArchiveChat}
           onOpenInSplit={chat.dropdownShowSplit ? chat.handleDropdownOpenInSplit : undefined}
           splitDisabled={!chat.dropdownCanSplit}
           onClose={() => chat.setDropdown(null)}

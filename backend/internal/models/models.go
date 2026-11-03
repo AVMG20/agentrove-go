@@ -116,6 +116,7 @@ type Chat struct {
 	LastEventSeq      int64       `json:"-"`
 	DeletedAt         db.NullTime `json:"-"`
 	PinnedAt          db.NullTime `json:"pinned_at"`
+	ArchivedAt        db.NullTime `json:"archived_at"`
 	LastViewedAt      db.NullTime `json:"-"`
 	LastModelID       *string     `json:"last_model_id"`
 	LastThinkingMode  *string     `json:"last_thinking_mode"`
@@ -143,13 +144,13 @@ type Chat struct {
 // ChatColumns selects chat columns joined with workspaces as w (for sandbox_id
 // and no_project).
 const ChatColumns = `c.id, c.title, c.user_id, c.workspace_id, c.session_id, c.worktree_cwd,
-	c.context_token_usage, c.context_window, c.last_event_seq, c.deleted_at, c.pinned_at, c.last_viewed_at,
+	c.context_token_usage, c.context_window, c.last_event_seq, c.deleted_at, c.pinned_at, c.archived_at, c.last_viewed_at,
 	c.last_model_id, c.last_thinking_mode, c.last_persona_name, c.automation_id, c.profile_id, c.provider, c.created_at, c.updated_at,
 	w.sandbox_id, w.source_type IS '` + ScratchSource + `'`
 
 func (c *Chat) ScanFields() []any {
 	return []any{&c.ID, &c.Title, &c.UserID, &c.WorkspaceID, &c.SessionID, &c.WorktreeCwd,
-		&c.ContextTokenUsage, &c.ContextWindow, &c.LastEventSeq, &c.DeletedAt, &c.PinnedAt, &c.LastViewedAt,
+		&c.ContextTokenUsage, &c.ContextWindow, &c.LastEventSeq, &c.DeletedAt, &c.PinnedAt, &c.ArchivedAt, &c.LastViewedAt,
 		&c.LastModelID, &c.LastThinkingMode, &c.LastPersonaName, &c.AutomationID, &c.StoredProfileID, &c.StoredProvider, &c.CreatedAt, &c.UpdatedAt,
 		&c.SandboxID, &c.NoProject}
 }

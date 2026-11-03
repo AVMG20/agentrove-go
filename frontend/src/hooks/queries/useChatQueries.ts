@@ -77,6 +77,22 @@ export const useInfiniteChatsQuery = (options?: {
   });
 };
 
+// Archived chats, most recently archived first (Settings → Archived). Under
+// [chats, 'infinite'] so list invalidations (a new turn restores) reach it.
+export const useArchivedChatsQuery = () => {
+  return useInfiniteQuery({
+    queryKey: [queryKeys.chats, 'infinite', 'archived'] as const,
+    queryFn: ({ pageParam }) =>
+      chatService.listChats({ page: pageParam, per_page: CHATS_PER_PAGE, archived: true }),
+    getNextPageParam: (lastPage) => {
+      const nextPage = lastPage.page + 1;
+      return nextPage <= lastPage.pages ? nextPage : undefined;
+    },
+    initialPageParam: 1,
+    refetchOnMount: 'always',
+  });
+};
+
 // Backs the composer's `@` chat mentions: one fetch per staleTime window, filtered
 // client-side like files.
 export const useRecentChatsQuery = (enabled: boolean) => {
@@ -285,6 +301,35 @@ export const usePinChatMutation = createMutation<Chat, Error, { chatId: string; 
     queryClient.invalidateQueries({
       queryKey: [queryKeys.chats, 'infinite'],
     });
+    queryClient.invalidateQueries({ queryKey: queryKeys.workspaces });
+  },
+);
+
+export const useArchiveChatMutation = createMutation<
+  Chat,
+  Error,
+  { chatId: string; archived: boolean }
+>(
+  ({ chatId, archived }) => chatService.setChatArchived(chatId, archived),
+  (queryClient, updatedChat) => {
+    queryClient.setQueryData(queryKeys.chat(updatedChat.id), updatedChat);
+    if (updatedChat.archived_at) {
+      // Leave the thread lists now rather than after the refetch.
+      queryClient.setQueriesData<InfiniteData<PaginatedChats>>(
+        { queryKey: [queryKeys.chats, 'infinite'], predicate: (q) => q.queryKey[2] !== 'archived' },
+        (oldData) =>
+          oldData && {
+            ...oldData,
+            pages: oldData.pages.map((page) => ({
+              ...page,
+              items: page.items.filter((chat) => chat.id !== updatedChat.id),
+            })),
+          },
+      );
+    }
+    // Archiving moves the chat between the thread lists and the archived one.
+    queryClient.invalidateQueries({ queryKey: [queryKeys.chats, 'infinite'] });
+    queryClient.invalidateQueries({ queryKey: queryKeys.chatsRecent });
     queryClient.invalidateQueries({ queryKey: queryKeys.workspaces });
   },
 );

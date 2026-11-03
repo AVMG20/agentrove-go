@@ -86,7 +86,7 @@ func (m *Module) listChats(ctx context.Context, c *caller, args json.RawMessage)
 	}
 	a.Page = max(a.Page, 1)
 	a.PerPage = min(max(a.PerPage, 1), 100)
-	where := `c.user_id = ? AND c.deleted_at IS NULL`
+	where := `c.user_id = ? AND c.deleted_at IS NULL AND c.archived_at IS NULL`
 	params := []any{c.userID}
 	if a.WorkspaceID != nil && *a.WorkspaceID != "" {
 		where += ` AND c.workspace_id = ?`

@@ -14,7 +14,7 @@ export const MAX_UPLOAD_SIZE_BYTES = {
 // Typical sidebar menu size (SidebarMenu: min-width space-48, four or five
 // items), for placing it beside its button; SidebarMenu keeps it on screen.
 export const DROPDOWN_WIDTH = 192;
-export const DROPDOWN_HEIGHT = 180;
+export const DROPDOWN_HEIGHT = 216;
 export const DROPDOWN_MARGIN = 8;
 
 export const MONACO_FONT_FAMILY =

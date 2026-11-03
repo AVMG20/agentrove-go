@@ -125,6 +125,32 @@
   }
 }
 
+// Left of the options button; only hover and keyboard focus show it (not the
+// active row or an open menu), so resting rows stay quiet.
+.hover-action-btn {
+  @include anim.transition-colors;
+  position: absolute;
+  right: calc(var(--space-2) + var(--space-5));
+  flex-shrink: 0;
+  border-radius: var(--radius-md);
+  padding: var(--space-0-5);
+  color: var(--theme-text-quaternary);
+  opacity: 0;
+  pointer-events: none;
+  transition:
+    opacity var(--duration-fast),
+    color var(--duration-fast);
+
+  @include responsive.hover {
+    color: var(--theme-text-primary);
+  }
+}
+
+.row:focus-within .hover-action-btn {
+  opacity: 1;
+  pointer-events: auto;
+}
+
 // Row actions: hover, keyboard focus, the active row and an open menu swap the
 // timestamp for the options button. Children opt into the same swap with
 // data-reveal="hover" (shown only then) or data-reveal="rest" (hidden then).
@@ -155,6 +181,11 @@
   .row:hover {
     @include revealed;
 
+    .hover-action-btn {
+      opacity: 1;
+      pointer-events: auto;
+    }
+
     [data-reveal='hover'] {
       display: flex;
     }
@@ -179,6 +210,11 @@
     right: 0;
     padding: var(--space-3);
     opacity: 1;
+  }
+
+  // Touch reaches Archive through the options menu.
+  .hover-action-btn {
+    display: none;
   }
 
   .row [data-reveal='hover'] {

@@ -1,6 +1,6 @@
 import type { MouseEvent, ReactNode, Ref } from 'react';
 import clsx from 'clsx';
-import { MoreHorizontal } from 'lucide-react';
+import { MoreHorizontal, type LucideIcon } from 'lucide-react';
 import { Button } from '@/components/ui/primitives/Button/Button';
 import { stateClasses } from '@/config/stateClasses';
 import styles from './SidebarRow.module.scss';
@@ -18,6 +18,8 @@ interface SidebarRowProps {
   timestamp: string;
   dropdownLabel: string;
   onDropdownClick: (e: MouseEvent<HTMLButtonElement>) => void;
+  // One-click action beside the options button, shown on hover (e.g. Archive).
+  hoverAction?: { icon: LucideIcon; label: string; onClick: () => void };
 }
 
 export function SidebarRow({
@@ -31,6 +33,7 @@ export function SidebarRow({
   timestamp,
   dropdownLabel,
   onDropdownClick,
+  hoverAction,
 }: SidebarRowProps) {
   return (
     // Keyboard users reach the same action through the title button.
@@ -60,6 +63,19 @@ export function SidebarRow({
 
       {/* Timestamp; hides on hover for the dropdown. Status is on the leading icon. */}
       <span className={styles.timestamp}>{timestamp}</span>
+
+      {hoverAction && (
+        <Button
+          onClick={hoverAction.onClick}
+          onMouseDown={(e) => e.stopPropagation()}
+          variant="unstyled"
+          className={styles['hover-action-btn']}
+          aria-label={hoverAction.label}
+          title={hoverAction.label}
+        >
+          <hoverAction.icon className={styles['dropdown-icon']} />
+        </Button>
+      )}
 
       <Button
         onClick={onDropdownClick}

@@ -1,0 +1,20 @@
+@use '@/styles/globals/animations' as anim;
+@use '@/styles/globals/responsive' as responsive;
+
+.toast {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.undo {
+  @include anim.transition-colors;
+  border-radius: var(--radius-md);
+  padding: var(--space-0-5) var(--space-1-5);
+  font-weight: 500;
+  color: var(--theme-accent);
+
+  @include responsive.hover {
+    background-color: var(--theme-surface-hover);
+  }
+}

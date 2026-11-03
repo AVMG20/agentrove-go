@@ -188,6 +188,7 @@ export function ThreadsPanel({ hidden = false }: { hidden?: boolean }) {
     onOpenInSplit: chatActions.showSplitAffordance ? chatActions.handleOpenInSplit : undefined,
     canOpenChatInSplit: chatActions.canOpenChatInSplit,
     onDropdownClick: chatActions.handleDropdownClick,
+    onArchive: chatActions.handleArchiveChat,
     onOpenWorkspaceMenu: workspaceActions.handleWorkspaceContextMenu,
   };
 

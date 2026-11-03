@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react';
 import { useMatch } from 'react-router-dom';
 import toast from 'react-hot-toast';
-import { ChevronDown, Zap } from 'lucide-react';
+import { ArchiveRestore, ChevronDown, Zap } from 'lucide-react';
 import clsx from 'clsx';
 import { AsciiSpinner } from '@/components/ui/AsciiSpinner/AsciiSpinner';
 import { ChatStatusDot } from '@/components/ui/ChatStatusDot/ChatStatusDot';
@@ -11,7 +11,11 @@ import { useUIStore } from '@/store/uiStore';
 import { useStreamStore } from '@/store/streamStore';
 import { useBlockedChatIds } from '@/hooks/useBlockedChatIds';
 import { useWorkingChatIds } from '@/hooks/useWorkingChatIds';
-import { useChatQuery, useUpdateChatMutation } from '@/hooks/queries/useChatQueries';
+import {
+  useArchiveChatMutation,
+  useChatQuery,
+  useUpdateChatMutation,
+} from '@/hooks/queries/useChatQueries';
 import { useChatAgentKind } from '@/hooks/useChatAgentKind';
 import { useIsMobile } from '@/hooks/useIsMobile';
 import { chatStatusTone, CHAT_STATUS_LABEL } from '@/utils/message';
@@ -70,6 +74,36 @@ function TitleEditor({
   );
 }
 
+// Marks an archived thread; on desktop a click restores it to the sidebar
+// (sending a message restores it too).
+function ArchivedBadge({ chatId, canRestore }: { chatId: string; canRestore: boolean }) {
+  const archiveChat = useArchiveChatMutation();
+  if (!canRestore) return <span className={styles.archived}>Archived</span>;
+  return (
+    <Button
+      type="button"
+      variant="unstyled"
+      className={clsx(styles.archived, styles['archived--button'])}
+      title="Archived. Click to restore it to the sidebar"
+      disabled={archiveChat.isPending}
+      // Not the title's double-click rename.
+      onDoubleClick={(e) => e.stopPropagation()}
+      onClick={() =>
+        archiveChat.mutate(
+          { chatId, archived: false },
+          {
+            onSuccess: () => toast.success('Thread restored'),
+            onError: (error) => toast.error(error.message || 'Failed to restore thread'),
+          },
+        )
+      }
+    >
+      <ArchiveRestore aria-hidden className={styles['archived-icon']} />
+      Archived · Restore
+    </Button>
+  );
+}
+
 // The routed thread's title and status. On phones it opens the session panel
 // as a bottom sheet; on desktop the panel sits beside the chat and a double
 // click renames the thread in place.
@@ -120,6 +154,7 @@ export function ChatTitle() {
         ) : (
           <span className={styles['title-text']}>{title}</span>
         )}
+        {chat?.archived_at && <ArchivedBadge chatId={chatId} canRestore />}
       </h1>
     );
   }
@@ -133,6 +168,7 @@ export function ChatTitle() {
     >
       {icon}
       <span className={styles['title-text']}>{title}</span>
+      {chat?.archived_at && <ArchivedBadge chatId={chatId} canRestore={false} />}
       <ChevronDown aria-hidden className={styles.chevron} />
     </Button>
   );

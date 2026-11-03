@@ -185,7 +185,7 @@ func (m *Module) list(w http.ResponseWriter, r *http.Request) error {
 	u := auth.UserFrom(r.Context())
 	rows, err := m.a.DB.QueryContext(r.Context(), `SELECT `+qualified("w.", models.WorkspaceColumns)+`, COUNT(c.id), MAX(c.updated_at)
 		FROM workspaces w
-		LEFT JOIN chats c ON c.workspace_id = w.id AND c.deleted_at IS NULL
+		LEFT JOIN chats c ON c.workspace_id = w.id AND c.deleted_at IS NULL AND c.archived_at IS NULL
 		WHERE w.user_id = ? AND w.deleted_at IS NULL AND w.source_type IS NOT '`+models.ScratchSource+`'
 		GROUP BY w.id
 		ORDER BY MAX(c.updated_at) IS NULL, MAX(c.updated_at) DESC, w.updated_at DESC`, u.ID)

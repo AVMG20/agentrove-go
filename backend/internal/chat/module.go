@@ -98,14 +98,19 @@ func (m *Module) Start(ctx context.Context) {
 	m.reconcileOrphans(ctx)
 	m.reconcileSubagents(ctx)
 	go m.runSubagentFlush(ctx)
+	m.purgeArchived(ctx)
 	t := time.NewTicker(time.Minute)
 	defer t.Stop()
+	purge := time.NewTicker(time.Hour)
+	defer purge.Stop()
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case <-t.C:
 			m.sessions.closeIdle(m.a.Cfg.ChatProcessIdleTTL, m.keepAlive)
+		case <-purge.C:
+			m.purgeArchived(ctx)
 		}
 	}
 }
@@ -923,10 +928,10 @@ func (m *Module) startTurn(ctx context.Context, in startInput) (app.ChatTurnResu
 	return res, nil
 }
 
-// bumpChatForTurn moves the chat to the top and records the turn's settings
-// as the source of truth for follow-ups.
+// bumpChatForTurn moves the chat to the top (restoring it when archived) and
+// records the turn's settings as the source of truth for follow-ups.
 func (m *Module) bumpChatForTurn(ctx context.Context, chat *models.Chat, in startInput) error {
-	_, err := m.a.DB.ExecContext(ctx, `UPDATE chats SET updated_at = ?, last_model_id = ?, last_thinking_mode = ?, last_persona_name = ? WHERE id = ?`,
+	_, err := m.a.DB.ExecContext(ctx, `UPDATE chats SET updated_at = ?, last_model_id = ?, last_thinking_mode = ?, last_persona_name = ?, archived_at = NULL WHERE id = ?`,
 		db.Now(), in.modelID, in.thinkingMode, in.persona, chat.ID)
 	return err
 }

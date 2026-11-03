@@ -1,6 +1,7 @@
 import type { LucideIcon } from 'lucide-react';
 import {
   AppWindow,
+  Archive,
   Bot,
   Clock,
   FolderOpen,
@@ -23,6 +24,7 @@ export type SettingsSectionId =
   | 'stream-actions'
   | 'automations'
   | 'artifacts'
+  | 'archived'
   | 'env-vars'
   | 'instructions'
   | 'sessions';
@@ -42,6 +44,7 @@ export const SETTINGS_SECTIONS: SettingsSection[] = [
   { id: 'stream-actions', label: 'Stream Actions', icon: GitBranch },
   { id: 'automations', label: 'Automations', icon: Clock },
   { id: 'artifacts', label: 'Artifacts', icon: AppWindow },
+  { id: 'archived', label: 'Archived', icon: Archive },
   { id: 'env-vars', label: 'Env Variables', icon: Key },
   { id: 'instructions', label: 'Instructions', icon: ScrollText },
   { id: 'sessions', label: 'Sessions', icon: MonitorSmartphone },

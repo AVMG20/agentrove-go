@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { ChevronRight, SlidersVertical } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { Archive, ChevronRight, SlidersVertical } from 'lucide-react';
 import clsx from 'clsx';
 import { Button } from '@/components/ui/primitives/Button/Button';
 import {
@@ -13,6 +14,7 @@ import {
   type SidebarStatusFilter,
 } from '@/store/sidebarFilters';
 import type { WorkspaceBadge } from '@/hooks/queries/useSidebarChatLists';
+import { settingsPath } from '@/components/settings/settingsSections';
 import { SidebarFilterSubmenu } from './SidebarFilterSubmenu';
 import styles from './SidebarFilterMenu.module.scss';
 
@@ -73,6 +75,7 @@ export function SidebarFilterMenu({
   onChange,
   workspaceBadgeById,
 }: SidebarFilterMenuProps) {
+  const navigate = useNavigate();
   const [isOpen, setIsOpen] = useState(false);
   const [submenu, setSubmenu] = useState<{
     view: FilterCategory;
@@ -261,6 +264,19 @@ export function SidebarFilterMenu({
                   onOpen={(e) => openSubmenu('groupBy', e)}
                   onLeave={scheduleSubmenuClose}
                 />
+              </div>
+              <div className={styles.divider}>
+                <Button
+                  variant="unstyled"
+                  onClick={() => {
+                    closeAll();
+                    navigate(settingsPath('archived'));
+                  }}
+                  className={styles['link-row']}
+                >
+                  <Archive className={styles['link-icon']} aria-hidden />
+                  Archived threads
+                </Button>
               </div>
               {activeCount > 0 && (
                 <div className={styles.divider}>

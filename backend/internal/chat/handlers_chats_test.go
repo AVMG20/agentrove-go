@@ -2,14 +2,19 @@ package chat
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
 	"unicode/utf8"
 
 	"agentrove/internal/app"
+	"agentrove/internal/auth"
 	"agentrove/internal/db"
+	"agentrove/internal/httpx"
 	"agentrove/internal/models"
 	"agentrove/internal/sandbox"
 	appstore "agentrove/internal/store"
@@ -166,5 +171,66 @@ func TestGeneratedTitleKeepsRename(t *testing.T) {
 	}
 	if !m.replaceTitle(ctx, testChat, "Renamed", "Generated") {
 		t.Fatal("did not replace the title it started with")
+	}
+}
+
+func listChatIDs(t *testing.T, m *Module, query string) []string {
+	t.Helper()
+	r := httptest.NewRequest(http.MethodGet, "/api/v1/chat/chats?"+query, nil)
+	r = r.WithContext(auth.WithUser(r.Context(), &models.User{ID: testUser}))
+	w := httptest.NewRecorder()
+	httpx.Wrap(m.listChats)(w, r)
+	var page struct {
+		Items []models.Chat `json:"items"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &page); err != nil {
+		t.Fatalf("list %q: %v (%s)", query, err, w.Body)
+	}
+	ids := []string{}
+	for _, c := range page.Items {
+		ids = append(ids, c.ID)
+	}
+	return ids
+}
+
+// An archived chat leaves the lists for the archived one, a new turn
+// restores it, and archiving longer than chatArchiveTTL deletes it.
+func TestArchiveChat(t *testing.T) {
+	m, d := newTestModule(t)
+	withApp(m, d)
+	ctx := context.Background()
+
+	if w := patchChat(m, testChat, `{"archived":true}`); w.Code != http.StatusOK || !strings.Contains(w.Body.String(), `"archived_at":"`) {
+		t.Fatalf("archive: %d %s", w.Code, w.Body)
+	}
+	if got := listChatIDs(t, m, ""); len(got) != 0 {
+		t.Fatalf("thread list shows archived chats %v", got)
+	}
+	if got := listChatIDs(t, m, "archived=true"); len(got) != 1 || got[0] != testChat {
+		t.Fatalf("archived list = %v", got)
+	}
+
+	if err := m.bumpChatForTurn(ctx, &models.Chat{ID: testChat}, startInput{}); err != nil {
+		t.Fatal(err)
+	}
+	if got := listChatIDs(t, m, ""); len(got) != 1 {
+		t.Fatalf("a new turn left the chat archived: %v", got)
+	}
+
+	patchChat(m, testChat, `{"archived":true}`)
+	m.purgeArchived(ctx)
+	if got := listChatIDs(t, m, "archived=true"); len(got) != 1 {
+		t.Fatalf("purged a freshly archived chat: %v", got)
+	}
+	if _, err := d.Exec(`UPDATE chats SET archived_at = ? WHERE id = ?`, db.T(time.Now().Add(-chatArchiveTTL-time.Hour)), testChat); err != nil {
+		t.Fatal(err)
+	}
+	m.purgeArchived(ctx)
+	var deleted bool
+	if err := d.QueryRow(`SELECT deleted_at IS NOT NULL FROM chats WHERE id = ?`, testChat).Scan(&deleted); err != nil {
+		t.Fatal(err)
+	}
+	if !deleted {
+		t.Fatal("expired archived chat not deleted")
 	}
 }

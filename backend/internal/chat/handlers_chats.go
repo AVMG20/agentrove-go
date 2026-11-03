@@ -3,6 +3,7 @@ package chat
 import (
 	"context"
 	"database/sql"
+	"log/slog"
 	"net/http"
 	"strings"
 	"time"
@@ -87,6 +88,14 @@ func (m *Module) listChats(w http.ResponseWriter, r *http.Request) error {
 		where = append(where, "c.workspace_id = ?")
 		args = append(args, ws)
 	}
+	// Archived chats list only on their own (most recently archived first).
+	order := `(c.pinned_at IS NULL), c.pinned_at DESC, c.updated_at DESC`
+	if archived := httpx.QueryBool(r, "archived"); archived != nil && *archived {
+		where = append(where, "c.archived_at IS NOT NULL")
+		order = `c.archived_at DESC`
+	} else {
+		where = append(where, "c.archived_at IS NULL")
+	}
 	if pinned := httpx.QueryBool(r, "pinned"); pinned != nil {
 		if *pinned {
 			where = append(where, "c.pinned_at IS NOT NULL")
@@ -101,7 +110,7 @@ func (m *Module) listChats(w http.ResponseWriter, r *http.Request) error {
 	}
 	rows, err := m.a.DB.QueryContext(r.Context(), `SELECT `+models.ChatColumns+`
 		FROM chats c JOIN workspaces w ON w.id = c.workspace_id WHERE `+cond+`
-		ORDER BY (c.pinned_at IS NULL), c.pinned_at DESC, c.updated_at DESC LIMIT ? OFFSET ?`,
+		ORDER BY `+order+` LIMIT ? OFFSET ?`,
 		append(args, perPage, (page-1)*perPage)...)
 	if err != nil {
 		return err
@@ -156,6 +165,9 @@ func (m *Module) updateChat(w http.ResponseWriter, r *http.Request) error {
 	var body struct {
 		Title  *string `json:"title"`
 		Pinned *bool   `json:"pinned"`
+		// Archived hides the chat from the lists until restored (or deleted
+		// after chatArchiveTTL).
+		Archived *bool `json:"archived"`
 		// ProfileID switches an empty thread's profile; once it has messages
 		// the profile is fixed (the client opens a new thread instead).
 		ProfileID *string `json:"profile_id"`
@@ -207,7 +219,15 @@ func (m *Module) updateChat(w http.ResponseWriter, r *http.Request) error {
 			args = append(args, nil)
 		}
 	}
-	// Rename/pin isn't new content: keep an already-read chat read.
+	if body.Archived != nil {
+		sets = append(sets, "archived_at = ?")
+		if *body.Archived {
+			args = append(args, now)
+		} else {
+			args = append(args, nil)
+		}
+	}
+	// Rename/pin/archive isn't new content: keep an already-read chat read.
 	if !c.Unread {
 		sets = append(sets, "last_viewed_at = ?")
 		args = append(args, now)
@@ -253,6 +273,36 @@ func (m *Module) deleteChat(w http.ResponseWriter, r *http.Request) error {
 		return err
 	}
 	return httpx.NoContent(w)
+}
+
+// chatArchiveTTL is how long an archived chat stays restorable before
+// purgeArchived deletes it.
+const chatArchiveTTL = 90 * 24 * time.Hour
+
+// purgeArchived deletes the chats archived longer than chatArchiveTTL.
+func (m *Module) purgeArchived(ctx context.Context) {
+	rows, err := m.a.DB.QueryContext(ctx, `SELECT user_id, id FROM chats
+		WHERE archived_at IS NOT NULL AND archived_at < ? AND deleted_at IS NULL`, db.T(time.Now().Add(-chatArchiveTTL)))
+	if err != nil {
+		slog.Warn("list expired archived chats", "err", err)
+		return
+	}
+	byUser := map[string][]string{}
+	for rows.Next() {
+		var userID, id string
+		if err := rows.Scan(&userID, &id); err != nil {
+			rows.Close()
+			slog.Warn("list expired archived chats", "err", err)
+			return
+		}
+		byUser[userID] = append(byUser[userID], id)
+	}
+	rows.Close()
+	for userID, ids := range byUser {
+		if err := m.DeleteChats(ctx, userID, ids); err != nil {
+			slog.Warn("purge archived chats", "user", userID, "err", err)
+		}
+	}
 }
 
 func (m *Module) deleteAllChats(w http.ResponseWriter, r *http.Request) error {

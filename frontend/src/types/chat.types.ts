@@ -92,6 +92,8 @@ export interface Chat {
   updated_at: string;
   context_token_usage?: number;
   pinned_at: string | null;
+  // Archived: hidden from the thread lists; deleted CHAT_ARCHIVE_DAYS after.
+  archived_at?: string | null;
   worktree_cwd: string | null;
   session_agent_kind: AgentKind | null;
   unread: boolean;
@@ -220,7 +222,12 @@ export interface UpdateChatRequest {
   title?: string;
   // Only while the thread has no messages: its profile is fixed after that.
   profile_id?: string;
+  archived?: boolean;
 }
+
+// Days an archived chat stays restorable before the server deletes it
+// (chatArchiveTTL).
+export const CHAT_ARCHIVE_DAYS = 90;
 
 // The provider a chat's profile runs on.
 export type AgentKind = ProviderKind;

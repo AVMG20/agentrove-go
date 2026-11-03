@@ -8,11 +8,13 @@ import {
   useGenerateChatTitleMutation,
   useUpdateChatMutation,
   usePinChatMutation,
+  useArchiveChatMutation,
 } from '@/hooks/queries/useChatQueries';
 import { useUIStore } from '@/store/uiStore';
 import { MAX_CHAT_PANES } from '@/types/ui.types';
 import { useChatStore } from '@/store/chatStore';
 import { mutateWithToast, calculateDropdownPosition } from './sidebarHelpers';
+import { showArchivedToast } from './archiveToast';
 
 interface UseSidebarChatActionsParams {
   selectedChatId: string | null;
@@ -39,6 +41,7 @@ export function useSidebarChatActions({
   const updateChat = useUpdateChatMutation();
   const generateChatTitle = useGenerateChatTitleMutation();
   const pinChat = usePinChatMutation();
+  const archiveChat = useArchiveChatMutation();
   const splitChatIds = useUIStore((state) => state.splitChatIds);
 
   useMountEffect(() => {
@@ -208,6 +211,40 @@ export function useSidebarChatActions({
     [pinChat],
   );
 
+  // Archiving the open thread leaves it like a delete does; Undo restores it
+  // (and reopens it when it was open).
+  const handleArchiveChat = useCallback(
+    async (chat: Chat) => {
+      setDropdown(null);
+      try {
+        await archiveChat.mutateAsync({ chatId: chat.id, archived: true });
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : 'Failed to archive thread');
+        return;
+      }
+      const wasOpen = chat.id === selectedChatId;
+      const uiState = useUIStore.getState();
+      if (wasOpen) {
+        uiState.closeSplitChat();
+        navigate('/');
+      } else if (uiState.splitChatIds.includes(chat.id)) {
+        uiState.closeSplitChat(chat.id);
+      }
+      showArchivedToast(() => {
+        archiveChat.mutate(
+          { chatId: chat.id, archived: false },
+          {
+            onSuccess: () => {
+              if (wasOpen) navigate(`/chat/${chat.id}`);
+            },
+            onError: (error) => toast.error(error.message || 'Failed to restore thread'),
+          },
+        );
+      });
+    },
+    [archiveChat, selectedChatId, navigate],
+  );
+
   return {
     dropdown,
     setDropdown,
@@ -232,6 +269,7 @@ export function useSidebarChatActions({
     handleSaveRename,
     handleGenerateChatTitle,
     handleTogglePin,
+    handleArchiveChat,
   };
 }
 

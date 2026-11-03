@@ -185,6 +185,7 @@ async function listChats(params?: {
   per_page?: number;
   workspace_id?: string;
   pinned?: boolean;
+  archived?: boolean;
 }): Promise<PaginatedChats> {
   return serviceCall(async () => {
     const queryString = buildQueryString(params);
@@ -300,6 +301,15 @@ async function unpinChat(chatId: string): Promise<Chat> {
   });
 }
 
+async function setChatArchived(chatId: string, archived: boolean): Promise<Chat> {
+  validateId(chatId, 'Chat ID');
+
+  return serviceCall(async () => {
+    const response = await apiClient.patch<Chat>(`/chat/chats/${chatId}`, { archived });
+    return ensureResponse(response, archived ? 'Failed to archive chat' : 'Failed to restore chat');
+  });
+}
+
 async function enhancePrompt(prompt: string, modelId: string): Promise<string> {
   validateRequired(prompt, 'Prompt');
   validateRequired(modelId, 'Model ID');
@@ -400,5 +410,6 @@ export const chatService = {
   markChatViewed,
   pinChat,
   unpinChat,
+  setChatArchived,
   createChatEventsSource,
 };

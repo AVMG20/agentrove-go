@@ -39,6 +39,10 @@ const ArtifactsSettingsTab = lazyNamed(
   () => import('@/components/settings/tabs/ArtifactsSettingsTab/ArtifactsSettingsTab'),
   'ArtifactsSettingsTab',
 );
+const ArchivedSettingsTab = lazyNamed(
+  () => import('@/components/settings/tabs/ArchivedSettingsTab/ArchivedSettingsTab'),
+  'ArchivedSettingsTab',
+);
 const WorkspacesSettingsTab = lazyNamed(
   () => import('@/components/settings/tabs/WorkspacesSettingsTab/WorkspacesSettingsTab'),
   'WorkspacesSettingsTab',
@@ -252,6 +256,7 @@ export function SettingsPage() {
     'stream-actions': () => <StreamActionsSettingsTab />,
     automations: () => <AutomationsSettingsTab />,
     artifacts: () => <ArtifactsSettingsTab />,
+    archived: () => <ArchivedSettingsTab />,
     'env-vars': () => <EnvVarsSettingsTab />,
     instructions: () => (
       <InstructionsSettingsTab
