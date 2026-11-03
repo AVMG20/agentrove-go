@@ -104,13 +104,12 @@ describe('BackgroundTasksTray', () => {
     expect(useUIStore.getState().subagentByChat).toEqual({ c1: 'a1' });
   });
 
-  it('opens the list when several subagents run', () => {
+  it('gives each running subagent its own row that opens it directly', () => {
     subagentsByChat.c1 = [subagent(), subagent({ id: 'a2', description: 'Audit' })];
     render(<BackgroundTasksTray chatId="c1" />);
 
-    expect(screen.getByText('2 subagents', { selector: 'span[class*="row-title"]' })).toBeTruthy();
-    fireEvent.click(screen.getByLabelText('Show 2 subagents'));
-    expect(useUIStore.getState().subagentByChat).toEqual({});
+    fireEvent.click(screen.getByLabelText('Show subagent Audit'));
+    expect(useUIStore.getState().subagentByChat).toEqual({ c1: 'a2' });
     expect(useUIStore.getState().openTabs).toContain('subagent');
   });
 

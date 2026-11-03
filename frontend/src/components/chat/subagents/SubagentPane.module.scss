@@ -181,3 +181,102 @@
   @include type.type-meta;
   color: var(--theme-text-quaternary);
 }
+
+// Phone: a big back button pinned at the top and the stop button pinned at the
+// bottom, both thumb-sized; the body scrolls between them.
+.back-button {
+  @include anim.transition-colors;
+  display: flex;
+  height: var(--space-11);
+  width: var(--space-11);
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  margin-left: calc(-1 * var(--space-2));
+  border-radius: var(--radius-full);
+  color: var(--theme-text-primary);
+
+  &:active {
+    background-color: var(--theme-surface-active);
+  }
+}
+
+.back-glyph {
+  height: var(--space-6);
+  width: var(--space-6);
+}
+
+.footer {
+  flex-shrink: 0;
+  border-top: 1px solid colors.theme-color('border', 0.3);
+  background-color: var(--theme-surface);
+  padding: var(--space-2) var(--space-4);
+}
+
+.stop-bar {
+  @include type.type-default(500);
+  @include anim.transition-colors;
+  display: flex;
+  width: 100%;
+  min-height: var(--space-12);
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  border-radius: var(--radius-xl);
+  border: 1px solid colors.theme-color('border', 0.5);
+  background-color: var(--theme-surface-secondary);
+  color: var(--theme-text-primary);
+
+  &:active:not(:disabled) {
+    background-color: var(--theme-surface-active);
+  }
+
+  &:disabled {
+    opacity: 0.6;
+  }
+}
+
+.header {
+  @include responsive.media('mobile') {
+    min-height: var(--space-14);
+    gap: var(--space-2);
+    padding-left: var(--space-4);
+    padding-right: var(--space-4);
+  }
+}
+
+.title {
+  @include responsive.media('mobile') {
+    @include type.type-default(600);
+  }
+}
+
+.body {
+  @include responsive.media('mobile') {
+    overscroll-behavior: contain;
+    padding-bottom: var(--space-6);
+  }
+}
+
+// No scroll box inside the scrolling page on a phone: the clamped prompt fades
+// out and Expand shows the rest.
+.prompt--clamped {
+  @include responsive.media('mobile') {
+    max-height: 9rem;
+    overflow: hidden;
+    mask-image: linear-gradient(to bottom, black 65%, transparent);
+  }
+}
+
+.more-button {
+  @include responsive.media('mobile') {
+    min-height: var(--space-11);
+    padding-inline: var(--space-1);
+  }
+}
+
+.tool {
+  @include responsive.media('mobile') {
+    min-height: var(--space-8);
+  }
+}

@@ -8,13 +8,14 @@ import { Spinner } from '@/components/ui/primitives/Spinner/Spinner';
 import { MarkDown } from '@/components/ui/markdown/MarkDown';
 import { statusIndicator } from '@/components/chat/tools/common/statusIndicator';
 import { useChatSubagentsQuery, useSubagentQuery } from '@/hooks/queries/useSubagentQueries';
+import { useIsMobile } from '@/hooks/useIsMobile';
 import { useSecondTick } from '@/hooks/useSecondTick';
 import { chatService } from '@/services/chatService';
 import { useUIStore } from '@/store/uiStore';
 import type { Subagent, SubagentActivity } from '@/types/chat.types';
 import type { TileId } from '@/types/ui.types';
 import { subagentDuration, subagentStatusLabel } from '@/utils/subagents';
-import { SubagentRow, SubagentStatusIcon } from './SubagentRow';
+import { SubagentStatusIcon } from './SubagentRow';
 import styles from './SubagentPane.module.scss';
 
 interface SubagentPaneProps {
@@ -24,12 +25,13 @@ interface SubagentPaneProps {
 }
 
 // One subagent next to the chat: what it was asked, what it's doing, what it
-// came back with. Without a selection (a restored layout) it lists the chat's
-// subagents to pick from.
+// came back with. It's always opened on a specific subagent (from the tray above
+// the composer, a tool card or the session panel); a restored layout without one
+// falls back to the running subagent, or closes.
 export function SubagentPane({ chatId, tileId, isVisible }: SubagentPaneProps) {
   const subagentId = useUIStore((s) => s.subagentByChat[chatId]);
   const close = () => useUIStore.getState().removeTab(tileId);
-  if (!subagentId) return <SubagentPicker chatId={chatId} onClose={close} />;
+  if (!subagentId) return <SubagentFallback chatId={chatId} onClose={close} />;
   // Keyed so switching subagents starts fresh: no stop spinner, expanded
   // prompt or scroll-follow state carried over from the previous one.
   return (
@@ -41,6 +43,24 @@ export function SubagentPane({ chatId, tileId, isVisible }: SubagentPaneProps) {
       onClose={close}
     />
   );
+}
+
+function SubagentFallback({ chatId, onClose }: { chatId: string; onClose: () => void }) {
+  const { data: subagents, isLoading } = useChatSubagentsQuery(chatId);
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+  useEffect(() => {
+    if (isLoading) return;
+    const running = subagents?.find((s) => s.status === 'running');
+    if (running) {
+      useUIStore.setState((s) => ({
+        subagentByChat: { ...s.subagentByChat, [chatId]: running.id },
+      }));
+    } else {
+      onCloseRef.current();
+    }
+  }, [chatId, isLoading, subagents]);
+  return <section className={styles.pane} aria-label="Subagent" aria-busy />;
 }
 
 function CloseButton({ onClose }: { onClose: () => void }) {
@@ -56,34 +76,6 @@ function CloseButton({ onClose }: { onClose: () => void }) {
         <X className={styles.glyph} />
       </Button>
     </FloatingTooltip>
-  );
-}
-
-function SubagentPicker({ chatId, onClose }: { chatId: string; onClose: () => void }) {
-  const { data: subagents, isLoading } = useChatSubagentsQuery(chatId);
-  const now = useSecondTick(!!subagents?.some((s) => s.status === 'running'));
-  return (
-    <section className={styles.pane} aria-label="Subagents">
-      <header className={styles.header}>
-        <h2 className={styles.title}>Subagents</h2>
-        <CloseButton onClose={onClose} />
-      </header>
-      <div className={styles.body}>
-        {isLoading && <p className={styles.empty}>Loading…</p>}
-        {subagents?.length === 0 && (
-          <p className={styles.empty}>No subagents have run in this thread.</p>
-        )}
-        {subagents?.map((s) => (
-          <SubagentRow
-            key={s.id}
-            subagent={s}
-            now={now}
-            selected={false}
-            onSelect={() => useUIStore.getState().toggleSubagent(chatId, s.id)}
-          />
-        ))}
-      </div>
-    </section>
   );
 }
 
@@ -106,28 +98,22 @@ function SubagentDetail({
   const running = subagent?.status === 'running';
   const now = useSecondTick(running && isVisible);
   const bodyRef = useRef<HTMLDivElement>(null);
+  const isMobile = useIsMobile();
+  const stoppable = !!(running && subagent?.background && subagent.task_id);
 
   return (
     <section className={styles.pane} aria-label="Subagent">
       <header className={styles.header}>
-        {list && list.length > 1 && (
-          <FloatingTooltip content="All subagents">
-            <Button
-              variant="unstyled"
-              type="button"
-              className={styles['icon-button']}
-              onClick={() =>
-                useUIStore.setState((s) => {
-                  const subagentByChat = { ...s.subagentByChat };
-                  delete subagentByChat[chatId];
-                  return { subagentByChat };
-                })
-              }
-              aria-label="All subagents"
-            >
-              <ArrowLeft className={styles.glyph} />
-            </Button>
-          </FloatingTooltip>
+        {isMobile && (
+          <Button
+            variant="unstyled"
+            type="button"
+            className={styles['back-button']}
+            onClick={onClose}
+            aria-label="Back to chat"
+          >
+            <ArrowLeft className={styles['back-glyph']} />
+          </Button>
         )}
         <div className={styles['header-text']}>
           <h2 className={styles.title}>
@@ -147,10 +133,8 @@ function SubagentDetail({
             </p>
           )}
         </div>
-        {running && subagent?.background && subagent.task_id && (
-          <StopButton chatId={chatId} taskId={subagent.task_id} />
-        )}
-        <CloseButton onClose={onClose} />
+        {!isMobile && stoppable && <StopButton chatId={chatId} taskId={subagent.task_id!} />}
+        {!isMobile && <CloseButton onClose={onClose} />}
       </header>
       <div ref={bodyRef} className={styles.body}>
         {!subagent && !isError && <p className={styles.empty}>Loading…</p>}
@@ -175,11 +159,25 @@ function SubagentDetail({
           </section>
         )}
       </div>
+      {isMobile && stoppable && (
+        <footer className={styles.footer}>
+          <StopButton chatId={chatId} taskId={subagent!.task_id!} wide />
+        </footer>
+      )}
     </section>
   );
 }
 
-function StopButton({ chatId, taskId }: { chatId: string; taskId: string }) {
+function StopButton({
+  chatId,
+  taskId,
+  wide = false,
+}: {
+  chatId: string;
+  taskId: string;
+  // The phone's full-width bar under the activity, with a label.
+  wide?: boolean;
+}) {
   const [stopping, setStopping] = useState(false);
   const stop = async () => {
     setStopping(true);
@@ -190,6 +188,21 @@ function StopButton({ chatId, taskId }: { chatId: string; taskId: string }) {
       setStopping(false);
     }
   };
+  if (wide) {
+    return (
+      <Button
+        variant="unstyled"
+        type="button"
+        className={styles['stop-bar']}
+        onClick={() => void stop()}
+        disabled={stopping}
+        aria-label="Stop subagent"
+      >
+        {stopping ? <Spinner size="xs" /> : <Square className={styles['stop-glyph']} />}
+        {stopping ? 'Stopping…' : 'Stop subagent'}
+      </Button>
+    );
+  }
   return (
     <FloatingTooltip content="Stop subagent">
       <Button

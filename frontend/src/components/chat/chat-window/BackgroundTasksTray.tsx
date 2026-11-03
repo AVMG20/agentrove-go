@@ -59,38 +59,34 @@ function TaskRow({ chatId, task, now }: { chatId: string; task: BackgroundTask; 
   );
 }
 
-// Running subagents share one row: it says the thread is still at work (on a
-// phone the only sign of it) and opens the subagent pane, or with several, the
-// list of them. Their details and stop buttons live there.
-function SubagentsRow({
+// A running subagent: its row opens that subagent's pane, where its details
+// and stop button live. On a phone it's the only sign the thread is at work.
+function SubagentRow({
   chatId,
-  subagents,
+  subagent,
   now,
 }: {
   chatId: string;
-  subagents: Subagent[];
+  subagent: Subagent;
   now: number;
 }) {
-  const single = subagents.length === 1 ? subagents[0] : undefined;
-  const title = single
-    ? single.description || single.subagent_type
-    : `${subagents.length} subagents`;
-  const startedAt = Math.min(...subagents.map((s) => s.started_at));
-  const detail = single?.last_activity ?? subagents.map((s) => s.description).join(', ');
+  const title = subagent.description || subagent.subagent_type;
   return (
     <li>
       <button
         type="button"
         className={clsx(styles.row, styles['row--button'])}
-        onClick={() => useUIStore.getState().toggleSubagent(chatId, single?.id ?? null)}
-        aria-label={`Show ${single ? `subagent ${title}` : title}`}
+        onClick={() => useUIStore.getState().toggleSubagent(chatId, subagent.id)}
+        aria-label={`Show subagent ${title}`}
       >
         <Bot className={styles['row-icon']} aria-hidden="true" />
         <span className={styles['row-title-wrap']}>
           <span className={styles['row-title']}>{title}</span>
-          {detail && <span className={styles['row-detail']}>{detail}</span>}
+          {subagent.last_activity && (
+            <span className={styles['row-detail']}>{subagent.last_activity}</span>
+          )}
         </span>
-        <span className={styles.elapsed}>{formatElapsed(now - startedAt * 1000)}</span>
+        <span className={styles.elapsed}>{formatElapsed(now - subagent.started_at * 1000)}</span>
         <ChevronRight className={styles['open-glyph']} aria-hidden="true" />
       </button>
     </li>
@@ -153,9 +149,9 @@ export const BackgroundTasksTray = memo(function BackgroundTasksTray({
             {tasks.map((task) => (
               <TaskRow key={task.id} chatId={chatId} task={task} now={now} />
             ))}
-            {subagents.length > 0 && (
-              <SubagentsRow chatId={chatId} subagents={subagents} now={now} />
-            )}
+            {subagents.map((subagent) => (
+              <SubagentRow key={subagent.id} chatId={chatId} subagent={subagent} now={now} />
+            ))}
           </ul>
         )}
       </div>

@@ -95,11 +95,24 @@ describe('SubagentPane', () => {
     expect(screen.getByLabelText<HTMLButtonElement>('Stop subagent').disabled).toBe(false);
   });
 
-  it('goes back to the list and closes', () => {
+  it('closes, with no way back to a list of past subagents', () => {
     render(<SubagentPane chatId="c1" tileId="subagent" isVisible />);
-    fireEvent.click(screen.getByLabelText('All subagents'));
-    expect(screen.getByText('Audit')).toBeTruthy();
+    expect(screen.queryByLabelText('All subagents')).toBeNull();
     fireEvent.click(screen.getByLabelText('Close subagent view'));
+    expect(useUIStore.getState().visibleLayout).toEqual([['agent:primary']]);
+  });
+
+  it('opens the running subagent when none is selected', () => {
+    useUIStore.setState({ subagentByChat: {} });
+    h.list = [subagent({ id: 'a2', status: 'completed' }), subagent({ id: 'a3' })];
+    render(<SubagentPane chatId="c1" tileId="subagent" isVisible />);
+    expect(useUIStore.getState().subagentByChat.c1).toBe('a3');
+  });
+
+  it('closes when none is selected and none is running', () => {
+    useUIStore.setState({ subagentByChat: {} });
+    h.list = [subagent({ status: 'completed' })];
+    render(<SubagentPane chatId="c1" tileId="subagent" isVisible />);
     expect(useUIStore.getState().visibleLayout).toEqual([['agent:primary']]);
   });
 });
