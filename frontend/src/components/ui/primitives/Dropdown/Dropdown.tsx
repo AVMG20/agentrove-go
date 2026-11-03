@@ -400,14 +400,17 @@ const Dropdown = memo(function Dropdown<T>({
         <FloatingTooltip content={isOpen ? '' : triggerLabel} className={labelSlotClass}>
           <span className={styles['trigger-label']}>{triggerLabel}</span>
         </FloatingTooltip>
-        {triggerVariant !== 'text' && !disabled && (
+        {!disabled && (
           <ChevronDown
             className={clsx(
               styles.chevron,
-              showIconOnly &&
-                !forceCompact &&
-                triggerVariant !== 'toolbar' &&
-                styles['chevron--responsive'],
+              // Text triggers (the composer footer) only show it on desktop.
+              triggerVariant === 'text'
+                ? styles['chevron--text']
+                : showIconOnly &&
+                    !forceCompact &&
+                    triggerVariant !== 'toolbar' &&
+                    styles['chevron--responsive'],
               isOpen && stateClasses.OPEN,
             )}
           />

@@ -5,14 +5,35 @@ import { ChatDropdown } from './ChatDropdown';
 import { WorkspaceContextMenu } from './WorkspaceContextMenu';
 import type { SidebarChatActions } from './useSidebarChatActions';
 import type { SidebarWorkspaceActions } from './useSidebarWorkspaceActions';
+import type { FolderDropPlacement } from './sidebarGrouping';
 
 interface SidebarOverlaysProps {
   chat: SidebarChatActions;
   workspace: SidebarWorkspaceActions;
   workspaces: Workspace[];
+  // Folders on screen, in order, when the list is grouped by project: the
+  // project menu offers Move up/down among them.
+  folderKeys?: string[];
+  onMoveFolder?: (key: string, targetKey: string, placement: FolderDropPlacement) => void;
 }
 
-export function SidebarOverlays({ chat, workspace, workspaces }: SidebarOverlaysProps) {
+export function SidebarOverlays({
+  chat,
+  workspace,
+  workspaces,
+  folderKeys = [],
+  onMoveFolder,
+}: SidebarOverlaysProps) {
+  const folderMove = (workspaceId: string, step: -1 | 1) => {
+    const index = folderKeys.indexOf(workspaceId);
+    const target = index === -1 ? undefined : folderKeys[index + step];
+    if (!onMoveFolder || !target) return undefined;
+    return () => {
+      workspace.setWorkspaceDropdown(null);
+      onMoveFolder(workspaceId, target, step < 0 ? 'before' : 'after');
+    };
+  };
+
   const workspaceAppearance = (workspaceId: string) => {
     const ws = workspaces.find((w) => w.id === workspaceId);
     return { icon: ws?.icon ?? null, color: ws?.color ?? null };
@@ -41,6 +62,9 @@ export function SidebarOverlays({ chat, workspace, workspaces }: SidebarOverlays
           ref={workspace.workspaceDropdownRef}
           position={workspace.workspaceDropdown.position}
           appearance={workspaceAppearance(workspace.workspaceDropdown.workspaceId)}
+          name={workspaces.find((w) => w.id === workspace.workspaceDropdown!.workspaceId)?.name}
+          onMoveUp={folderMove(workspace.workspaceDropdown.workspaceId, -1)}
+          onMoveDown={folderMove(workspace.workspaceDropdown.workspaceId, 1)}
           onNewThread={() => {
             const { workspaceId } = workspace.workspaceDropdown!;
             workspace.setWorkspaceDropdown(null);

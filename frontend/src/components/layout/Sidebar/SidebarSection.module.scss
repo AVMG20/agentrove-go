@@ -9,7 +9,7 @@
 
 .header {
   display: flex;
-  height: var(--space-8);
+  min-height: var(--space-8);
   align-items: center;
   justify-content: space-between;
   gap: var(--space-2);
@@ -38,11 +38,24 @@
   &:focus-visible .chevron {
     opacity: 1;
   }
+
+  // Touch: a native list's section header — taller, with its chevron showing.
+  @include responsive.media('touch') {
+    min-height: var(--touch-target, var(--space-11));
+
+    .chevron {
+      opacity: 1;
+    }
+  }
 }
 
 .title {
   @include type.type-meta(500);
   @include type.type-overflow;
+
+  @include responsive.media('touch') {
+    @include type.type-default(600);
+  }
 }
 
 // Hidden at rest; a collapsed section keeps it visible so the state is legible

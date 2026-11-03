@@ -4,13 +4,9 @@
 @use '@/styles/globals/responsive' as responsive;
 
 .no-sandbox {
-  @include type.type-default;
   display: flex;
   height: 100%;
-  align-items: center;
-  justify-content: center;
   background-color: var(--theme-surface-secondary);
-  color: var(--theme-text-quaternary);
 }
 
 .diff-view {
@@ -65,16 +61,5 @@
 .virtualizer-content {
   > * + * {
     border-top: 1px solid colors.theme-color('border', 0.3);
-  }
-}
-
-.empty-link {
-  @include anim.transition-colors;
-  @include type.type-meta;
-  color: var(--theme-text-tertiary);
-  text-decoration: underline;
-
-  @include responsive.hover {
-    color: var(--theme-text-secondary);
   }
 }

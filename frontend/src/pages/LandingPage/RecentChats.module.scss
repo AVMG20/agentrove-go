@@ -21,11 +21,46 @@
   @include type.type-section-header;
   padding-left: var(--space-2);
   padding-right: var(--space-2);
+
+  @include responsive.media('desktop') {
+    padding-inline: var(--space-1);
+    margin-bottom: var(--space-1);
+  }
 }
 
 .list {
   display: flex;
   flex-direction: column;
+
+  // Desktop: one quiet card, rows split by hairlines, so the recents read as
+  // a list rather than loose lines of text.
+  @include responsive.media('desktop') {
+    border: 1px solid var(--theme-border);
+    border-radius: var(--radius-xl);
+    background-color: colors.theme-color('surface-secondary', 0.6);
+    padding: var(--space-1);
+
+    > * + * {
+      position: relative;
+
+      &::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: var(--space-3);
+        right: var(--space-3);
+        height: 1px;
+        background-color: colors.theme-color('border', 0.7);
+        pointer-events: none;
+      }
+    }
+
+    // The fill of a hovered row replaces the hairlines on either side of it.
+    > :hover::before,
+    > :hover + *::before {
+      opacity: 0;
+    }
+  }
 }
 
 .row {
@@ -42,6 +77,13 @@
   @include responsive.hover {
     background-color: var(--theme-surface-hover);
     border-color: colors.theme-color('border', 0.5);
+  }
+
+  @include responsive.media('desktop') {
+    gap: var(--space-3);
+    padding: var(--space-2-5) var(--space-3);
+    border: none;
+    border-radius: var(--radius-lg);
   }
 }
 

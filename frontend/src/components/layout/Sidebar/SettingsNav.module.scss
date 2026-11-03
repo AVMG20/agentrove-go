@@ -97,3 +97,28 @@
     color: var(--theme-accent);
   }
 }
+
+// Touch: finger-height list cells, like the thread rows in the same drawer.
+@include responsive.media('touch') {
+  .back,
+  .item {
+    @include type.type-large;
+    min-height: var(--touch-target);
+    gap: var(--space-3);
+    padding-block: var(--space-2);
+  }
+
+  .item[aria-current='page'] {
+    font-weight: 500;
+  }
+
+  .item:not([aria-current='page']) {
+    @include responsive.active((active)) {
+      background-color: var(--theme-surface-hover);
+    }
+  }
+
+  .list {
+    gap: var(--space-0-5);
+  }
+}

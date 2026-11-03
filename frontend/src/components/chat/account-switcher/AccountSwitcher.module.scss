@@ -44,11 +44,22 @@
   &--empty {
     color: var(--theme-text-secondary);
   }
+
+  // Phones: the first chip of the composer's swipeable controls row.
+  @include responsive.media('mobile') {
+    @include controls.toolbar-chip;
+    max-width: none;
+  }
 }
 
 .trigger--open {
   background-color: var(--theme-surface-hover);
   color: var(--theme-text-secondary);
+
+  @include responsive.media('mobile') {
+    border-color: var(--theme-border-secondary);
+    background-color: var(--theme-surface-active);
+  }
 }
 
 .trigger-icon {

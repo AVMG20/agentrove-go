@@ -35,7 +35,7 @@
     margin-left: auto;
     margin-right: auto;
     // Reading measure for 15px prose (~80ch), shared with the composer and skeleton
-    max-width: 48rem;
+    max-width: var(--chat-measure);
   }
 }
 
@@ -47,6 +47,19 @@
   position: relative;
   background-color: var(--theme-surface);
   padding-bottom: var(--safe-area-bottom);
+
+  // Desktop: the conversation fades out under the composer instead of being
+  // cut off by a hard edge.
+  @include responsive.media('desktop') {
+    &::before {
+      content: '';
+      position: absolute;
+      inset: auto 0 100%;
+      height: var(--space-6);
+      background: linear-gradient(to top, var(--theme-surface), transparent);
+      pointer-events: none;
+    }
+  }
 }
 
 .composer-inner {
@@ -55,11 +68,15 @@
   padding-top: var(--space-2);
   padding-bottom: var(--space-2);
 
+  @include responsive.media('desktop') {
+    padding-bottom: var(--space-4);
+  }
+
   @include responsive.media('lg-up') {
     margin-left: auto;
     margin-right: auto;
     // Reading measure for 15px prose (~80ch), shared with the composer and skeleton
-    max-width: 48rem;
+    max-width: var(--chat-measure);
   }
 }
 

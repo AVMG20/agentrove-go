@@ -8,12 +8,12 @@ import { Button } from '@/components/ui/primitives/Button/Button';
 import { Input } from '@/components/ui/primitives/Input/Input';
 import { IS_MAC_PLATFORM } from '@/utils/platform';
 import { buildSearchDecorations } from '@/utils/terminal';
-import type { Palette } from '@/types/ui.types';
+import type { ResolvedTheme } from '@/types/ui.types';
 import styles from './TerminalSearch.module.scss';
 
 interface TerminalSearchProps {
   isReady: boolean;
-  palette: Palette;
+  mode: ResolvedTheme;
   searchAddonRef: MutableRefObject<SearchAddon | null>;
   terminalRef: MutableRefObject<XTerm | null>;
 }
@@ -22,7 +22,7 @@ interface TerminalSearchProps {
 // match, decorates the rest, and reports index/count via onDidChangeResults.
 export function TerminalSearch({
   isReady,
-  palette,
+  mode,
   searchAddonRef,
   terminalRef,
 }: TerminalSearchProps) {
@@ -31,7 +31,7 @@ export function TerminalSearch({
   const [result, setResult] = useState<ISearchResultChangeEvent | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  const decorations = useMemo(() => buildSearchDecorations(palette), [palette]);
+  const decorations = useMemo(() => buildSearchDecorations(mode), [mode]);
 
   useEffect(() => {
     // ⌘F on mac, Ctrl+F elsewhere — plain Ctrl+F must keep reaching the shell

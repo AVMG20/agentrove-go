@@ -26,7 +26,9 @@ function useSidebarWidthVar() {
 
 // The sidebar slides with a transition only on an explicit open/close; the
 // first paint and window resizes snap into place (duration defaults to 0ms).
+// The phone drawer travels further, over the page, so it takes a little longer.
 const SIDEBAR_TOGGLE_MS = 220;
+const DRAWER_TOGGLE_MS = 300;
 
 function useSidebarToggleTransition() {
   useEffect(() => {
@@ -34,12 +36,10 @@ function useSidebarToggleTransition() {
     let timer: ReturnType<typeof setTimeout> | undefined;
     const unsubscribe = useUIStore.subscribe((state, prev) => {
       if (state.sidebarOpen === prev.sidebarOpen) return;
-      root.style.setProperty('--sidebar-transition-duration', `${SIDEBAR_TOGGLE_MS}ms`);
+      const ms = isMobileViewport() ? DRAWER_TOGGLE_MS : SIDEBAR_TOGGLE_MS;
+      root.style.setProperty('--sidebar-transition-duration', `${ms}ms`);
       clearTimeout(timer);
-      timer = setTimeout(
-        () => root.style.removeProperty('--sidebar-transition-duration'),
-        SIDEBAR_TOGGLE_MS + 50,
-      );
+      timer = setTimeout(() => root.style.removeProperty('--sidebar-transition-duration'), ms + 50);
     });
     return () => {
       unsubscribe();
@@ -47,6 +47,21 @@ function useSidebarToggleTransition() {
       root.style.removeProperty('--sidebar-transition-duration');
     };
   }, []);
+}
+
+// Escape closes the phone drawer (a tablet or phone with a hardware keyboard),
+// unless a dialog is up and takes the key itself.
+function useEscapeClosesDrawer(active: boolean) {
+  useEffect(() => {
+    if (!active) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape' || e.defaultPrevented) return;
+      if (document.querySelector('[aria-modal="true"]')) return;
+      useUIStore.getState().setSidebarOpen(false);
+    };
+    document.addEventListener('keydown', onKeyDown);
+    return () => document.removeEventListener('keydown', onKeyDown);
+  }, [active]);
 }
 
 // The signed-in app shell: one persistent sidebar (threads or settings
@@ -71,6 +86,7 @@ export function Layout({ children }: { children: ReactNode }) {
   });
 
   useDrawerSwipe(isMobile);
+  useEscapeClosesDrawer(isMobile && sidebarOpen);
 
   return (
     <div className={styles.layout}>
@@ -88,6 +104,7 @@ export function Layout({ children }: { children: ReactNode }) {
           className={clsx(styles.scrim, sidebarOpen && styles['scrim--open'])}
           onClick={() => useUIStore.getState().setSidebarOpen(false)}
           aria-hidden="true"
+          data-drawer-scrim
         />
       )}
 

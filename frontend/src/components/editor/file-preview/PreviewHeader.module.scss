@@ -11,6 +11,12 @@
   border-bottom: 1px solid var(--theme-border);
   background-color: var(--theme-surface-secondary);
   padding: var(--space-4);
+
+  // Phones: a slimmer bar leaves room for the document.
+  @include responsive.media('mobile') {
+    height: var(--space-12);
+    padding: var(--space-1) var(--space-1) var(--space-1) var(--space-4);
+  }
 }
 
 .title {
@@ -30,6 +36,10 @@
 
   @include responsive.hover {
     background-color: var(--theme-surface-hover);
+  }
+
+  @include responsive.media('touch') {
+    padding: var(--space-3);
   }
 }
 

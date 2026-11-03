@@ -1,5 +1,5 @@
 import { useState, type Ref } from 'react';
-import { Edit2, Palette, SquarePen, Trash2 } from 'lucide-react';
+import { ArrowDown, ArrowUp, ChevronRight, Edit2, Palette, SquarePen, Trash2 } from 'lucide-react';
 import { FolderAppearancePicker, type FolderAppearance } from './FolderAppearancePicker';
 import { SidebarMenu, SidebarMenuDivider, SidebarMenuItem } from './SidebarMenu';
 
@@ -7,6 +7,11 @@ interface WorkspaceContextMenuProps {
   ref?: Ref<HTMLDivElement>;
   position: { top: number; left: number };
   appearance: FolderAppearance;
+  // The project's name, heading the phone action sheet.
+  name?: string;
+  // Reordering without dragging (touch, keyboard); absent at either end.
+  onMoveUp?: () => void;
+  onMoveDown?: () => void;
   onNewThread: () => void;
   onRename: () => void;
   onChangeAppearance: (change: Partial<FolderAppearance>) => void;
@@ -20,6 +25,9 @@ export function WorkspaceContextMenu({
   ref,
   position,
   appearance,
+  name,
+  onMoveUp,
+  onMoveDown,
   onNewThread,
   onRename,
   onChangeAppearance,
@@ -38,6 +46,7 @@ export function WorkspaceContextMenu({
         onClose={onClose}
         role="dialog"
         aria-label="Project icon and color"
+        title={name}
       >
         <FolderAppearancePicker
           value={appearance}
@@ -49,16 +58,31 @@ export function WorkspaceContextMenu({
   }
 
   return (
-    <SidebarMenu key="menu" ref={ref} position={position} onClose={onClose}>
+    <SidebarMenu key="menu" ref={ref} position={position} onClose={onClose} title={name}>
       <SidebarMenuItem icon={SquarePen} onClick={onNewThread}>
         New thread in project
       </SidebarMenuItem>
       <SidebarMenuItem icon={Edit2} onClick={onRename}>
         Rename project
       </SidebarMenuItem>
-      <SidebarMenuItem icon={Palette} onClick={() => setPicking(true)}>
+      <SidebarMenuItem
+        icon={Palette}
+        onClick={() => setPicking(true)}
+        trailing={<ChevronRight aria-hidden />}
+      >
         Icon &amp; color…
       </SidebarMenuItem>
+      {(onMoveUp || onMoveDown) && <SidebarMenuDivider />}
+      {onMoveUp && (
+        <SidebarMenuItem icon={ArrowUp} onClick={onMoveUp}>
+          Move up
+        </SidebarMenuItem>
+      )}
+      {onMoveDown && (
+        <SidebarMenuItem icon={ArrowDown} onClick={onMoveDown}>
+          Move down
+        </SidebarMenuItem>
+      )}
       <SidebarMenuDivider />
       <SidebarMenuItem icon={Trash2} onClick={onDelete} danger>
         Delete project

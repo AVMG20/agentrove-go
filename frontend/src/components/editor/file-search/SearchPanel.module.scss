@@ -52,6 +52,10 @@
   &:focus {
     outline: none;
   }
+
+  @include responsive.media('touch') {
+    height: var(--space-10);
+  }
 }
 
 .toggles {
@@ -84,6 +88,12 @@
   &--active {
     background-color: var(--theme-surface-active);
     color: var(--theme-text-primary);
+  }
+
+  @include responsive.media('touch') {
+    height: var(--space-8);
+    width: var(--space-8);
+    border-radius: var(--radius-md);
   }
 }
 

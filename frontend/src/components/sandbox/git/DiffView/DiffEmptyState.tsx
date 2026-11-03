@@ -1,9 +1,9 @@
 import type { ReactNode } from 'react';
 import type { LucideIcon } from 'lucide-react';
-import styles from './DiffEmptyState.module.scss';
+import { EmptyState } from '@/components/ui/shared/EmptyState/EmptyState';
 
 export function DiffEmptyState({
-  icon: Icon,
+  icon,
   label,
   sublabel,
   children,
@@ -14,11 +14,8 @@ export function DiffEmptyState({
   children?: ReactNode;
 }) {
   return (
-    <div className={styles['empty-state']}>
-      <Icon className={styles['empty-icon']} />
-      <span className={styles['empty-label']}>{label}</span>
-      {sublabel && <span className={styles['empty-sublabel']}>{sublabel}</span>}
+    <EmptyState icon={icon} title={label} description={sublabel}>
       {children}
-    </div>
+    </EmptyState>
   );
 }

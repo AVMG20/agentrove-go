@@ -1,10 +1,11 @@
 import { useMutation, useQuery } from '@tanstack/react-query';
-import type { UseMutationOptions, UseQueryOptions } from '@tanstack/react-query';
+import type { QueryClient, UseMutationOptions, UseQueryOptions } from '@tanstack/react-query';
 import { authService } from '@/services/authService';
-import type { AuthConfig, AuthResponse, User } from '@/types/user.types';
+import type { AuthConfig, AuthResponse, AuthSession, User } from '@/types/user.types';
 import { clearAllStreamState } from '@/hooks/stream/streamRegistry';
 import { resetUserScopedStores } from '@/store/resetUserStores';
 import { createMutation } from './createMutation';
+import { snapshotQueries } from './optimistic';
 import { queryKeys } from './queryKeys';
 
 export const useCurrentUserQuery = (options?: Partial<UseQueryOptions<User>>) => {
@@ -23,10 +24,25 @@ export const useAuthConfigQuery = () =>
     staleTime: 60_000,
   });
 
+// Optimistic, so the switch flips at once.
 export const useSetRegistrationMutation = createMutation<AuthConfig, Error, boolean>(
   (enabled) => authService.setRegistrationEnabled(enabled),
-  (queryClient, config) => {
-    queryClient.setQueryData(queryKeys.auth.config, config);
+  (queryClient, config, _enabled, { isLast }) => {
+    if (isLast) queryClient.setQueryData(queryKeys.auth.config, config);
+  },
+  {
+    mutationKey: ['auth-registration'],
+    scope: 'auth-registration',
+    apply: async (queryClient, enabled) => {
+      const snapshot = await snapshotQueries(queryClient, [
+        { queryKey: queryKeys.auth.config, exact: true },
+      ]);
+      queryClient.setQueryData<AuthConfig>(
+        queryKeys.auth.config,
+        (old) => old && { ...old, registration_enabled: enabled },
+      );
+      return snapshot;
+    },
   },
 );
 
@@ -36,14 +52,44 @@ export const useSessionsQuery = () =>
     queryFn: () => authService.listSessions(),
   });
 
+// Shared by the session revokes: only the last in flight refetches.
+const sessionsMutationKey = ['auth-sessions-mutation'] as const;
+
+async function applySessionsChange(
+  queryClient: QueryClient,
+  keep: (session: AuthSession) => boolean,
+) {
+  const snapshot = await snapshotQueries(queryClient, [
+    { queryKey: queryKeys.auth.sessions, exact: true },
+  ]);
+  queryClient.setQueryData<AuthSession[]>(queryKeys.auth.sessions, (old) => old?.filter(keep));
+  return snapshot;
+}
+
+const settleSessions = (queryClient: QueryClient) =>
+  void queryClient.invalidateQueries({ queryKey: queryKeys.auth.sessions });
+
+// Optimistic: the session leaves the list at once.
 export const useRevokeSessionMutation = createMutation<void, Error, string>(
   (sessionId) => authService.revokeSession(sessionId),
-  (queryClient) => queryClient.invalidateQueries({ queryKey: queryKeys.auth.sessions }),
+  () => undefined,
+  {
+    mutationKey: sessionsMutationKey,
+    apply: (queryClient, sessionId) =>
+      applySessionsChange(queryClient, (session) => session.id !== sessionId),
+    settle: settleSessions,
+  },
 );
 
+// Optimistic: only this device's session stays listed.
 export const useRevokeOtherSessionsMutation = createMutation<void, Error, void>(
   () => authService.revokeOtherSessions(),
-  (queryClient) => queryClient.invalidateQueries({ queryKey: queryKeys.auth.sessions }),
+  () => undefined,
+  {
+    mutationKey: sessionsMutationKey,
+    apply: (queryClient) => applySessionsChange(queryClient, (session) => session.current),
+    settle: settleSessions,
+  },
 );
 
 interface LoginData {

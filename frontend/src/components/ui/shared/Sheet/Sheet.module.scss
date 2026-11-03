@@ -1,0 +1,126 @@
+@use '@/styles/globals/colors' as colors;
+@use '@/styles/globals/typography' as type;
+@use '@/styles/globals/animations' as anim;
+@use '@/styles/globals/responsive' as responsive;
+@use '@/styles/globals/zlayer' as z;
+
+// ---- grab handle (SheetHandle) ----
+
+// The whole strip is the grab area; the pill is just its picture. No browser
+// panning inside it, so the drag goes to useSheetDrag.
+.handle {
+  display: flex;
+  height: var(--space-5);
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+
+.handle-pill {
+  height: var(--space-1);
+  width: var(--space-9);
+  border-radius: var(--radius-full);
+  background-color: colors.theme-color('text-quaternary', 0.5);
+}
+
+// ---- action sheet (ActionSheet) ----
+
+.layer {
+  @include z.z('modal');
+  position: fixed;
+  inset: 0;
+}
+
+.scrim {
+  @include anim.fade-in(var(--duration-fast));
+  position: absolute;
+  inset: 0;
+  // Pure-black scrim — an overlay, not a theme surface
+  background-color: rgb(0 0 0 / 0.45);
+}
+
+// Floats a little above the bottom edge and home indicator, iOS style: the
+// actions in one rounded group, Cancel in its own below.
+.action-sheet {
+  position: absolute;
+  inset: auto 0 0;
+  display: flex;
+  max-height: calc(var(--app-height, 100dvh) - var(--safe-area-top) - var(--space-10));
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: 0 calc(var(--space-2) + var(--safe-area-right))
+    calc(var(--space-2) + var(--device-safe-area-bottom))
+    calc(var(--space-2) + var(--safe-area-left));
+  outline: none;
+  animation: sheet-enter var(--duration-slow) var(--easing-drawer, var(--easing-out));
+
+  @include responsive.media('reduced-motion') {
+    animation: none;
+  }
+}
+
+.group {
+  display: flex;
+  min-height: 0;
+  flex-direction: column;
+  overflow: hidden;
+  border-radius: var(--radius-2xl);
+  background-color: var(--theme-surface-secondary);
+  box-shadow: var(--shadow-strong);
+}
+
+.header {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-0-5);
+  border-bottom: 1px solid colors.theme-color('border', 0.6);
+  padding: 0 var(--space-5) var(--space-3);
+  text-align: center;
+}
+
+.title {
+  @include type.type-body(600);
+  @include type.type-lineclamp(2);
+  color: var(--theme-text-primary);
+}
+
+.subtitle {
+  @include type.type-meta;
+  @include type.type-overflow;
+  max-width: 100%;
+  color: var(--theme-text-tertiary);
+}
+
+.body {
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.cancel {
+  @include type.type-large(600);
+  @include anim.transition-colors;
+  min-height: var(--space-14);
+  flex-shrink: 0;
+  border-radius: var(--radius-2xl);
+  background-color: var(--theme-surface-secondary);
+  color: var(--theme-text-primary);
+  box-shadow: var(--shadow-strong);
+
+  @include responsive.active((active)) {
+    background-color: var(--theme-surface-active);
+  }
+}
+
+@keyframes sheet-enter {
+  from {
+    transform: translateY(100%);
+  }
+  to {
+    transform: none;
+  }
+}

@@ -17,10 +17,32 @@ export function isPhoneScreen(): boolean {
   return Math.min(width, height) < PHONE_MAX_SHORT_SIDE;
 }
 
+// iOS and iPadOS (which reports itself as a Mac, but with a touch screen). Their
+// browsers claim the left screen edge for the back gesture.
+export function isIOS(): boolean {
+  if (typeof navigator === 'undefined') return false;
+  return (
+    /iP(hone|ad|od)/.test(navigator.userAgent) ||
+    (/Macintosh/.test(navigator.userAgent) && navigator.maxTouchPoints > 1)
+  );
+}
+
+// Launched from the home screen: no browser chrome and no browser gestures.
+export function isStandalone(): boolean {
+  if (typeof window === 'undefined') return false;
+  return (
+    window.matchMedia?.('(display-mode: standalone)')?.matches === true ||
+    (navigator as Navigator & { standalone?: boolean }).standalone === true
+  );
+}
+
+// Both the screen and the viewport have to agree: device emulators (and some
+// WebViews) report the host's landscape orientation for a portrait phone
+// viewport, which would lay the portrait UI out for a phone on its side.
 function isLandscape(): boolean {
+  const wide = window.innerWidth > window.innerHeight;
   const type = window.screen.orientation?.type;
-  if (type) return type.startsWith('landscape');
-  return window.innerWidth > window.innerHeight;
+  return type ? type.startsWith('landscape') && wide : wide;
 }
 
 export interface LayoutMode {

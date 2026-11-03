@@ -1,6 +1,7 @@
 @use '@/styles/globals/colors' as colors;
 @use '@/styles/globals/typography' as type;
 @use '@/styles/globals/animations' as anim;
+@use '@/styles/globals/controls' as controls;
 @use '@/styles/globals/responsive' as responsive;
 @use '@/styles/globals/state-classes' as state;
 @use '@/styles/globals/zlayer' as z;
@@ -42,11 +43,46 @@
   padding: 0;
   color: var(--theme-text-secondary);
 
-  // Finger-sized hit area for the composer's icon-only selectors.
-  @include responsive.media('touch') {
-    min-height: var(--space-9);
-    min-width: var(--space-8);
-    justify-content: center;
+  // Desktop: a quiet chip, label + chevron, that lights up under the pointer.
+  @include responsive.media('desktop') {
+    gap: var(--space-1-5);
+    border-radius: var(--radius-md);
+    padding: var(--space-1) var(--space-2);
+    color: var(--theme-text-tertiary);
+
+    @include responsive.hover {
+      background-color: var(--theme-surface-hover);
+    }
+
+    &:global(.#{state.$state-open}) {
+      background-color: var(--theme-surface-hover);
+    }
+
+    &:focus-visible {
+      outline: none;
+      box-shadow: 0 0 0 2px colors.theme-color('accent', 0.4);
+    }
+  }
+
+  // Phones: a labelled chip in the composer's swipeable controls row, so the
+  // current model, effort and mode stay readable (the label shows even where
+  // compactOnMobile would leave only the icon).
+  @include responsive.media('mobile') {
+    @include controls.toolbar-chip;
+
+    .label-slot--compact {
+      display: block;
+    }
+
+    .trigger-label {
+      @include type.type-default(500);
+      max-width: var(--space-32);
+    }
+
+    &:global(.#{state.$state-open}) {
+      border-color: var(--theme-border-secondary);
+      background-color: var(--theme-surface-active);
+    }
   }
 
   @include responsive.hover {
@@ -161,6 +197,19 @@
     display: none;
 
     @include responsive.media('sm-up') {
+      display: block;
+    }
+  }
+
+  // Desktop composer footer: the chevron is what makes a bare label read as a
+  // picker. Phones open these as sheets from a swipeable row and skip it.
+  &--text {
+    display: none;
+    margin-left: calc(-1 * var(--space-0-5));
+    color: currentColor;
+    opacity: 0.6;
+
+    @include responsive.media('desktop') {
       display: block;
     }
   }

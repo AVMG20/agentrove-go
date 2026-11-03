@@ -14,6 +14,7 @@ import { FileTree as PierreFileTree, useFileTree } from '@pierre/trees/react';
 import type { FileTree, FileTreeDirectoryHandle } from '@pierre/trees';
 import { Spinner } from '@/components/ui/primitives/Spinner/Spinner';
 import { useMountEffect } from '@/hooks/useMountEffect';
+import { isCoarsePointer, TOUCH_MEDIA_QUERY } from '@/utils/device';
 import type { FileStructure } from '@/types/file-system.types';
 import {
   findFileInStructure,
@@ -31,9 +32,20 @@ function isDirectoryHandle(item: ReturnType<FileTree['getItem']>): item is FileT
   return item != null && item.isDirectory();
 }
 
+// Fingers need taller rows; the tree is virtualized, so the height is fixed at
+// mount rather than set in CSS.
+const ITEM_HEIGHT = isCoarsePointer() ? 40 : 26;
+
+// The tree renders in a shadow root, which the global >=16px touch rule for
+// fields (_rules.scss) can't reach — without it iOS zooms into the search box.
 const UNSAFE_CSS = `
   [data-file-tree-search-input] {
     --trees-focus-ring-width: 1px;
+  }
+  @media ${TOUCH_MEDIA_QUERY} {
+    [data-file-tree-search-input] {
+      font-size: max(16px, 1em);
+    }
   }
 `;
 
@@ -150,7 +162,7 @@ export const Tree = memo(function Tree({
     initialSelectedPaths: [],
     search: true,
     icons: 'complete',
-    itemHeight: 26,
+    itemHeight: ITEM_HEIGHT,
     unsafeCSS: UNSAFE_CSS,
     onSelectionChange: (selectedPaths) => {
       const path = selectedPaths[0];

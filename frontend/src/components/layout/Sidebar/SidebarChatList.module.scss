@@ -75,3 +75,17 @@
     opacity: 0.5;
   }
 }
+
+// Touch: the text links get a finger-height target.
+@include responsive.media('touch') {
+  .clear-filters,
+  .load-more {
+    @include type.type-default;
+    min-height: var(--touch-target);
+  }
+
+  .clear-filters {
+    padding-inline: var(--space-3);
+    color: var(--theme-text-secondary);
+  }
+}

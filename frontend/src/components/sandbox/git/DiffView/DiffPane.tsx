@@ -83,8 +83,12 @@ export function DiffPane({
       )}
 
       {!isLoading && isError && (
-        <DiffEmptyState icon={AlertCircle} label="Failed to load diff">
-          <Button onClick={onRefetch} variant="unstyled" className={styles['empty-link']}>
+        <DiffEmptyState
+          icon={AlertCircle}
+          label="Failed to load diff"
+          sublabel="The project's box didn't answer. Check it's running, then try again."
+        >
+          <Button onClick={onRefetch} variant="outline" size="sm">
             Retry
           </Button>
         </DiffEmptyState>
@@ -146,7 +150,7 @@ export function DiffPane({
           sublabel="Binary or unsupported file formats"
         >
           {canDiscard && (
-            <Button onClick={openDiscardAll} variant="unstyled" className={styles['empty-link']}>
+            <Button onClick={openDiscardAll} variant="outline" size="sm">
               Discard all changes
             </Button>
           )}

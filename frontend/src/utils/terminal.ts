@@ -1,23 +1,16 @@
 import type { ITerminalOptions } from '@xterm/xterm';
 import type { ISearchDecorationOptions } from '@xterm/addon-search';
-import type { Palette } from '@/types/ui.types';
-import { CUSTOM_PALETTE_TOKENS, DARK_PALETTES } from '@/utils/theme';
+import type { ResolvedTheme } from '@/types/ui.types';
 
 // xterm paints its own canvas, so it can't read surface-secondary CSS vars.
-// Light/dark shades mirrored from globals.css; custom palettes use shared tokens.
-const BASE_SURFACE = {
+// Light/dark shades mirrored from globals.css.
+const SURFACE = {
   light: { background: '#fafafa', foreground: '#27272a' },
   dark: { background: '#121214', foreground: '#e4e4e7' },
 } as const;
 
-function paletteSurface(palette: Palette): { background: string; foreground: string } {
-  if (palette === 'light' || palette === 'dark') return BASE_SURFACE[palette];
-  const t = CUSTOM_PALETTE_TOKENS[palette];
-  return { background: t.surfaceSecondary, foreground: t.textPrimary };
-}
-
 // Built-in ANSI 16 assumes dark bg — light canvas makes white/yellow near-invisible.
-// Light palettes use VS Code Light+; dark keeps xterm defaults.
+// Light uses VS Code Light+; dark keeps xterm defaults.
 const LIGHT_ANSI = {
   black: '#000000',
   red: '#cd3131',
@@ -37,9 +30,9 @@ const LIGHT_ANSI = {
   brightWhite: '#a5a5a5',
 } as const;
 
-export const buildTerminalTheme = (palette: Palette): ITerminalOptions['theme'] => {
-  const isDark = DARK_PALETTES.has(palette);
-  const { background, foreground } = paletteSurface(palette);
+export const buildTerminalTheme = (mode: ResolvedTheme): ITerminalOptions['theme'] => {
+  const isDark = mode === 'dark';
+  const { background, foreground } = SURFACE[mode];
   return {
     background,
     foreground,
@@ -51,10 +44,10 @@ export const buildTerminalTheme = (palette: Palette): ITerminalOptions['theme'] 
   };
 };
 
-export const buildSearchDecorations = (palette: Palette): ISearchDecorationOptions => {
+export const buildSearchDecorations = (mode: ResolvedTheme): ISearchDecorationOptions => {
   // Opaque #RRGGBB only — xterm drops the alpha byte and paints the cell
   // background solid, so the grays must keep the theme foreground readable.
-  const isDark = DARK_PALETTES.has(palette);
+  const isDark = mode === 'dark';
   return {
     matchBackground: isDark ? '#3f3f46' : '#d4d4d8',
     activeMatchBackground: isDark ? '#71717a' : '#a1a1aa',

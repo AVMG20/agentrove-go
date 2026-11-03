@@ -1,5 +1,6 @@
 @use '@/styles/globals/typography' as type;
 @use '@/styles/globals/animations' as anim;
+@use '@/styles/globals/controls' as controls;
 @use '@/styles/globals/responsive' as responsive;
 
 .list-management-tab {
@@ -23,7 +24,8 @@
 }
 
 .title {
-  @include type.type-large(600);
+  // Every settings section opens with the same heading size.
+  @include type.type-title;
   color: var(--theme-text-primary);
 }
 
@@ -39,6 +41,12 @@
 
   @include responsive.media('sm-up') {
     width: auto;
+  }
+
+  // Phones: an empty list's own "create your first" button is the one call to
+  // action, so the header doesn't repeat it.
+  &--empty {
+    @include responsive.hide('mobile');
   }
 }
 
@@ -85,6 +93,10 @@
   color: var(--theme-text-tertiary);
 }
 
+.empty button {
+  @include controls.touch-target;
+}
+
 .items {
   display: flex;
   flex-direction: column;
@@ -120,6 +132,13 @@
   align-items: center;
   gap: var(--space-0-5);
   margin-left: var(--space-3);
+
+  // Touch: the 44px buttons tuck into the card's corner padding so the card
+  // doesn't grow around them.
+  @include responsive.media('touch') {
+    gap: 0;
+    margin: calc(var(--space-2-5) * -1) calc(var(--space-2-5) * -1) 0 var(--space-2);
+  }
 }
 
 .action-btn {
@@ -130,6 +149,8 @@
   @include responsive.hover {
     color: var(--theme-text-primary);
   }
+
+  @include controls.touch-icon-button('.action-icon', var(--space-4));
 }
 
 .action-icon {

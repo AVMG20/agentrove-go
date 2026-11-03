@@ -76,6 +76,10 @@
     color: var(--theme-text-primary);
   }
 
+  @include responsive.media('touch') {
+    padding: var(--space-3);
+  }
+
   &:disabled {
     opacity: 0.5;
   }

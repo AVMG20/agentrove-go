@@ -28,6 +28,11 @@
   pointer-events: auto;
   // Sit centered above the selection with a small gap.
   transform: translate(-50%, calc(-100% - var(--space-1-5)));
+
+  // Touch: under the selection, clear of the native selection handles.
+  &--below {
+    transform: translate(-50%, var(--space-7));
+  }
 }
 
 .action {
@@ -40,6 +45,16 @@
   padding: var(--space-1) var(--space-2);
   color: var(--theme-text-secondary);
   white-space: nowrap;
+
+  @include responsive.media('touch') {
+    @include type.type-body;
+    min-height: var(--space-10);
+    padding-inline: var(--space-3);
+  }
+
+  &:active {
+    background-color: var(--theme-surface-active);
+  }
 
   @include responsive.hover {
     background-color: var(--theme-surface-hover);

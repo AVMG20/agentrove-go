@@ -19,6 +19,10 @@
     background-color: var(--theme-surface-hover);
   }
 
+  @include responsive.media('touch') {
+    padding-block: var(--space-2);
+  }
+
   &--active {
     background-color: var(--theme-surface-active);
   }

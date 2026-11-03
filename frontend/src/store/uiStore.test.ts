@@ -73,8 +73,20 @@ describe('theme', () => {
   });
 
   it('setTheme jumps directly to a theme', () => {
-    state().setTheme('nord');
-    expect(state().theme).toBe('nord');
+    state().setTheme('system');
+    expect(state().theme).toBe('system');
+  });
+
+  it('rehydrates a removed palette theme as system', async () => {
+    localStorage.setItem('ui-storage', JSON.stringify({ state: { theme: 'nord' }, version: 1 }));
+    await useUIStore.persist.rehydrate();
+    expect(state().theme).toBe('system');
+  });
+
+  it('keeps a supported persisted theme on rehydrate', async () => {
+    localStorage.setItem('ui-storage', JSON.stringify({ state: { theme: 'light' }, version: 1 }));
+    await useUIStore.persist.rehydrate();
+    expect(state().theme).toBe('light');
   });
 });
 

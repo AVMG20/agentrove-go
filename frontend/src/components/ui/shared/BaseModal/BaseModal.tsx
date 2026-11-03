@@ -1,6 +1,7 @@
 import { ReactNode, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import clsx from 'clsx';
+import { SheetHandle } from '@/components/ui/shared/Sheet/SheetHandle';
 import styles from './BaseModal.module.scss';
 
 export type ModalSize = 'sm' | 'md' | 'lg' | 'xl' | '2xl' | '4xl' | 'full';
@@ -19,6 +20,9 @@ export interface BaseModalProps {
   // is for dialogs without one.
   ariaLabelledBy?: string;
   ariaLabel?: string;
+  // Phones show the dialog as a bottom sheet with a grab handle (drag down to
+  // close); full-screen dialogs turn it off.
+  sheetHandle?: boolean;
 }
 
 const TABBABLE_SELECTOR = [
@@ -51,6 +55,7 @@ export function BaseModal({
   className,
   ariaLabelledBy,
   ariaLabel,
+  sheetHandle = true,
 }: BaseModalProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const onCloseRef = useRef(onClose);
@@ -121,7 +126,11 @@ export function BaseModal({
         aria-labelledby={ariaLabelledBy}
         aria-label={ariaLabelledBy ? undefined : ariaLabel}
         tabIndex={-1}
+        data-base-modal=""
       >
+        {sheetHandle && (
+          <SheetHandle sheetRef={containerRef} onDismiss={onClose} className={styles.handle} />
+        )}
         {children}
       </div>
     </div>,

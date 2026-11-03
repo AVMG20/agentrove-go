@@ -1,4 +1,5 @@
 @use '@/styles/globals/responsive' as responsive;
+@use '@/components/chat/touch' as touch;
 
 .tooltip {
   display: flex;
@@ -6,6 +7,11 @@
 
 .button {
   border-radius: var(--radius-sm);
+  @include touch.touch-box;
+  @include touch.touch-press;
+  @include responsive.media('touch') {
+    margin-block: calc(-1 * var(--space-2));
+  }
   opacity: 0;
   transition: opacity var(--duration-fast);
 

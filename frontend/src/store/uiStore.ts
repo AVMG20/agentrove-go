@@ -25,7 +25,7 @@ import {
 import { clearTerminalStorage } from '@/utils/terminal';
 import type { MenuMode } from '@/components/ui/command-menu/commandRegistry';
 import { EMPTY_SIDEBAR_FILTERS, type SidebarFilters } from '@/store/sidebarFilters';
-import { THEME_CYCLE } from '@/utils/theme';
+import { THEME_CYCLE, normalizeTheme } from '@/utils/theme';
 
 export const MIN_SIDEBAR_WIDTH = 220;
 export const MAX_SIDEBAR_WIDTH = 560;
@@ -784,11 +784,13 @@ export const useUIStore = create<UIStoreState>()(
       version: 1,
       migrate: migrateUIState,
       // Backfill new filter fields (e.g. groupBy) the shallow merge would leave undefined.
+      // Removed palette themes (dim, nord, ...) normalize to System.
       merge: (persisted, current) => {
         const stored = persisted as Partial<UIStoreState> | undefined;
         return {
           ...current,
           ...stored,
+          theme: stored?.theme === undefined ? current.theme : normalizeTheme(stored.theme),
           sidebarFilters: { ...EMPTY_SIDEBAR_FILTERS, ...stored?.sidebarFilters },
         };
       },

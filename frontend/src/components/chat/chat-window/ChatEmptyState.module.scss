@@ -1,0 +1,87 @@
+@use '@/styles/globals/colors' as colors;
+@use '@/styles/globals/typography' as type;
+@use '@/styles/globals/animations' as anim;
+@use '@/styles/globals/responsive' as responsive;
+
+.empty-state {
+  @include anim.fade-in;
+  display: flex;
+  height: 100%;
+  overflow-y: auto;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  padding: var(--space-10) var(--space-6);
+  text-align: center;
+}
+
+.badge {
+  display: flex;
+  height: var(--space-12);
+  width: var(--space-12);
+  align-items: center;
+  justify-content: center;
+  margin-bottom: var(--space-2);
+  border-radius: var(--radius-2xl);
+  background-color: var(--theme-surface-tertiary);
+  color: var(--theme-text-tertiary);
+}
+
+.badge-icon {
+  height: var(--space-6);
+  width: var(--space-6);
+}
+
+.title {
+  @include type.type-title;
+  color: var(--theme-text-primary);
+}
+
+.hint {
+  @include type.type-body;
+  max-width: var(--space-80);
+  color: var(--theme-text-tertiary);
+}
+
+.starters {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: var(--space-2);
+  margin-top: var(--space-4);
+
+  // Phones: a stack of full-width rows reads (and taps) better than wrapped chips.
+  @include responsive.media('mobile') {
+    width: 100%;
+    max-width: var(--space-96);
+    flex-direction: column;
+    align-items: stretch;
+  }
+}
+
+.starter {
+  @include type.type-default;
+  @include anim.transition-colors;
+  border: 1px solid colors.theme-color('border', 0.6);
+  border-radius: var(--radius-full);
+  padding: var(--space-1-5) var(--space-3);
+  background-color: var(--theme-surface);
+  color: var(--theme-text-secondary);
+
+  @include responsive.hover {
+    background-color: var(--theme-surface-hover);
+    color: var(--theme-text-primary);
+  }
+
+  &:active {
+    background-color: var(--theme-surface-active);
+  }
+
+  @include responsive.media('touch') {
+    @include type.type-body;
+    min-height: var(--space-11);
+    border-radius: var(--radius-xl);
+    padding-inline: var(--space-4);
+  }
+}

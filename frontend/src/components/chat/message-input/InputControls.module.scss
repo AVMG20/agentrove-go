@@ -1,6 +1,19 @@
+@use '@/styles/globals/responsive' as responsive;
+
 .input-controls {
   display: flex;
   min-width: 0;
   align-items: center;
   gap: var(--space-1);
+
+  // Phones: the footer row around it scrolls sideways (Input.module.scss), so
+  // the chips keep their width rather than squashing.
+  @include responsive.media('mobile') {
+    flex-shrink: 0;
+    gap: var(--space-1-5);
+
+    > * {
+      flex-shrink: 0;
+    }
+  }
 }

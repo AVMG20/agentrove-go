@@ -160,14 +160,23 @@ export function useSidebarChatActions({
     });
   }, []);
 
+  // Right-click / long-press on a row: always opens, at that point.
+  const handleChatMenuAt = useCallback((point: { x: number; y: number }, chat: Chat) => {
+    const position = calculateDropdownPosition(new DOMRect(point.x, point.y, 0, 0));
+    setDropdown({ chat, position });
+  }, []);
+
   const handleRenameClick = useCallback((chat: Chat) => {
     setChatToRename(chat);
     setDropdown(null);
   }, []);
 
+  // Optimistic: the sidebar shows the new title at once, so the dialog closes
+  // without waiting; a failure puts the old title back.
   const handleSaveRename = useCallback(
     async (newTitle: string) => {
       if (!chatToRename) return;
+      setChatToRename(null);
       try {
         await mutateWithToast(
           () =>
@@ -177,8 +186,6 @@ export function useSidebarChatActions({
         );
       } catch {
         // toast already shown by mutateWithToast
-      } finally {
-        setChatToRename(null);
       }
     },
     [chatToRename, updateChat],
@@ -211,17 +218,13 @@ export function useSidebarChatActions({
     [pinChat],
   );
 
-  // Archiving the open thread leaves it like a delete does; Undo restores it
-  // (and reopens it when it was open).
+  // Optimistic: the thread leaves the sidebar at once and a failure puts it
+  // back. Archiving the open thread leaves it like a delete does; Undo restores
+  // it (and reopens it when it was open). mutateAsync, not mutate callbacks:
+  // those fire only for the latest call, and Undo is a second one.
   const handleArchiveChat = useCallback(
-    async (chat: Chat) => {
+    (chat: Chat) => {
       setDropdown(null);
-      try {
-        await archiveChat.mutateAsync({ chatId: chat.id, archived: true });
-      } catch (error) {
-        toast.error(error instanceof Error ? error.message : 'Failed to archive thread');
-        return;
-      }
       const wasOpen = chat.id === selectedChatId;
       const uiState = useUIStore.getState();
       if (wasOpen) {
@@ -230,16 +233,17 @@ export function useSidebarChatActions({
       } else if (uiState.splitChatIds.includes(chat.id)) {
         uiState.closeSplitChat(chat.id);
       }
-      showArchivedToast(() => {
-        archiveChat.mutate(
-          { chatId: chat.id, archived: false },
-          {
-            onSuccess: () => {
-              if (wasOpen) navigate(`/chat/${chat.id}`);
-            },
-            onError: (error) => toast.error(error.message || 'Failed to restore thread'),
-          },
-        );
+      const toastId = showArchivedToast(() => {
+        archiveChat
+          .mutateAsync({ chatId: chat.id, archived: false })
+          .catch((error: unknown) =>
+            toast.error(error instanceof Error ? error.message : 'Failed to restore thread'),
+          );
+        if (wasOpen) navigate(`/chat/${chat.id}`);
+      });
+      archiveChat.mutateAsync({ chatId: chat.id, archived: true }).catch((error: unknown) => {
+        toast.dismiss(toastId);
+        toast.error(error instanceof Error ? error.message : 'Failed to archive thread');
       });
     },
     [archiveChat, selectedChatId, navigate],
@@ -265,6 +269,7 @@ export function useSidebarChatActions({
     handleDeleteChat,
     confirmDeleteChat,
     handleDropdownClick,
+    handleChatMenuAt,
     handleRenameClick,
     handleSaveRename,
     handleGenerateChatTitle,

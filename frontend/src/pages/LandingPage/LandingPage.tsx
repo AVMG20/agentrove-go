@@ -307,16 +307,18 @@ export function LandingPage() {
             <div className={styles['agent-view']}>
               <div className={styles['agent-panel']}>
                 <div className={styles.greeting}>
-                  <img
-                    src={iconDark}
-                    alt="Bitbox"
-                    className={clsx(styles['greeting-logo'], styles['greeting-logo--on-light'])}
-                  />
-                  <img
-                    src={iconLight}
-                    alt="Bitbox"
-                    className={clsx(styles['greeting-logo'], styles['greeting-logo--on-dark'])}
-                  />
+                  <div className={styles['greeting-mark']}>
+                    <img
+                      src={iconDark}
+                      alt="Bitbox"
+                      className={clsx(styles['greeting-logo'], styles['greeting-logo--on-light'])}
+                    />
+                    <img
+                      src={iconLight}
+                      alt="Bitbox"
+                      className={clsx(styles['greeting-logo'], styles['greeting-logo--on-dark'])}
+                    />
+                  </div>
                   <h1 className={styles['greeting-title']}>
                     {greeting}
                     {greetingName && `, ${greetingName}`}

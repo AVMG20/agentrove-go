@@ -1,6 +1,7 @@
 @use '@/styles/globals/colors' as colors;
 @use '@/styles/globals/animations' as anim;
 @use '@/styles/globals/responsive' as responsive;
+@use '@/components/chat/touch' as touch;
 
 .message-actions {
   display: flex;
@@ -14,6 +15,8 @@
   overflow: hidden;
   border-radius: var(--radius-md);
   padding: var(--space-1);
+  @include touch.touch-box;
+  @include touch.touch-press;
 
   &--default {
     color: var(--theme-text-quaternary);
@@ -37,4 +40,9 @@
 .copy-icon {
   height: var(--space-3-5);
   width: var(--space-3-5);
+
+  @include responsive.media('touch') {
+    height: var(--space-4);
+    width: var(--space-4);
+  }
 }

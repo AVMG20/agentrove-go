@@ -21,6 +21,23 @@
     @include controls.button-size('icon');
   }
 
+  // Phone dialogs are bottom sheets (BaseModal): their buttons get a finger's
+  // height there, whatever size the desktop dialog uses.
+  &--sm,
+  &--md,
+  &--lg,
+  &--icon {
+    :global(#{responsive.layout-mode('mobile')} [data-base-modal]) & {
+      min-height: var(--touch-target);
+    }
+  }
+
+  &--icon {
+    :global(#{responsive.layout-mode('mobile')} [data-base-modal]) & {
+      min-width: var(--touch-target);
+    }
+  }
+
   &--primary {
     @include controls.button-variant('primary');
   }

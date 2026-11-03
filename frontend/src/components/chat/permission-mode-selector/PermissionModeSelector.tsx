@@ -2,6 +2,7 @@ import { memo } from 'react';
 import clsx from 'clsx';
 import { Dropdown, type DropdownPosition } from '@/components/ui/primitives/Dropdown/Dropdown';
 import { useIsSplitMode } from '@/hooks/useIsSplitMode';
+import { useIsMobile } from '@/hooks/useIsMobile';
 import {
   useChatSettingsStore,
   DEFAULT_CHAT_SETTINGS_KEY,
@@ -51,6 +52,8 @@ const PermissionModeDropdown = memo(function PermissionModeDropdown({
   variant = 'default',
 }: PermissionModeDropdownProps) {
   const isSplitMode = useIsSplitMode();
+  // Phones show the label in a chip; the long ones get a shorter form there.
+  const isMobile = useIsMobile();
 
   const selectedMode = getPermissionModeOption(value);
 
@@ -60,6 +63,7 @@ const PermissionModeDropdown = memo(function PermissionModeDropdown({
       items={PERMISSION_MODES}
       getItemKey={(mode) => mode.value}
       getItemLabel={(mode) => mode.label}
+      getItemShortLabel={isMobile ? (mode) => mode.shortLabel ?? mode.label : undefined}
       onSelect={(mode) => onChange(mode.value)}
       leftIcon={selectedMode.icon}
       width="21rem"

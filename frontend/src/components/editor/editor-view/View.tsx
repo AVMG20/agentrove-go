@@ -118,8 +118,8 @@ export const View = memo(function View({
     : loadedFile?.path.startsWith('/')
       ? 'Outside the project — shown read-only.'
       : loadedFile?.lossy
-      ? "This file isn't valid UTF-8 — shown with replacement characters, read-only."
-      : null;
+        ? "This file isn't valid UTF-8 — shown with replacement characters, read-only."
+        : null;
   const queryClient = useQueryClient();
   // Path whose save was refused because the file changed on disk.
   const [conflictPath, setConflictPath] = useState<string | null>(null);

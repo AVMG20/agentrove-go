@@ -12,6 +12,8 @@
 }
 
 .trigger {
+  @include anim.transition-colors;
+  @include type.type-noselect;
   display: flex;
   min-width: 0;
   flex: 1;
@@ -19,6 +21,17 @@
   gap: var(--space-2-5);
   border-radius: var(--radius-md);
   text-align: left;
+
+  // Phones: the whole row is the button, a finger tall, and shows the press.
+  @include responsive.media('touch') {
+    min-height: var(--touch-target);
+    margin-inline: calc(var(--space-1) * -1);
+    padding-inline: var(--space-1);
+  }
+
+  @include responsive.active((active)) {
+    background-color: var(--theme-surface-hover);
+  }
 }
 
 .avatar-wrap {
@@ -41,6 +54,7 @@
   left: 0;
   margin-bottom: var(--space-2);
   width: var(--space-64);
+  max-width: calc(100vw - var(--space-8));
   border: 1px solid colors.theme-color('border', 0.5);
   border-radius: var(--radius-xl);
   background-color: var(--theme-surface-secondary);
@@ -62,7 +76,13 @@
   text-align: left;
   color: var(--theme-text-secondary);
 
-  @include responsive.hover {
+  @include responsive.media('touch') {
+    min-height: var(--touch-target);
+    gap: var(--space-3);
+    padding-inline: var(--space-3);
+  }
+
+  @include responsive.active((active, hover)) {
     background-color: var(--theme-surface-hover);
     color: var(--theme-text-primary);
   }
@@ -72,15 +92,28 @@
   height: var(--space-3-5);
   width: var(--space-3-5);
   flex-shrink: 0;
+
+  @include responsive.media('touch') {
+    height: var(--space-4);
+    width: var(--space-4);
+  }
 }
 
 .item-label {
   @include type.type-default;
   flex: 1;
+
+  @include responsive.media('touch') {
+    @include type.type-body;
+  }
 }
 
 .item-text {
   @include type.type-default;
+
+  @include responsive.media('touch') {
+    @include type.type-body;
+  }
 }
 
 .item-value {

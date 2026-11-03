@@ -119,9 +119,11 @@ export function Textarea({
   const scrollIntoViewOnMobile = useCallback(() => {
     if (isMobile && textareaRef.current) {
       setTimeout(() => {
+        // 'nearest' only scrolls when the field is actually covered (a composer
+        // lower down a page); centering would pan the pinned app shell instead.
         textareaRef.current?.scrollIntoView({
           behavior: 'smooth',
-          block: 'center',
+          block: 'nearest',
         });
       }, 150);
     }

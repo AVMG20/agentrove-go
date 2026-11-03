@@ -27,6 +27,7 @@ interface SidebarChatItemProps {
   onOpenInSplit?: (chatId: string) => void;
   canOpenInSplit?: boolean;
   onDropdownClick: (e: React.MouseEvent<HTMLButtonElement>, chat: Chat) => void;
+  onMenuAt?: (point: { x: number; y: number }, chat: Chat) => void;
   onArchive?: (chat: Chat) => void;
 }
 
@@ -43,6 +44,7 @@ export const SidebarChatItem = memo(function SidebarChatItem({
   onOpenInSplit,
   canOpenInSplit = false,
   onDropdownClick,
+  onMenuAt,
   onArchive,
 }: SidebarChatItemProps) {
   // Keep the active chat visible when navigation lands on an off-screen row
@@ -151,6 +153,7 @@ export const SidebarChatItem = memo(function SidebarChatItem({
       timestamp={getRelativeTime(chat.updated_at)}
       dropdownLabel="Chat options"
       onDropdownClick={(e) => onDropdownClick(e, chat)}
+      onContextMenu={onMenuAt && ((point) => onMenuAt(point, chat))}
       hoverAction={
         onArchive && { icon: Archive, label: 'Archive thread', onClick: () => onArchive(chat) }
       }

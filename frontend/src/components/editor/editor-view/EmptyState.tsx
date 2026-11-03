@@ -1,6 +1,7 @@
 import { memo } from 'react';
 import { PanelLeft, FileCode2 } from 'lucide-react';
 import { Button } from '@/components/ui/primitives/Button/Button';
+import { EmptyState as BaseEmptyState } from '@/components/ui/shared/EmptyState/EmptyState';
 import styles from './EmptyState.module.scss';
 
 export interface EmptyStateProps {
@@ -29,10 +30,18 @@ export const EmptyState = memo(function EmptyState({
           </Button>
         </div>
       )}
-      <div className={styles['empty-state-body']}>
-        <FileCode2 className={styles['empty-state-icon']} />
-        <span className={styles['empty-state-text']}>Select a file to edit</span>
-      </div>
+      <BaseEmptyState
+        icon={FileCode2}
+        title="Select a file to edit"
+        description="Open one from the file tree to view or change it."
+      >
+        {onToggleFileTree && isFileTreeCollapsed && (
+          <Button variant="outline" size="sm" onClick={onToggleFileTree}>
+            <PanelLeft size={14} />
+            Show files
+          </Button>
+        )}
+      </BaseEmptyState>
     </div>
   );
 });

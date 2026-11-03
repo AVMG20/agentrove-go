@@ -3,6 +3,7 @@ import type { QueryClient, UseQueryOptions } from '@tanstack/react-query';
 import { settingsService } from '@/services/settingsService';
 import type { UserSettings, UserSettingsUpdate } from '@/types/user.types';
 import { createMutation } from './createMutation';
+import { snapshotQueries } from './optimistic';
 import { queryKeys } from './queryKeys';
 
 const settingsQuery = () => ({
@@ -59,11 +60,33 @@ export function useUpdateSidebarFolderOrderMutation() {
   });
 }
 
+// Under the settings key so useChatEvents holds off refetching while it runs.
+const settingsUpdateMutationKey = [queryKeys.settings, 'update'];
+
+// Optimistic, so every reader of the settings sees a toggle at once. Saves go
+// out in order; only the last in flight writes the server's copy back.
 export const useUpdateSettingsMutation = createMutation<UserSettings, Error, UserSettingsUpdate>(
   (data) => settingsService.updateSettings(data),
-  (queryClient, data) => {
-    queryClient.setQueryData([queryKeys.settings], data);
+  (queryClient, data, _variables, { isLast }) => {
+    if (isLast) queryClient.setQueryData([queryKeys.settings], data);
     // Env vars pick the Claude proxy (and token) the usage meter reports on.
     void queryClient.invalidateQueries({ queryKey: queryKeys.usage });
+  },
+  {
+    mutationKey: settingsUpdateMutationKey,
+    scope: 'settings-update',
+    apply: async (queryClient, data) => {
+      const snapshot = await snapshotQueries(queryClient, [
+        { queryKey: [queryKeys.settings], exact: true },
+      ]);
+      queryClient.setQueryData<UserSettings>(
+        [queryKeys.settings],
+        (old) => old && { ...old, ...data },
+      );
+      return snapshot;
+    },
+    settle: (queryClient, _variables, error) => {
+      if (error) void queryClient.invalidateQueries({ queryKey: [queryKeys.settings] });
+    },
   },
 );

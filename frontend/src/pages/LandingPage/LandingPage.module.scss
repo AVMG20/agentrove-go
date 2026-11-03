@@ -20,6 +20,16 @@
   width: 100%;
   overflow-y: auto;
   padding: var(--space-4) var(--space-4) var(--space-10);
+
+  // Desktop: a faint clay glow from the top, so the page has a light source
+  // instead of being a flat field.
+  @include responsive.media('desktop') {
+    background-image: radial-gradient(
+      ellipse 60% 45% at 50% 0%,
+      #{colors.theme-color('accent', 0.07)},
+      transparent 70%
+    );
+  }
 }
 
 // The greeting and recents/prompts regions are 1:1.5 flexible spacers, so the
@@ -49,10 +59,38 @@
   flex: 1.5 0 0;
 }
 
+.greeting-mark {
+  margin-bottom: var(--space-1);
+
+  // Desktop: the mark sits on a small raised tile, the app's signature.
+  @include responsive.media('desktop') {
+    display: flex;
+    height: var(--space-12);
+    width: var(--space-12);
+    align-items: center;
+    justify-content: center;
+    margin-bottom: var(--space-3);
+    border: 1px solid var(--theme-border);
+    border-radius: var(--radius-2xl);
+    background-image: linear-gradient(
+      to bottom,
+      var(--theme-surface),
+      var(--theme-surface-secondary)
+    );
+    box-shadow:
+      var(--shadow-sm),
+      inset 0 1px 0 #{colors.theme-color('text-primary', 0.04)};
+  }
+}
+
 .greeting-logo {
   height: var(--space-7);
   width: var(--space-7);
-  margin-bottom: var(--space-1);
+
+  @include responsive.media('desktop') {
+    height: var(--space-6);
+    width: var(--space-6);
+  }
 
   // Two variants swap by theme — the dark glyph shows on light surfaces and
   // vice versa, same convention as the message avatars.
@@ -77,12 +115,20 @@
   @include type.type-page-title;
   margin: 0;
   color: var(--theme-text-primary);
+
+  @include responsive.media('desktop') {
+    @include type.type-display;
+  }
 }
 
 .greeting-subtitle {
   @include type.type-body;
   margin: 0;
   color: var(--theme-text-tertiary);
+
+  @include responsive.media('desktop') {
+    @include type.type-large;
+  }
 }
 
 .selector-row {

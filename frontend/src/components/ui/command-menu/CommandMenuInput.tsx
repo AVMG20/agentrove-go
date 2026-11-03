@@ -1,4 +1,4 @@
-import { type Ref } from 'react';
+import { type ReactNode, type Ref } from 'react';
 import { Search } from 'lucide-react';
 import { Button } from '../primitives/Button/Button';
 import { Input } from '../primitives/Input/Input';
@@ -13,6 +13,8 @@ interface CommandMenuInputProps {
   onBack: () => void;
   listId: string;
   activeDescendant: string | undefined;
+  // After the field (the phone Cancel button).
+  trailing?: ReactNode;
 }
 
 const PLACEHOLDERS: Partial<Record<MenuMode, string>> = {
@@ -31,6 +33,7 @@ export function CommandMenuInput({
   onBack,
   listId,
   activeDescendant,
+  trailing,
 }: CommandMenuInputProps) {
   return (
     <div className={styles['input-row']}>
@@ -57,6 +60,7 @@ export function CommandMenuInput({
         aria-controls={listId}
         aria-activedescendant={activeDescendant}
       />
+      {trailing}
     </div>
   );
 }

@@ -6,8 +6,8 @@
  * internal UI without needing `unsafeCSS` injection.
  *
  * Palette maps to the semantic --theme-* token vars (styles/globals/_colors.scss),
- * which already resolve per data-theme/data-palette — so one block covers light,
- * dark, dim and sepia with no mode-specific overrides.
+ * which already resolve per data-theme — so one block covers light and dark with
+ * no mode-specific overrides.
  */
 
 file-tree-container {

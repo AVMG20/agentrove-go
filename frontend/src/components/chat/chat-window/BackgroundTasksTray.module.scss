@@ -2,6 +2,7 @@
 @use '@/styles/globals/typography' as type;
 @use '@/styles/globals/animations' as anim;
 @use '@/styles/globals/responsive' as responsive;
+@use '@/components/chat/touch' as touch;
 
 .tray {
   @include anim.fade-in;
@@ -11,6 +12,12 @@
   margin-bottom: calc(-1 * var(--space-4));
   padding-left: var(--space-10);
   padding-right: var(--space-10);
+
+  // Matches the queue banner's phone inset.
+  @include responsive.media('mobile') {
+    padding-left: var(--space-7);
+    padding-right: var(--space-7);
+  }
 
   @include responsive.media('sm-up') {
     padding-left: var(--space-14);
@@ -38,6 +45,10 @@
   padding: var(--space-1-5) var(--space-3);
   color: var(--theme-text-tertiary);
   cursor: pointer;
+
+  @include responsive.media('touch') {
+    min-height: var(--space-10);
+  }
 
   @include responsive.hover {
     color: var(--theme-text-secondary);
@@ -90,6 +101,10 @@
   align-items: center;
   gap: var(--space-2);
   padding: var(--space-1) var(--space-2) var(--space-1) var(--space-3);
+
+  @include responsive.media('touch') {
+    min-height: var(--space-10);
+  }
 }
 
 .row--button {
@@ -99,6 +114,7 @@
   padding-right: var(--space-3-5);
   text-align: left;
   cursor: pointer;
+  @include touch.touch-press;
 
   @include responsive.hover {
     background-color: colors.theme-color('surface-hover', 0.5);
@@ -167,6 +183,14 @@
   border-radius: var(--radius-md);
   color: var(--theme-text-tertiary);
   cursor: pointer;
+  @include touch.touch-press;
+  @include touch.touch-hit-area(var(--space-2));
+
+  @include responsive.media('touch') {
+    height: var(--space-8);
+    width: var(--space-8);
+    margin-block: calc(-1 * var(--space-1));
+  }
 
   @include responsive.hover {
     background-color: var(--theme-surface-hover);

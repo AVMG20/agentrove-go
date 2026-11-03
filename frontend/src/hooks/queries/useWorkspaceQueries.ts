@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef } from 'react';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { QueryClient, UseQueryOptions } from '@tanstack/react-query';
 import { workspaceService } from '@/services/workspaceService';
 import type {
@@ -13,6 +13,7 @@ import type { PaginatedResponse } from '@/types/api.types';
 import type { Chat } from '@/types/chat.types';
 import { useStreamStore } from '@/store/streamStore';
 import { createMutation } from './createMutation';
+import { snapshotQueries } from './optimistic';
 import { queryKeys } from './queryKeys';
 
 export const useWorkspaceResourcesQuery = (
@@ -124,33 +125,25 @@ export const useCreateWorkspaceMutation = createMutation<Workspace, Error, Creat
   },
 );
 
+// Under the workspaces key so useChatEvents holds off refetching while it runs.
+const workspaceUpdateMutationKey = [...queryKeys.workspaces, 'update'];
+
+// A rename or a folder icon/color. Optimistic, so the folder repaints at once;
+// saves go out in order and only the last in flight settles the list.
 export const useUpdateWorkspaceMutation = createMutation<
   Workspace,
   Error,
   { workspaceId: string; data: UpdateWorkspaceRequest }
 >(
   ({ workspaceId, data }) => workspaceService.updateWorkspace(workspaceId, data),
-  (queryClient) => {
-    queryClient.invalidateQueries({ queryKey: queryKeys.workspaces });
-    // Search results embed workspace_name, so a rename leaves a stale label
-    // visible until the search query naturally refetches.
-    queryClient.invalidateQueries({ queryKey: queryKeys.chatsSearchAll });
-  },
-);
-
-// Under the workspaces key so useChatEvents holds off refetching while it runs.
-const workspaceAppearanceMutationKey = [...queryKeys.workspaces, 'appearance'];
-
-// A folder's icon and color. Optimistic, so the folder repaints on pick; with
-// picks in flight only the last one settles the list from the server.
-export function useUpdateWorkspaceAppearanceMutation() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationKey: workspaceAppearanceMutationKey,
-    mutationFn: ({ workspaceId, data }: { workspaceId: string; data: UpdateWorkspaceRequest }) =>
-      workspaceService.updateWorkspace(workspaceId, data),
-    onMutate: async ({ workspaceId, data }) => {
-      await queryClient.cancelQueries({ queryKey: queryKeys.workspaces, exact: true });
+  () => undefined,
+  {
+    mutationKey: workspaceUpdateMutationKey,
+    scope: 'workspace-update',
+    apply: async (queryClient, { workspaceId, data }) => {
+      const snapshot = await snapshotQueries(queryClient, [
+        { queryKey: queryKeys.workspaces, exact: true },
+      ]);
       queryClient.setQueryData<PaginatedResponse<Workspace>>(queryKeys.workspaces, (old) =>
         old
           ? {
@@ -159,14 +152,19 @@ export function useUpdateWorkspaceAppearanceMutation() {
             }
           : old,
       );
+      return snapshot;
     },
-    onSettled: () => {
-      if (queryClient.isMutating({ mutationKey: workspaceAppearanceMutationKey }) === 1) {
-        void queryClient.invalidateQueries({ queryKey: queryKeys.workspaces, exact: true });
-      }
+    settle: (queryClient) => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.workspaces, exact: true });
+      // Search results embed workspace_name, so a rename leaves a stale label
+      // visible until the search query naturally refetches.
+      void queryClient.invalidateQueries({ queryKey: queryKeys.chatsSearchAll });
     },
-  });
-}
+  },
+);
+
+// Same mutation; the folder appearance picker's name for it.
+export const useUpdateWorkspaceAppearanceMutation = useUpdateWorkspaceMutation;
 
 export const useDeleteWorkspaceMutation = createMutation<void, Error, string>(
   (workspaceId) => workspaceService.deleteWorkspace(workspaceId),

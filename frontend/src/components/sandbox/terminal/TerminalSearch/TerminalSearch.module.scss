@@ -17,6 +17,12 @@
   border-radius: var(--radius-lg);
   background-color: var(--theme-surface);
   box-shadow: var(--shadow-medium);
+
+  // Narrow screens: span the terminal instead of overflowing it.
+  @include responsive.media('mobile') {
+    left: var(--space-2);
+    right: var(--space-2);
+  }
 }
 
 .search-icon {
@@ -42,6 +48,16 @@
   &:focus {
     outline: none;
   }
+
+  @include responsive.media('mobile') {
+    min-width: 0;
+    flex: 1;
+    width: auto;
+  }
+
+  @include responsive.media('touch') {
+    height: var(--space-9);
+  }
 }
 
 .count {
@@ -66,6 +82,12 @@
   @include responsive.hover {
     background-color: var(--theme-surface-hover);
     color: var(--theme-text-primary);
+  }
+
+  @include responsive.media('touch') {
+    height: var(--space-10);
+    width: var(--space-10);
+    border-radius: var(--radius-md);
   }
 }
 

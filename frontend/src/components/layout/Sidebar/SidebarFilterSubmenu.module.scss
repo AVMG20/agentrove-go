@@ -34,6 +34,12 @@
     background-color: var(--theme-surface-hover);
   }
 
+  // Touch: finger-height rows (before --selected, so its weight still wins).
+  @include responsive.media('touch') {
+    @include type.type-body;
+    min-height: var(--touch-target);
+  }
+
   &--selected {
     font-weight: 500;
     color: var(--theme-text-primary);

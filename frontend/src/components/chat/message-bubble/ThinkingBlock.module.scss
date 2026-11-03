@@ -1,6 +1,7 @@
 @use '@/styles/globals/typography' as type;
 @use '@/styles/globals/animations' as anim;
 @use '@/styles/globals/responsive' as responsive;
+@use '@/components/chat/touch' as touch;
 
 .thinking-toggle {
   @include anim.transition-colors(var(--duration-fast));
@@ -10,9 +11,17 @@
   margin-left: calc(-1 * var(--space-1));
   border-radius: var(--radius-md);
   padding: var(--space-0-5) var(--space-1);
+  @include touch.touch-press;
 
   @include responsive.hover {
     background-color: var(--theme-surface-hover);
+  }
+
+  // A full-row, finger-sized target on touch; the preview takes the spare width.
+  @include responsive.media('touch') {
+    min-height: var(--space-11);
+    width: calc(100% + var(--space-1));
+    margin-block: calc(-1 * var(--space-2));
   }
 }
 
@@ -25,6 +34,12 @@
 .thinking-label {
   @include type.type-meta(500);
   color: var(--theme-text-tertiary);
+
+  // Phones: the preview beside it gives way first, so the label never wraps.
+  @include responsive.media('mobile') {
+    flex-shrink: 0;
+    white-space: nowrap;
+  }
 
   &--active {
     @include anim.text-shimmer;
@@ -48,8 +63,14 @@
 .thinking-preview {
   @include type.type-meta;
   @include type.type-overflow;
+  min-width: 0;
   max-width: var(--space-48);
   color: var(--theme-text-quaternary);
+
+  @include responsive.media('mobile') {
+    max-width: none;
+    flex: 0 1 auto;
+  }
 }
 
 .thinking-chevron {

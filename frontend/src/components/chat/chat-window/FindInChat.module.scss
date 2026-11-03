@@ -3,6 +3,7 @@
 @use '@/styles/globals/animations' as anim;
 @use '@/styles/globals/responsive' as responsive;
 @use '@/styles/globals/zlayer' as z;
+@use '@/components/chat/touch' as touch;
 
 .find-in-chat {
   @include z.z('raised');
@@ -17,6 +18,13 @@
   border-radius: var(--radius-lg);
   background-color: var(--theme-surface);
   box-shadow: var(--shadow-medium);
+
+  // Phones: a full-width bar so the field and arrows are comfortable to hit.
+  @include responsive.media('mobile') {
+    left: var(--space-3);
+    right: var(--space-3);
+    padding-left: var(--space-3);
+  }
 }
 
 .search-icon {
@@ -32,6 +40,12 @@
   height: var(--space-6);
   width: var(--space-44);
   border: none;
+
+  @include responsive.media('mobile') {
+    min-width: 0;
+    height: var(--space-9);
+    flex: 1;
+  }
   background: transparent;
   color: var(--theme-text-primary);
 
@@ -62,6 +76,8 @@
   justify-content: center;
   border-radius: var(--radius-sm);
   color: var(--theme-text-quaternary);
+  @include touch.touch-box;
+  @include touch.touch-press;
 
   @include responsive.hover {
     background-color: var(--theme-surface-hover);
@@ -72,6 +88,11 @@
 .nav-icon {
   height: var(--space-3);
   width: var(--space-3);
+
+  @include responsive.media('touch') {
+    height: var(--space-4);
+    width: var(--space-4);
+  }
 }
 
 // Match styling for the ranges FindInChat.tsx registers in CSS.highlights — the

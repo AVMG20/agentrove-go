@@ -3,6 +3,10 @@ import clsx from 'clsx';
 import { Button } from '@/components/ui/primitives/Button/Button';
 import styles from './SendButton.module.scss';
 
+// Pressing send or stop mustn't take focus from the composer: on phones that
+// would drop the keyboard (and move the button mid-tap) after every message.
+const keepComposerFocus = (event: React.MouseEvent) => event.preventDefault();
+
 export type SendButtonStatus = 'idle' | 'ready' | 'loading' | 'streaming';
 
 export interface SendButtonProps {
@@ -52,6 +56,7 @@ export function SendButton({
     <Button
       type={type}
       onClick={onClick}
+      onMouseDown={keepComposerFocus}
       disabled={disabled}
       variant="unstyled"
       className={clsx(
@@ -77,6 +82,7 @@ export function StopButton({ onClick }: StopButtonProps) {
     <Button
       type="button"
       onClick={onClick}
+      onMouseDown={keepComposerFocus}
       variant="unstyled"
       className={clsx(styles['send-button'], styles['send-button--stop'])}
       aria-label="Stop generating"

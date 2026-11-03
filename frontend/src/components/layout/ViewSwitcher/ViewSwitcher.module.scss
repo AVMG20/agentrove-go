@@ -1,17 +1,47 @@
+@use '@/styles/globals/colors' as colors;
 @use '@/styles/globals/animations' as anim;
 @use '@/styles/globals/responsive' as responsive;
+@use '@/styles/globals/controls' as controls;
 
 .view-switcher {
   display: flex;
   align-items: center;
   gap: var(--space-0-5);
 
+  @include responsive.media('touch') {
+    gap: var(--space-1);
+  }
+
   // Phones switch views from the tab bar at the bottom (MobileTabBar).
   @include responsive.hide('mobile');
+
+  @include responsive.media('desktop') {
+    gap: var(--space-1-5);
+  }
+}
+
+// Diff / files / terminal / browser (and artifact): one segmented control on
+// desktop, a recessed track with the on-screen views lit inside it.
+.segment {
+  display: flex;
+  align-items: center;
+  gap: inherit;
+
+  @include responsive.media('desktop') {
+    gap: 1px;
+    border: 1px solid var(--theme-border);
+    border-radius: var(--radius-lg);
+    background-color: colors.theme-color('surface', 0.55);
+    padding: 2px;
+  }
 }
 
 .view-button {
   @include anim.transition-colors;
+  @include controls.press-feedback;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   border-radius: var(--radius-md);
   padding: var(--space-1-5);
   color: var(--theme-text-tertiary);
@@ -31,11 +61,35 @@
     background-color: var(--theme-surface-active);
     color: var(--theme-text-primary);
   }
+
+  &:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 2px colors.theme-color('accent', 0.4);
+  }
+
+  // Inside the desktop track: a hair smaller, so the track fits the bar.
+  @include responsive.media('desktop') {
+    padding: var(--space-1);
+
+    &[aria-pressed='true'] {
+      box-shadow: var(--shadow-xs);
+    }
+  }
+
+  // Tablets: finger-sized, the glyph centred in the bigger box.
+  @include controls.touch-icon-button('.icon');
 }
 
 .icon {
   height: var(--space-4);
   width: var(--space-4);
+}
+
+// The session panel toggle beside the track, sized to line up with it.
+.view-button--standalone {
+  @include responsive.media('desktop') {
+    padding: var(--space-1-5);
+  }
 }
 
 // A version the user hasn't had on screen yet.

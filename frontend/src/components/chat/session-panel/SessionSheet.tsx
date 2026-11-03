@@ -24,7 +24,6 @@ export function SessionSheet({ isOpen, onClose, children }: SessionSheetProps) {
       className={styles.sheet}
       ariaLabel="Session details"
     >
-      <div className={styles.handle} aria-hidden />
       <div className={styles.body} onClick={handleClick}>
         {children}
       </div>

@@ -13,6 +13,7 @@ import { useWorkspacesList } from '@/hooks/queries/useWorkspaceQueries';
 import { CHAT_ARCHIVE_DAYS, type Chat } from '@/types/chat.types';
 import { formatRelativeTime } from '@/utils/date';
 import { stripMarkdownTitle } from '@/utils/format';
+import { isCoarsePointer } from '@/utils/device';
 import styles from './ArchivedSettingsTab.module.scss';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -70,7 +71,12 @@ export function ArchivedSettingsTab() {
       description={`Threads you archived, hidden from the sidebar. Restore one to bring it back, or send it a message. Each is deleted ${CHAT_ARCHIVE_DAYS} days after it was archived.`}
       items={items}
       emptyIcon={Archive}
-      emptyText="No archived threads. Archive one from its menu or the icon that shows when you hover over it."
+      emptyText={
+        // Touch has no hover icon; the long-press sheet is the way in there.
+        isCoarsePointer()
+          ? 'No archived threads. Press and hold a thread in the sidebar, then choose Archive.'
+          : 'No archived threads. Archive one from its menu or the icon that shows when you hover over it.'
+      }
       footerContent={
         pages.hasNextPage && (
           <div className={styles['load-more']}>

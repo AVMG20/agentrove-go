@@ -188,8 +188,10 @@ export function ThreadsPanel({ hidden = false }: { hidden?: boolean }) {
     onOpenInSplit: chatActions.showSplitAffordance ? chatActions.handleOpenInSplit : undefined,
     canOpenChatInSplit: chatActions.canOpenChatInSplit,
     onDropdownClick: chatActions.handleDropdownClick,
+    onChatMenuAt: chatActions.handleChatMenuAt,
     onArchive: chatActions.handleArchiveChat,
     onOpenWorkspaceMenu: workspaceActions.handleWorkspaceContextMenu,
+    onWorkspaceMenuAt: workspaceActions.handleWorkspaceMenuAt,
   };
 
   return (
@@ -215,7 +217,13 @@ export function ThreadsPanel({ hidden = false }: { hidden?: boolean }) {
         onMoveFolder={handleMoveFolder}
       />
 
-      <SidebarOverlays chat={chatActions} workspace={workspaceActions} workspaces={workspaces} />
+      <SidebarOverlays
+        chat={chatActions}
+        workspace={workspaceActions}
+        workspaces={workspaces}
+        folderKeys={groupBy === 'workspace' ? recentChatSections.map((section) => section.key) : []}
+        onMoveFolder={handleMoveFolder}
+      />
     </div>
   );
 }

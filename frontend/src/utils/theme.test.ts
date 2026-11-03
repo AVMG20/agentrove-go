@@ -1,6 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import type { Theme } from '@/types/ui.types';
-import { THEMES, THEME_CYCLE, getThemeMeta, DARK_PALETTES } from './theme';
+import { THEMES, THEME_CYCLE, getThemeMeta, normalizeTheme } from './theme';
 
 describe('getThemeMeta', () => {
   it('returns the matching meta for a known theme', () => {
@@ -9,12 +8,6 @@ describe('getThemeMeta', () => {
     expect(meta.label).toBe('Light');
     expect(meta.icon).toBeDefined();
   });
-
-  it('falls back to the dark theme for an unknown value', () => {
-    // A stale persisted theme must not crash callers reading `.icon`.
-    const meta = getThemeMeta('not-a-real-theme' as Theme);
-    expect(meta.value).toBe('dark');
-  });
 });
 
 describe('THEME_CYCLE', () => {
@@ -22,14 +15,23 @@ describe('THEME_CYCLE', () => {
     expect(THEME_CYCLE).toEqual(THEMES.map((t) => t.value));
   });
 
-  it('has no duplicate entries', () => {
-    expect(new Set(THEME_CYCLE).size).toBe(THEME_CYCLE.length);
+  it('offers exactly light, dark and system', () => {
+    expect([...THEME_CYCLE].sort()).toEqual(['dark', 'light', 'system']);
   });
 });
 
-describe('DARK_PALETTES', () => {
-  it('always includes the base dark palette and excludes light', () => {
-    expect(DARK_PALETTES.has('dark')).toBe(true);
-    expect(DARK_PALETTES.has('light')).toBe(false);
+describe('normalizeTheme', () => {
+  it('keeps supported themes', () => {
+    expect(normalizeTheme('light')).toBe('light');
+    expect(normalizeTheme('dark')).toBe('dark');
+    expect(normalizeTheme('system')).toBe('system');
+  });
+
+  it('maps legacy palettes and junk to system', () => {
+    expect(normalizeTheme('nord')).toBe('system');
+    expect(normalizeTheme('sepia')).toBe('system');
+    expect(normalizeTheme('toString')).toBe('system');
+    expect(normalizeTheme(42)).toBe('system');
+    expect(normalizeTheme(null)).toBe('system');
   });
 });

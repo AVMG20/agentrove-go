@@ -9,7 +9,6 @@ import { useAuthStore } from '@/store/authStore';
 import { useModelMap } from '@/hooks/queries/useModelQueries';
 import { useChatContext } from '@/hooks/useChatContext';
 import { useGitBranchesQuery } from '@/hooks/queries/useSandboxQueries';
-import { SelectorDot } from '@/components/ui/primitives/SelectorDot/SelectorDot';
 import styles from './InputControls.module.scss';
 
 export function InputControls() {
@@ -48,57 +47,43 @@ export function InputControls() {
       />
 
       {showThinking && (
-        <>
-          <SelectorDot />
-
-          <ThinkingModeSelector
-            chatId={state.chatId}
-            model={selectedModel}
-            dropdownPosition={state.dropdownPosition}
-            dropdownAlign="right"
-            disabled={state.isLoading}
-            variant="text"
-          />
-        </>
+        <ThinkingModeSelector
+          chatId={state.chatId}
+          model={selectedModel}
+          dropdownPosition={state.dropdownPosition}
+          dropdownAlign="right"
+          disabled={state.isLoading}
+          variant="text"
+        />
       )}
 
       {isClaude && (
-        <>
-          <SelectorDot />
-
-          <PermissionModeSelector
-            chatId={state.chatId}
-            dropdownPosition={state.dropdownPosition}
-            dropdownAlign="right"
-            disabled={state.isLoading}
-            variant="text"
-          />
-        </>
+        <PermissionModeSelector
+          chatId={state.chatId}
+          dropdownPosition={state.dropdownPosition}
+          dropdownAlign="right"
+          disabled={state.isLoading}
+          variant="text"
+        />
       )}
 
       {showPersona && (
-        <>
-          <SelectorDot />
-          <PersonaSelector
-            chatId={state.chatId}
-            dropdownPosition={state.dropdownPosition}
-            dropdownAlign="right"
-            disabled={state.isLoading}
-            variant="text"
-          />
-        </>
+        <PersonaSelector
+          chatId={state.chatId}
+          dropdownPosition={state.dropdownPosition}
+          dropdownAlign="right"
+          disabled={state.isLoading}
+          variant="text"
+        />
       )}
 
       {showBranch && (
-        <>
-          <SelectorDot />
-          <BranchSelector
-            dropdownPosition={state.dropdownPosition}
-            dropdownAlign="right"
-            disabled={state.isLoading}
-            variant="text"
-          />
-        </>
+        <BranchSelector
+          dropdownPosition={state.dropdownPosition}
+          dropdownAlign="right"
+          disabled={state.isLoading}
+          variant="text"
+        />
       )}
     </div>
   );

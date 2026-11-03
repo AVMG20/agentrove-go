@@ -1,6 +1,7 @@
 @use '@/styles/globals/typography' as type;
 @use '@/styles/globals/animations' as anim;
 @use '@/styles/globals/responsive' as responsive;
+@use '@/components/chat/touch' as touch;
 
 .details {
   margin-top: var(--space-1-5);
@@ -21,9 +22,21 @@
   padding: var(--space-0-5) var(--space-1);
   text-align: left;
   transition: background-color var(--duration-fast);
+  @include touch.touch-press;
 
   @include responsive.hover {
     background-color: var(--theme-surface-hover);
+  }
+
+  // Touch: the whole row is the target, tall enough for a finger. Negative
+  // block margins keep the stack of tool rows as compact as on desktop.
+  @include responsive.media('touch') {
+    display: flex;
+    align-items: center;
+    min-width: 0;
+    min-height: var(--space-11);
+    margin-block: calc(-1 * var(--space-2));
+    flex: 1;
   }
 }
 
@@ -32,8 +45,18 @@
   padding: var(--space-0-5) var(--space-1);
 }
 
+// Phones: a long title (an absolute path) has to give way to the column so it
+// ends in an ellipsis instead of running off the screen.
+.trigger,
+.static {
+  @include responsive.media('mobile') {
+    min-width: 0;
+  }
+}
+
 .header {
   display: flex;
+  min-width: 0;
   align-items: center;
   gap: var(--space-1-5);
 }
@@ -51,6 +74,7 @@
   display: block;
   // TODO(refactor): no spacing token for 28rem (old max-w-md); scale skips 24rem→32rem
   max-width: 28rem;
+  min-width: 0;
   @include type.type-default;
   @include type.type-overflow;
   color: var(--theme-text-tertiary);

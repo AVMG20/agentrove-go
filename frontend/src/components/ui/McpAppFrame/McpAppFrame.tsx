@@ -1,6 +1,5 @@
 import { memo, useEffect, useMemo, useRef, useState } from 'react';
 import { useResolvedTheme } from '@/hooks/useResolvedTheme';
-import { useUIStore } from '@/store/uiStore';
 import { getFrameThemeVariables } from '@/utils/frameTheme';
 import styles from './McpAppFrame.module.scss';
 
@@ -40,14 +39,13 @@ export const McpAppFrame = memo(function McpAppFrame({ html, title, onMessage }:
   const [height, setHeight] = useState(INITIAL_HEIGHT);
   const [isInitialized, setIsInitialized] = useState(false);
   const resolvedTheme = useResolvedTheme();
-  const theme = useUIStore((state) => state.theme);
   const isDark = resolvedTheme === 'dark';
   const hostContext = useMemo(
     () => ({
       theme: isDark ? 'dark' : 'light',
-      styles: { variables: getFrameThemeVariables(isDark, theme) },
+      styles: { variables: getFrameThemeVariables(isDark) },
     }),
-    [isDark, theme],
+    [isDark],
   );
   const srcDoc = useMemo(
     () => `<meta http-equiv="Content-Security-Policy" content="${APP_CSP}">${html}`,

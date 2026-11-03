@@ -79,3 +79,69 @@
   margin-block: var(--space-1);
   border-top: 1px solid colors.theme-color('border', 0.5);
 }
+
+.label {
+  min-width: 0;
+  flex: 1;
+}
+
+.trailing {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  color: var(--theme-text-quaternary);
+
+  svg {
+    height: var(--space-4);
+    width: var(--space-4);
+  }
+}
+
+// Phones: the same items as action-sheet rows — full width, finger-height,
+// 16px labels, separated by inset hairlines like a native list.
+.sheet-body {
+  display: flex;
+  flex-direction: column;
+  padding-block: var(--space-1);
+
+  .item,
+  .item-danger {
+    @include type.type-large;
+    position: relative;
+    min-height: var(--space-12);
+    gap: var(--space-4);
+    border-radius: 0;
+    padding: var(--space-3) var(--space-5);
+
+    @include responsive.active((active)) {
+      background-color: var(--theme-surface-active);
+    }
+  }
+
+  // Hairline between rows, starting under the label (past the icon).
+  .item + .item::before,
+  .item + .item-danger::before,
+  .item-danger + .item::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    right: 0;
+    left: calc(var(--space-5) + var(--space-5) + var(--space-4));
+    border-top: 1px solid colors.theme-color('border', 0.6);
+  }
+
+  .icon {
+    height: var(--space-5);
+    width: var(--space-5);
+    color: var(--theme-text-secondary);
+  }
+
+  .item-danger .icon {
+    color: currentColor;
+  }
+
+  .divider {
+    margin-block: var(--space-1);
+    border-top-color: colors.theme-color('border', 0.6);
+  }
+}

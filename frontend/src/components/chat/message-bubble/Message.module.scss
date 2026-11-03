@@ -2,6 +2,7 @@
 @use '@/styles/globals/typography' as type;
 @use '@/styles/globals/animations' as anim;
 @use '@/styles/globals/responsive' as responsive;
+@use '@/components/chat/touch' as touch;
 
 .message {
   padding: var(--space-1-5) var(--space-4);
@@ -27,8 +28,24 @@
   align-items: flex-end;
 }
 
+// Desktop: a new turn starts with a little more air above the user's message.
+.mine {
+  @include responsive.media('desktop') {
+    padding-top: var(--space-4);
+  }
+}
+
 .mine .user-bubble {
   max-width: 85%;
+
+  @include responsive.media('desktop') {
+    max-width: 80%;
+  }
+
+  // Narrow screens: a few more characters per line, still clearly "mine".
+  @include responsive.media('mobile') {
+    max-width: 90%;
+  }
 }
 
 .user-bubble {
@@ -38,6 +55,14 @@
   border-radius: var(--radius-2xl);
   padding: var(--space-2) var(--space-3-5);
   background-color: var(--theme-surface-tertiary);
+
+  // Desktop: a softer, roomier card whose tucked corner points back at the
+  // speaker; a hairline keeps it crisp on the dark canvas.
+  @include responsive.media('desktop') {
+    border: 1px solid colors.theme-color('border', 0.6);
+    border-radius: var(--radius-3xl) var(--radius-3xl) var(--radius-sm) var(--radius-3xl);
+    padding: var(--space-2-5) var(--space-4);
+  }
 }
 
 .message-text {
@@ -49,6 +74,26 @@
 
 .actions-slot {
   margin-top: var(--space-1);
+
+  // Desktop: the user message's copy button waits for hover or focus, so
+  // the resting conversation is just the words.
+  @include responsive.media('not-touch') {
+    opacity: 0;
+    transition: opacity var(--duration-fast);
+
+    .message:hover &,
+    &:focus-within {
+      opacity: 1;
+    }
+  }
+
+  // Touch buttons grow to 44px around a 16px icon; pull the box out so the
+  // icon still lines up with the bubble's edge and the row stays compact.
+  @include responsive.media('touch') {
+    margin-top: 0;
+    margin-right: calc(-1 * var(--space-3));
+    margin-bottom: calc(-1 * var(--space-2));
+  }
 }
 
 .footer {
@@ -56,12 +101,24 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: var(--space-3);
+
+  @include responsive.media('touch') {
+    margin-top: var(--space-0-5);
+    margin-bottom: calc(-1 * var(--space-2));
+  }
 }
 
 .footer-actions {
   display: flex;
   align-items: center;
   gap: var(--space-0-5);
+
+  // Line the first touch-sized icon up with the text above it.
+  @include responsive.media('touch') {
+    gap: 0;
+    margin-left: calc(-1 * var(--space-3));
+  }
 }
 
 .restore-button {
@@ -69,6 +126,8 @@
   border-radius: var(--radius-md);
   padding: var(--space-1);
   color: var(--theme-text-quaternary);
+  @include touch.touch-box;
+  @include touch.touch-press;
 
   @include responsive.hover {
     background-color: var(--theme-surface-hover);
@@ -84,16 +143,29 @@
 .restore-icon {
   height: var(--space-3-5);
   width: var(--space-3-5);
+
+  @include responsive.media('touch') {
+    height: var(--space-4);
+    width: var(--space-4);
+  }
 }
 
 .footer-meta {
   @include type.type-meta;
+  min-width: 0;
   display: flex;
   align-items: center;
   gap: var(--space-1-5);
   color: var(--theme-text-quaternary);
 }
 
+// A long model name truncates rather than pushing the actions off the row.
+.footer-meta > :first-child {
+  @include type.type-overflow;
+  min-width: 0;
+}
+
 .footer-time {
   cursor: default;
+  white-space: nowrap;
 }

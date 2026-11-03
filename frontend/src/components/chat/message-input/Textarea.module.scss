@@ -1,6 +1,15 @@
 @use '@/styles/globals/typography' as type;
 @use '@/styles/globals/responsive' as responsive;
 
+// With the on-screen keyboard up the visible app is ~half the screen; a long
+// draft stops growing at a third of it so the conversation stays in view.
+// Shared by the field and its backdrop so both layers keep scrolling in sync.
+@mixin keyboard-cap {
+  :global(html[data-keyboard-open]) & {
+    max-height: min(180px, calc(var(--app-height, 100dvh) * 0.33));
+  }
+}
+
 .textarea {
   position: relative;
 }
@@ -25,6 +34,8 @@
   @include responsive.media('touch') {
     font-size: max(16px, 1em);
   }
+
+  @include keyboard-cap;
 
   &--dimmed {
     opacity: 0.5;
@@ -61,4 +72,6 @@
   &--compact {
     min-height: var(--space-7);
   }
+
+  @include keyboard-cap;
 }

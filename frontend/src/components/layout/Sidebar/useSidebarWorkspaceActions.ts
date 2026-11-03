@@ -94,14 +94,26 @@ export function useSidebarWorkspaceActions({
     [],
   );
 
+  // Right-click / long-press on a folder header: always opens, at that point.
+  const handleWorkspaceMenuAt = useCallback(
+    (point: { x: number; y: number }, workspaceId: string) => {
+      const position = calculateDropdownPosition(new DOMRect(point.x, point.y, 0, 0));
+      setWorkspaceDropdown({ workspaceId, position });
+    },
+    [],
+  );
+
   const handleRenameWorkspace = useCallback((workspace: Workspace) => {
     setWorkspaceToRename(workspace);
     setWorkspaceDropdown(null);
   }, []);
 
+  // Optimistic: the folder shows the new name at once, so the dialog closes
+  // without waiting; a failure puts the old name back.
   const handleSaveWorkspaceRename = useCallback(
     async (newName: string) => {
       if (!workspaceToRename) return;
+      setWorkspaceToRename(null);
       try {
         await mutateWithToast(
           () =>
@@ -114,20 +126,18 @@ export function useSidebarWorkspaceActions({
         );
       } catch {
         // toast already shown by mutateWithToast
-      } finally {
-        setWorkspaceToRename(null);
       }
     },
     [workspaceToRename, updateWorkspace],
   );
 
-  // Optimistic; a failure puts the folder back when the list refetches.
+  // Optimistic; a failure puts the folder back.
   const handleChangeWorkspaceAppearance = useCallback(
     (workspaceId: string, change: Partial<FolderAppearance>) => {
-      updateWorkspaceAppearance.mutate(
-        { workspaceId, data: change },
-        { onError: () => toast.error('Failed to update the project folder') },
-      );
+      // mutateAsync: mutate callbacks fire only for the latest of several picks.
+      updateWorkspaceAppearance
+        .mutateAsync({ workspaceId, data: change })
+        .catch(() => toast.error('Failed to update the project folder'));
     },
     [updateWorkspaceAppearance],
   );
@@ -167,6 +177,7 @@ export function useSidebarWorkspaceActions({
     updateWorkspace,
     handleNewWorkspaceThread,
     handleWorkspaceContextMenu,
+    handleWorkspaceMenuAt,
     handleRenameWorkspace,
     handleSaveWorkspaceRename,
     handleChangeWorkspaceAppearance,

@@ -1,17 +1,17 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import clsx from 'clsx';
+import { SquareTerminal, Unplug, WifiOff } from 'lucide-react';
 import { logger } from '@/utils/logger';
 import '@xterm/xterm/css/xterm.css';
 
 import { Button } from '@/components/ui/primitives/Button/Button';
+import { EmptyState } from '@/components/ui/shared/EmptyState/EmptyState';
 import { useResolvedTheme } from '@/hooks/useResolvedTheme';
-import { useUIStore } from '@/store/uiStore';
 import { apiClient, WS_BASE_URL } from '@/lib/api';
 
 import { useXterm } from '@/hooks/useXterm';
 import { TerminalSearch } from '@/components/sandbox/terminal/TerminalSearch/TerminalSearch';
 import type { TerminalSize } from '@/types/sandbox.types';
-import type { Palette } from '@/types/ui.types';
 import styles from './TerminalTab.module.scss';
 
 export interface TerminalTabProps {
@@ -48,9 +48,6 @@ export function TerminalTab({
   onClosed,
 }: TerminalTabProps) {
   const resolvedTheme = useResolvedTheme();
-  const rawTheme = useUIStore((s) => s.theme);
-  // Only `system` needs resolving; every other theme is itself a palette
-  const palette: Palette = rawTheme === 'system' ? resolvedTheme : rawTheme;
   const [sessionState, setSessionState] = useState<SessionState>('idle');
   const [closeReason, setCloseReason] = useState<string | null>(null);
   const [connectAttempt, setConnectAttempt] = useState(0);
@@ -94,7 +91,7 @@ export function TerminalTab({
 
   const { fitTerminal, isReady, searchAddonRef, terminalRef, wrapperRef } = useXterm({
     isVisible,
-    mode: palette,
+    mode: resolvedTheme,
     onData: (data: string) => {
       const ws = wsRef.current;
       if (ws?.readyState === WebSocket.OPEN) {
@@ -349,6 +346,11 @@ export function TerminalTab({
             : null;
   // Every terminal state that isn't retrying on its own gets a manual way out.
   const canReconnect = sessionState === 'error' || sessionState === 'disconnected';
+  const overlayIcon = canReconnect
+    ? Unplug
+    : isReady && sessionState === 'reconnecting'
+      ? WifiOff
+      : SquareTerminal;
 
   const handleReconnect = () => {
     autoReconnectsRef.current = 0;
@@ -368,18 +370,19 @@ export function TerminalTab({
       </div>
       <TerminalSearch
         isReady={isReady}
-        palette={palette}
+        mode={resolvedTheme}
         searchAddonRef={searchAddonRef}
         terminalRef={terminalRef}
       />
       {isVisible && overlayMessage && (
         <div className={styles['terminal-overlay']}>
-          <div className={styles['terminal-overlay-message']}>{overlayMessage}</div>
-          {canReconnect && (
-            <Button variant="outline" size="sm" onClick={handleReconnect}>
-              Reconnect
-            </Button>
-          )}
+          <EmptyState icon={overlayIcon} title={overlayMessage}>
+            {canReconnect && (
+              <Button variant="outline" size="sm" onClick={handleReconnect}>
+                Reconnect
+              </Button>
+            )}
+          </EmptyState>
         </div>
       )}
     </div>

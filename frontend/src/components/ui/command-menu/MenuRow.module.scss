@@ -12,6 +12,11 @@
   padding: var(--space-2) var(--space-3);
   color: var(--theme-text-primary);
 
+  // Finger-sized rows on touch screens.
+  @include responsive.media('touch') {
+    min-height: var(--touch-target);
+  }
+
   &:not(.row--active) {
     @include responsive.hover {
       background-color: var(--theme-surface-hover);

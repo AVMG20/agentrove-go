@@ -9,6 +9,11 @@
   overflow: hidden;
   background-color: var(--theme-surface);
 
+  // Desktop: the sidebar and title bar are one chrome frame around the page.
+  @include responsive.media('desktop') {
+    background-color: var(--theme-surface-chrome);
+  }
+
   // Phone in landscape: keep content clear of the notch side.
   @include responsive.media('mobile') {
     padding-left: var(--safe-area-left);
@@ -54,7 +59,11 @@
   background-color: rgb(0 0 0 / 0.5);
   opacity: 0;
   pointer-events: none;
-  transition: opacity var(--sidebar-transition-duration, 0ms) var(--easing-in-out);
+  transition: opacity var(--sidebar-transition-duration, 0ms) var(--easing-drawer);
+  // Touches on it close the drawer (tap, or drag with useDrawerSwipe); they
+  // never scroll the page underneath.
+  touch-action: none;
+  -webkit-tap-highlight-color: transparent;
 
   &--open {
     opacity: 1;
@@ -83,7 +92,20 @@
   flex: 1;
   overflow-x: hidden;
   overflow-y: auto;
+  // Scrolling past the end of the page stays in the page: no bounce chained
+  // to the window and no pull-to-refresh.
+  overscroll-behavior-y: contain;
   background-color: var(--theme-surface);
+
+  // Desktop: the page is a sheet inset in the chrome, its edge drawn by a
+  // hairline and a soft shadow rather than a line across the whole window.
+  // The overflow above clips its views (terminal, editor) to the corners.
+  @include responsive.media('desktop') {
+    margin: 0 var(--space-2) var(--space-2);
+    border: 1px solid var(--theme-border);
+    border-radius: var(--radius-xl);
+    box-shadow: var(--shadow-xs);
+  }
 
   // The tab bar below sits on the home-indicator inset, so the page doesn't.
   &--above-tab-bar {

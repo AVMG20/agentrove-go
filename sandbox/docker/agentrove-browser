@@ -8,7 +8,7 @@
 # RAM. The profile (logins, storage) persists in HOME; the cache doesn't.
 #
 #   agentrove-browser ensure   start it if needed; prints the CDP browser websocket path
-#   agentrove-browser stop     stop it
+#   agentrove-browser stop [pid]  stop it (only if it still is pid, when given)
 #   agentrove-browser reset    stop it and wipe the profile (cookies, storage, history)
 #   agentrove-browser status   "running <pid>" or "stopped"
 #
@@ -85,8 +85,11 @@ ensure() {
     local p path
     if p=$(chrome_pid); then
         # Starting happens under the lock, so a browser that doesn't answer
-        # within a few seconds is hung: restart it.
-        for _ in $(seq 50); do
+        # within a few seconds is hung: restart it. Bounded by time, not
+        # tries: a stopped process accepts connections but never answers,
+        # so each try can take cdp_path's whole timeout.
+        local until=$((SECONDS + 8))
+        while [ "$SECONDS" -lt "$until" ]; do
             if path=$(cdp_path); then
                 echo "$path"
                 return
@@ -165,7 +168,11 @@ case "${1:-}" in
 ensure) ensure ;;
 stop)
     flock 9
-    stop_locked
+    # With a pid (agentrove-browser-mcp restarting a hung browser), another
+    # session may have restarted it meanwhile: leave that one be.
+    if [ -z "${2:-}" ] || [ "$(chrome_pid || true)" = "$2" ]; then
+        stop_locked
+    fi
     ;;
 reset)
     flock 9
@@ -177,7 +184,7 @@ status)
     ;;
 watchdog) watchdog "$2" ;;
 *)
-    echo "usage: agentrove-browser ensure|stop|reset|status" >&2
+    echo "usage: agentrove-browser ensure|stop [pid]|reset|status" >&2
     exit 2
     ;;
 esac

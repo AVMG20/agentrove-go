@@ -1,57 +1,82 @@
 @use '@/styles/globals/colors' as colors;
 @use '@/styles/globals/typography' as type;
 @use '@/styles/globals/animations' as anim;
+@use '@/styles/globals/controls' as controls;
 @use '@/styles/globals/responsive' as responsive;
-@use '@/styles/globals/zlayer' as z;
 
+// A framed block: a header bar (language + copy) over the code, one border
+// around both. Rendered inside markdown's <pre>, so it resets the inherited
+// whitespace and line metrics itself.
 .code-block {
-  position: relative;
   margin: var(--space-4) 0;
+  overflow: hidden;
+  border: 1px solid var(--theme-border);
+  border-radius: var(--radius-xl);
+  background-color: var(--theme-surface-secondary);
+  white-space: normal;
 }
 
 .code-header {
-  @include z.z('raised');
-  position: absolute;
-  right: 0;
-  top: 0;
+  @include type.type-noselect;
   display: flex;
-  overflow: hidden;
-  border-bottom-left-radius: var(--radius-md);
+  min-height: var(--space-9);
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  border-bottom: 1px solid var(--theme-border);
+  background-color: colors.theme-color('surface-tertiary', 0.6);
+  padding: 0 var(--space-1-5) 0 var(--space-3-5);
 }
 
 .code-lang {
-  @include type.type-meta(500);
-  border-bottom: 1px solid var(--theme-border);
-  border-left: 1px solid var(--theme-border);
-  padding: var(--space-1) var(--space-2);
-  background-color: colors.theme-color('surface-secondary', 0.5);
+  @include type.type-mono-meta;
+  @include type.type-overflow;
+  min-width: 0;
+  text-transform: lowercase;
   color: var(--theme-text-tertiary);
 }
 
 .code-copy {
   @include type.type-meta(500);
   @include anim.transition-colors;
-  border-bottom: 1px solid var(--theme-border);
-  border-left: 1px solid var(--theme-border);
+  @include controls.focus-ring(2px);
+  @include controls.press-feedback;
+  @include controls.touch-target;
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: var(--space-1-5);
+  border-radius: var(--radius-md);
   padding: var(--space-1) var(--space-2);
-  background-color: colors.theme-color('surface-secondary', 0.5);
   color: var(--theme-text-tertiary);
 
   @include responsive.hover {
+    background-color: var(--theme-surface-hover);
     color: var(--theme-text-primary);
+  }
+
+  &--copied {
+    color: var(--theme-success-text);
   }
 }
 
+.code-copy-icon {
+  height: var(--space-3-5);
+  width: var(--space-3-5);
+}
+
+.code-copy-label {
+  white-space: nowrap;
+}
+
 .code-pre {
+  @include type.type-mono(0.8125rem, 1.375rem);
   overflow-x: auto;
-  border: 1px solid var(--theme-border);
-  border-radius: var(--radius-lg);
-  background-color: var(--theme-surface-secondary);
   padding: var(--space-3) var(--space-4);
-  padding-top: var(--space-7);
+  white-space: pre;
 }
 
 .code-content {
-  @include type.type-mono;
+  @include type.type-mono(0.8125rem, 1.375rem);
   color: var(--theme-text-primary);
 }

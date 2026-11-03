@@ -52,6 +52,20 @@ export function CommandMenu() {
 
   if (!isOpen) return null;
 
+  // Phones have no Escape key and the overlay around the dialog is a thin strip,
+  // so the dialog carries its own way out: Cancel beside the search field, or at
+  // the end of the tab row when a panel owns the field.
+  const cancelButton = isMobile && (
+    <Button
+      variant="unstyled"
+      onMouseDown={(e) => e.preventDefault()}
+      onClick={close}
+      className={styles.cancel}
+    >
+      Cancel
+    </Button>
+  );
+
   return createPortal(
     <div
       className={styles.overlay}
@@ -79,22 +93,26 @@ export function CommandMenu() {
             onBack={() => switchMode('all')}
             listId={listId}
             activeDescendant={activeDescendant}
+            trailing={cancelButton}
           />
         )}
 
         {isMainMode(mode) && (
-          <div className={styles.filters}>
-            {MAIN_FILTERS.map((filter) => (
-              <Button
-                key={filter}
-                variant="unstyled"
-                onMouseDown={(e) => e.preventDefault()}
-                onClick={() => switchFilter(filter)}
-                className={clsx(styles.filter, filter === mode && styles['filter--active'])}
-              >
-                {FILTER_LABELS[filter]}
-              </Button>
-            ))}
+          <div className={styles['filters-row']}>
+            <div className={styles.filters}>
+              {MAIN_FILTERS.map((filter) => (
+                <Button
+                  key={filter}
+                  variant="unstyled"
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => switchFilter(filter)}
+                  className={clsx(styles.filter, filter === mode && styles['filter--active'])}
+                >
+                  {FILTER_LABELS[filter]}
+                </Button>
+              ))}
+            </div>
+            {isPanelMode(mode) && cancelButton}
           </div>
         )}
 

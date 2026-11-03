@@ -1,9 +1,18 @@
-import { ClipboardList, Lock, PencilLine, ShieldAlert, Sparkles, type LucideIcon } from 'lucide-react';
+import {
+  ClipboardList,
+  Lock,
+  PencilLine,
+  ShieldAlert,
+  Sparkles,
+  type LucideIcon,
+} from 'lucide-react';
 import { DEFAULT_PERMISSION_MODE, type PermissionMode } from '@/store/chatSettingsStore';
 
 export interface PermissionModeOption {
   value: PermissionMode;
   label: string;
+  // For the phone composer's chip, where the full label would crowd the row.
+  shortLabel?: string;
   description: string;
   icon: LucideIcon;
 }
@@ -18,6 +27,7 @@ export const PERMISSION_MODES: PermissionModeOption[] = [
   {
     value: 'acceptEdits',
     label: 'Auto-accept edits',
+    shortLabel: 'Accept edits',
     description: 'Auto-approve edits, ask before other actions.',
     icon: PencilLine,
   },

@@ -3,6 +3,8 @@ import clsx from 'clsx';
 import { ChevronRight, MoreHorizontal, Plus } from 'lucide-react';
 import { Button } from '@/components/ui/primitives/Button/Button';
 import { useUIStore } from '@/store/uiStore';
+import { isCoarsePointer } from '@/utils/device';
+import { useRowContextMenu } from './useRowContextMenu';
 import { folderColorClass, folderIcon } from './folderAppearance';
 import type { FolderDragProps } from './useFolderDrag';
 import styles from './SidebarWorkspaceGroup.module.scss';
@@ -18,6 +20,8 @@ interface SidebarWorkspaceGroupProps {
   noProject?: boolean;
   onNewThread: (e: MouseEvent, workspaceId: string | null) => void;
   onOpenMenu: (e: MouseEvent<HTMLButtonElement>, workspaceId: string) => void;
+  // Right-click / long-press on the header.
+  onMenuAt?: (point: { x: number; y: number }, workspaceId: string) => void;
   // Reordering by dragging the header (useFolderDrag).
   drag?: FolderDragProps;
   children: ReactNode;
@@ -33,12 +37,19 @@ export function SidebarWorkspaceGroup({
   noProject = false,
   onNewThread,
   onOpenMenu,
-  drag,
+  onMenuAt,
+  drag: dragProps,
   children,
 }: SidebarWorkspaceGroupProps) {
   const collapseKey = `workspace:${workspaceId}`;
   const collapsed = useUIStore((state) => state.sidebarCollapsed.includes(collapseKey));
   const FolderIcon = folderIcon(icon);
+  // A finger's press-and-hold is the options menu and its drag is the list
+  // scrolling, so touch screens reorder from the menu instead (Move up/down).
+  const drag = isCoarsePointer() ? undefined : dragProps;
+  const contextMenu = useRowContextMenu(
+    onMenuAt && !noProject ? (point) => onMenuAt(point, workspaceId) : undefined,
+  );
 
   return (
     <div
@@ -53,6 +64,7 @@ export function SidebarWorkspaceGroup({
     >
       <div
         className={styles.header}
+        {...contextMenu}
         draggable={!!drag}
         onDragStart={drag?.onDragStart}
         onDragEnd={drag?.onDragEnd}
@@ -76,11 +88,16 @@ export function SidebarWorkspaceGroup({
             />
           </span>
           <span className={styles.name}>{name}</span>
+          <ChevronRight
+            aria-hidden
+            className={clsx(styles['touch-chevron'], !collapsed && styles['icon--expanded'])}
+          />
         </button>
         <div className={styles.actions}>
           <Button
             variant="unstyled"
             type="button"
+            data-row-action
             onClick={(e) => onNewThread(e, noProject ? null : workspaceId)}
             className={styles.action}
             aria-label={noProject ? 'New thread without a project' : `New thread in ${name}`}
@@ -92,6 +109,7 @@ export function SidebarWorkspaceGroup({
               variant="unstyled"
               type="button"
               data-ws-dropdown-trigger
+              data-row-action
               onClick={(e) => onOpenMenu(e, workspaceId)}
               className={styles.action}
               aria-label={`${name} project options`}

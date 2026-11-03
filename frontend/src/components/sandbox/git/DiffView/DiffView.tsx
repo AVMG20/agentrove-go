@@ -1,4 +1,5 @@
 import { memo, useMemo, useState, useEffect, useCallback, useRef } from 'react';
+import { FolderX, GitCompareArrows } from 'lucide-react';
 import { useToggleSet } from '@/hooks/useToggleSet';
 import { useAnchoredPanel } from '@/hooks/useAnchoredPanel';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog/ConfirmDialog';
@@ -20,6 +21,7 @@ import type { WorkerPoolOptions, WorkerInitializationRenderOptions } from '@pier
 import DiffsWorker from '@pierre/diffs/worker/worker.js?worker';
 import type { DiffMode } from '@/types/sandbox.types';
 import { DiffPane } from './DiffPane';
+import { DiffEmptyState } from './DiffEmptyState';
 import { DiffToolbar } from './DiffToolbar';
 import { useDiffDiscard } from './useDiffDiscard';
 import { useDiffReview } from './useDiffReview';
@@ -35,8 +37,6 @@ import {
   rebuildWithCollapsedContext,
 } from './diffView.utils';
 import styles from './DiffView.module.scss';
-// Per-palette pierre diff-surface overrides, generated from palettes.ts (see vite.config.ts).
-import 'virtual:diff-palette-overrides.css';
 
 // Library snapshots these on first mount — must stay reference-stable.
 const WORKER_POOL_OPTIONS: WorkerPoolOptions = {
@@ -69,7 +69,7 @@ const DiffViewContent = memo(function DiffViewContent({
   isVisible,
 }: DiffViewProps) {
   const theme = useResolvedTheme();
-  const { data: chat } = useChatQuery(chatId);
+  const { data: chat, isPending: isChatPending } = useChatQuery(chatId);
   const sandboxId = chat?.sandbox_id ?? workspaceSandboxId;
   const cwd = chat?.worktree_cwd ?? undefined;
   // Expanded by default; set tracks user-collapsed exceptions.
@@ -293,8 +293,27 @@ const DiffViewContent = memo(function DiffViewContent({
     closeOverflowMenu();
   }, [toggleAll, closeOverflowMenu]);
 
+  // No thread (the home page): the project root's changes show once they load,
+  // but there's no spinner or error to stare at while there's no thread.
+  if (!chatId && (!sandboxId || isLoading || isError)) {
+    return (
+      <div className={styles['no-sandbox']}>
+        <DiffEmptyState icon={GitCompareArrows} label="Open a thread to see its changes" />
+      </div>
+    );
+  }
+
   if (!sandboxId) {
-    return <div className={styles['no-sandbox']}>No project selected</div>;
+    if (isChatPending) return viewLoadingFallback;
+    return (
+      <div className={styles['no-sandbox']}>
+        <DiffEmptyState
+          icon={FolderX}
+          label="No project"
+          sublabel="This thread runs without a project, so it has no changes to show."
+        />
+      </div>
+    );
   }
 
   const filesSidebar = showFiles ? (

@@ -4,41 +4,8 @@ import type { ToolAggregate } from './tools.types';
 
 export type ToolComponent = ComponentType<{ tool: ToolAggregate; chatId?: string }>;
 
-// Each theme rides a light or dark base (see DARK_PALETTES / useResolvedTheme)
-export type Theme =
-  | 'light'
-  | 'dark'
-  | 'system'
-  | 'dim'
-  | 'sepia'
-  | 'solarized-light'
-  | 'solarized-dark'
-  | 'nord'
-  | 'midnight'
-  | 'dracula'
-  | 'tokyo-night'
-  | 'catppuccin-latte'
-  | 'catppuccin-mocha'
-  | 'ember'
-  | 'gruvbox'
-  | 'rose-pine'
-  | 'rose-pine-dawn'
-  | 'everforest'
-  | 'kanagawa'
-  | 'one-dark'
-  | 'cyberpunk'
-  | 'vercel'
-  | 'github'
-  | 'vscode-plus'
-  | 'xcode'
-  | 'raycast'
-  | 'notion'
-  | 'matrix'
-  | 'linear'
-  | 'lobster';
+export type Theme = 'light' | 'dark' | 'system';
 export type ResolvedTheme = 'light' | 'dark';
-// Palette = Theme without `system`; for Monaco/xterm which can't read CSS vars.
-export type Palette = Exclude<Theme, 'system'>;
 
 type MentionType = 'file' | 'chat';
 

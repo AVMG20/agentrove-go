@@ -20,8 +20,16 @@
   padding: var(--space-1-5) var(--space-2);
   color: var(--theme-text-secondary);
 
+  // Touch: the same finger-height cell as the thread rows below.
   @include responsive.media('touch') {
-    padding-block: var(--space-2-5);
+    @include type.type-large;
+    min-height: var(--touch-target);
+    gap: var(--space-3);
+    padding-block: var(--space-2);
+
+    @include responsive.active((active)) {
+      background-color: var(--theme-surface-hover);
+    }
   }
 
   @include responsive.hover {
@@ -35,6 +43,35 @@
 
   &:focus-visible .kbd {
     opacity: 1;
+  }
+}
+
+// Desktop: "New thread" is the sidebar's one primary action, a raised button
+// on the chrome with its shortcut on show.
+.action--primary {
+  --primary-fill: var(--theme-surface);
+  --primary-fill-hover: var(--theme-surface);
+
+  :global([data-theme='dark']) & {
+    --primary-fill: var(--theme-surface-tertiary);
+    --primary-fill-hover: var(--theme-surface-hover);
+  }
+
+  @include responsive.media('desktop') {
+    margin-bottom: var(--space-1);
+    border: 1px solid var(--theme-border);
+    background-color: var(--primary-fill);
+    color: var(--theme-text-primary);
+    box-shadow: var(--shadow-xs);
+
+    @include responsive.hover {
+      border-color: var(--theme-border-secondary);
+      background-color: var(--primary-fill-hover);
+    }
+
+    .kbd {
+      opacity: 1;
+    }
   }
 }
 

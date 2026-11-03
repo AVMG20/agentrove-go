@@ -7,7 +7,7 @@
   margin: var(--space-5) 0;
   overflow-x: auto;
   border: 1px solid var(--theme-border);
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius-xl);
 }
 
 .table {
@@ -54,37 +54,44 @@
 
 .th {
   @include type.type-default(500);
-  padding: var(--space-2) var(--space-3);
+  padding: var(--space-2) var(--space-3-5);
   text-align: left;
   color: var(--theme-text-tertiary);
 }
 
 .td {
   @include type.type-body;
-  padding: var(--space-2) var(--space-3);
+  padding: var(--space-2-5) var(--space-3-5);
+  font-variant-numeric: tabular-nums;
   color: var(--theme-text-secondary);
 }
 
 .h1 {
   @include type.type-title(600);
-  margin: var(--space-6) 0 var(--space-3);
+  margin: var(--space-7) 0 var(--space-3);
   color: var(--theme-text-primary);
-
-  &:first-child {
-    margin-top: 0;
-  }
 }
 
 .h2 {
   @include type.type-large(600);
-  margin: var(--space-5) 0 var(--space-2);
+  margin: var(--space-6) 0 var(--space-2);
+  letter-spacing: -0.01em;
   color: var(--theme-text-primary);
 }
 
 .h3 {
   @include type.type-prose(600);
-  margin: var(--space-4) 0 var(--space-1-5);
+  margin: var(--space-5) 0 var(--space-1-5);
   color: var(--theme-text-primary);
+}
+
+// A heading that opens the message sits on the message's own top edge.
+.h1,
+.h2,
+.h3 {
+  &:first-child {
+    margin-top: 0;
+  }
 }
 
 .p {
@@ -117,10 +124,11 @@
 
 .code-inline {
   @include type.type-mono;
-  border: 1px solid var(--theme-border);
+  border: 1px solid colors.theme-color('border', 0.7);
   border-radius: var(--radius-sm);
   padding: 0.0625rem var(--space-1);
-  background-color: var(--theme-surface-secondary);
+  // A tint rather than a fill, so it reads on the page, a table or a bubble.
+  background-color: colors.theme-color('text-primary', 0.06);
   font-size: 0.85em;
   line-height: inherit;
   color: var(--theme-text-primary);
@@ -131,11 +139,12 @@
 }
 
 .plain-pre {
+  @include type.type-mono(0.8125rem, 1.375rem);
   overflow-x: auto;
   border: 1px solid var(--theme-border);
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius-xl);
   background-color: var(--theme-surface-secondary);
-  padding: var(--space-2);
+  padding: var(--space-3) var(--space-4);
 }
 
 .code-content {
@@ -176,10 +185,10 @@
 
 .blockquote {
   margin: var(--space-3) 0;
-  border-left: 2px solid var(--theme-border-secondary);
+  border-left: 2px solid var(--theme-border-hover);
   padding-left: var(--space-4);
   font-style: italic;
-  color: var(--theme-text-secondary);
+  color: var(--theme-text-tertiary);
 }
 
 .link {

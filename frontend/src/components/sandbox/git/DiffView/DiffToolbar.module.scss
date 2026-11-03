@@ -12,6 +12,12 @@
   gap: var(--space-1-5);
   border-bottom: 1px solid colors.theme-color('border', 0.5);
   padding-inline: var(--space-3);
+
+  @include responsive.media('touch') {
+    height: var(--space-12);
+    gap: var(--space-1);
+    padding-inline: var(--space-1-5);
+  }
 }
 
 .tooltip-inline {
@@ -32,6 +38,10 @@
 
   @include responsive.hover {
     color: var(--theme-text-secondary);
+  }
+
+  @include responsive.media('touch') {
+    padding: var(--space-3);
   }
 }
 
@@ -60,6 +70,11 @@
 
   @include responsive.hover {
     background-color: var(--theme-surface-hover);
+  }
+
+  @include responsive.media('touch') {
+    min-height: var(--space-11);
+    padding-inline: var(--space-2);
   }
 }
 
@@ -184,6 +199,12 @@
   @include responsive.hover {
     background-color: var(--theme-surface-hover);
     color: var(--theme-text-primary);
+  }
+
+  @include responsive.media('touch') {
+    @include type.type-body;
+    min-height: var(--space-11);
+    padding-inline: var(--space-3);
   }
 
   &:disabled {

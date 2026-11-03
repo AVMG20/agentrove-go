@@ -1,5 +1,6 @@
 @use '@/styles/globals/animations' as anim;
 @use '@/styles/globals/responsive' as responsive;
+@use '@/components/chat/touch' as touch;
 
 .send-button {
   @include anim.transition-colors;
@@ -10,6 +11,13 @@
   width: var(--space-8);
   border-radius: var(--radius-full);
   transform: scale(0.94);
+  // Phones: a 36px button with a 44px tappable ring.
+  @include touch.touch-hit-area;
+
+  @include responsive.media('touch') {
+    height: var(--space-9);
+    width: var(--space-9);
+  }
 
   &:active {
     transform: scale(0.95);
@@ -35,11 +43,23 @@
 
   &--idle {
     background-color: var(--theme-surface-active);
+
+    // Phones: nothing to send yet, but the button should still be legible
+    // (half opacity on the light theme's grey all but erased the arrow).
+    @include responsive.media('mobile') {
+      &:disabled {
+        opacity: 1;
+      }
+    }
   }
 
   &--stop {
     transform: scale(1);
     background-color: var(--theme-surface-active);
+
+    &:active {
+      transform: scale(0.95);
+    }
 
     @include responsive.hover {
       background-color: var(--theme-surface-hover);
@@ -65,6 +85,12 @@
 .icon-stop-outline {
   height: var(--space-3);
   width: var(--space-3);
+
+  @include responsive.media('touch') {
+    height: var(--space-3-5);
+    width: var(--space-3-5);
+  }
+
   color: var(--theme-text-primary);
   fill: currentColor;
 }
@@ -72,6 +98,12 @@
 .icon-send {
   height: var(--space-4);
   width: var(--space-4);
+
+  @include responsive.media('touch') {
+    height: var(--space-5);
+    width: var(--space-5);
+  }
+
   transition: transform var(--duration-base);
   color: var(--theme-text-tertiary);
 

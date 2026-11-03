@@ -25,6 +25,11 @@
   color: var(--theme-text-tertiary);
 }
 
+.input-row:has(> button:last-child) {
+  // The phone Cancel button sits flush with the row's edge.
+  padding-right: 0;
+}
+
 .input-field {
   @include type.type-body;
   height: var(--space-12);

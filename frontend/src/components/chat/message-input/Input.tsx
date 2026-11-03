@@ -77,6 +77,12 @@ function InputLayout() {
       isDragging={state.isDragging}
       dragHandlers={meta.dragHandlers}
       corner={state.contextUsage && <ComposerUsage contextUsage={state.contextUsage} />}
+      footer={
+        <div className={styles['footer-row']}>
+          <ComposerAccount />
+          <InputControls />
+        </div>
+      }
       attachments={
         <>
           <ComposerAttachmentSlots
@@ -117,20 +123,22 @@ function InputLayout() {
           <InputSuggestionsPanel />
         </>
       }
+      leadingActions={
+        <AttachButton
+          disabled={state.isDisabled}
+          onFiles={actions.handleAddFiles}
+          onAttach={() => {
+            actions.resetDragState();
+            actions.setShowFileUpload(true);
+          }}
+        />
+      }
       actions={
         <>
           <EnhanceButton
             onEnhance={actions.handleEnhancePrompt}
             isEnhancing={state.isEnhancing}
             disabled={state.isLoading || !state.hasMessage}
-          />
-          <AttachButton
-            disabled={state.isDisabled}
-            onFiles={actions.handleAddFiles}
-            onAttach={() => {
-              actions.resetDragState();
-              actions.setShowFileUpload(true);
-            }}
           />
           {state.canStop && <StopButton onClick={actions.handleStopClick} />}
           <SendButton
@@ -149,11 +157,6 @@ function InputLayout() {
         </>
       }
     >
-      <div className={styles['footer-row']}>
-        <ComposerAccount />
-        <InputControls />
-      </div>
-
       {state.showTip && !state.hasAttachments && (
         <div className={styles.tip}>
           <span className={styles['tip-label']}>Tip:</span> Drag and drop or paste images, pdfs and

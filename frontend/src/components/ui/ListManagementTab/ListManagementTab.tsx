@@ -53,7 +53,8 @@ export function ListManagementTab<T>({
   logContext,
 }: ListManagementTabProps<T>) {
   const [pendingDeleteIndex, setPendingDeleteIndex] = useState<number | null>(null);
-  const [deletingIndex, setDeletingIndex] = useState<number | null>(null);
+  // By key, not index: an optimistic delete shifts the rows up while it runs.
+  const [deletingKey, setDeletingKey] = useState<string | null>(null);
 
   const handleCloseDeleteDialog = () => {
     setPendingDeleteIndex(null);
@@ -61,14 +62,15 @@ export function ListManagementTab<T>({
 
   const handleConfirmDelete = async () => {
     if (pendingDeleteIndex === null) return;
-    setDeletingIndex(pendingDeleteIndex);
+    const target = items?.[pendingDeleteIndex];
+    setDeletingKey(target ? getItemKey(target, pendingDeleteIndex) : null);
     try {
       await onDelete(pendingDeleteIndex);
       setPendingDeleteIndex(null);
     } catch (error) {
       logger.error(`Failed to delete item`, logContext, error);
     } finally {
-      setDeletingIndex(null);
+      setDeletingKey(null);
     }
   };
 
@@ -89,7 +91,7 @@ export function ListManagementTab<T>({
               onClick={onAdd}
               variant="outline"
               size="sm"
-              className={styles['add-btn']}
+              className={clsx(styles['add-btn'], items?.length === 0 && styles['add-btn--empty'])}
             >
               <Plus className={styles['add-icon']} />
               {addButtonText}
@@ -142,9 +144,9 @@ export function ListManagementTab<T>({
                       size="icon"
                       className={styles['action-btn']}
                       aria-label="Delete item"
-                      disabled={deletingIndex === index}
+                      disabled={deletingKey === getItemKey(item, index)}
                     >
-                      {deletingIndex === index ? (
+                      {deletingKey === getItemKey(item, index) ? (
                         <Loader2 className={clsx(styles['action-icon'], styles.spin)} />
                       ) : (
                         <Trash2 className={styles['action-icon']} />

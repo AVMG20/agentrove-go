@@ -37,7 +37,9 @@ export function MobileTabBar() {
             aria-current={isActive ? 'page' : undefined}
             onClick={() => useUIStore.getState().toggleView(view, false)}
           >
-            <Icon className={styles.icon} aria-hidden />
+            <span className={styles.indicator} aria-hidden>
+              <Icon className={styles.icon} strokeWidth={isActive ? 2.25 : 1.75} />
+            </span>
             <span className={styles.label}>{label}</span>
           </button>
         );

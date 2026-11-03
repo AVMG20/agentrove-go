@@ -1,6 +1,7 @@
 @use '@/styles/globals/typography' as type;
 @use '@/styles/globals/responsive' as responsive;
 @use '@/styles/globals/zlayer' as z;
+@use '@/styles/globals/controls' as controls;
 
 .title-bar {
   @include z.z('titlebar');
@@ -14,6 +15,30 @@
   border-bottom: 1px solid var(--theme-border);
   background-color: var(--theme-surface);
   padding: var(--safe-area-top) var(--space-3) 0;
+
+  // Desktop: chrome above the inset main panel, continuous with the sidebar
+  // header; the panel's own edge replaces the rule.
+  @include responsive.media('desktop') {
+    border-bottom: none;
+    background-color: var(--theme-surface-chrome);
+    padding-inline: var(--space-2-5) var(--space-2);
+  }
+
+  // Fingers: room for 44px targets. On a phone the side padding is tight so the
+  // buttons' own hit areas reach towards the screen edges.
+  @include responsive.media('touch') {
+    height: calc(var(--space-12) + var(--safe-area-top));
+  }
+
+  @include responsive.media('mobile') {
+    gap: var(--space-1);
+    padding-inline: var(--space-1);
+  }
+
+  // On its side a phone is short: just the 44px targets.
+  @include responsive.media('phone-landscape') {
+    height: calc(var(--space-11) + var(--safe-area-top));
+  }
 
   // Phone on its side with the keyboard up leaves ~150px: give it all to the
   // conversation and composer until the keyboard goes.
@@ -35,11 +60,24 @@
       display: none;
     }
   }
+
+  @include responsive.media('touch') {
+    gap: var(--space-0-5);
+  }
 }
 
 .icon-button {
   height: var(--space-8);
   width: var(--space-8);
+  @include controls.touch-icon-button('.icon-button-glyph');
+}
+
+// Phone: search and new thread, after the title.
+.trailing {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: var(--space-0-5);
 }
 
 .icon-button-glyph {
@@ -59,6 +97,11 @@
 
 .breadcrumb {
   @include type.type-body;
+
+  @include responsive.media('mobile') {
+    @include type.type-large;
+    padding-inline: var(--space-1-5);
+  }
   display: flex;
   min-width: 0;
   align-self: center;
@@ -81,4 +124,36 @@
   @include type.type-overflow;
   font-weight: 500;
   color: var(--theme-text-primary);
+}
+
+// Desktop chat: the thread's project ahead of its title, "project / title".
+.crumb {
+  @include type.type-body;
+  display: flex;
+  min-width: 0;
+  max-width: 40%;
+  flex-shrink: 1;
+  align-self: center;
+  align-items: center;
+  gap: var(--space-1-5);
+  padding-left: var(--space-1-5);
+  color: var(--theme-text-tertiary);
+}
+
+.crumb-icon {
+  height: var(--space-3-5);
+  width: var(--space-3-5);
+  flex-shrink: 0;
+  // --folder-color: the project's folder color (folderAppearance.module.scss)
+  color: var(--folder-color, var(--theme-text-quaternary));
+}
+
+.crumb-name {
+  @include type.type-overflow;
+  min-width: 0;
+}
+
+.crumb-separator {
+  flex-shrink: 0;
+  color: var(--theme-text-quaternary);
 }

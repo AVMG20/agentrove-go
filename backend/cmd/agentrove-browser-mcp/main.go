@@ -8,6 +8,12 @@
 // without requests, which drops its CDP connection so the browser's own idle
 // watchdog can stop Chromium too.
 //
+// It also keeps one agent's trouble from becoming everyone's: tool calls get
+// a deadline (AGENTROVE_BROWSER_MCP_CALL_TIMEOUT_SECONDS, default 90), after
+// which playwright-mcp is restarted; hung pages are closed and a hung
+// browser restarted before playwright-mcp connects (browser.go); and each
+// session drives a tab of its own (tabs.go).
+//
 // It only uses the standard library: it is built into the box image
 // (sandbox/docker/Dockerfile), not into the API.
 package main
@@ -61,6 +67,12 @@ func main() {
 	p := newProxy(c, os.Stdout, func() (backend, error) { return startPlaywright(true) })
 	p.browserUp = cdpUp
 	p.idle = time.Duration(envInt("AGENTROVE_BROWSER_MCP_IDLE_SECONDS", 300)) * time.Second
+	p.callTimeout = time.Duration(envInt("AGENTROVE_BROWSER_MCP_CALL_TIMEOUT_SECONDS", int(defaultCallTimeout/time.Second))) * time.Second
+	b := newBrowserCtl(cdpPort())
+	p.heal = b.heal
+	p.restartBrowser = func() { b.stop(b.pid()) }
+	p.listPages = b.listPages
+	p.closePage = b.closePage
 	p.prune = func() { pruneDir(filesDir, maxKeptFiles, maxKeptBytes) }
 	go p.prune()
 	p.run(ctx, os.Stdin)
@@ -86,6 +98,8 @@ func playwrightArgs() []string {
 	return []string{
 		// Attach to the box's shared browser instead of launching one.
 		"--cdp-endpoint", "http://127.0.0.1:" + cdpPort(),
+		// Under the proxy's own deadline for its first call (connecting).
+		"--cdp-timeout", strconv.Itoa(int(cdpConnectTimeout / time.Millisecond)),
 		// Coordinate mouse tools: clicking outside elements, wheel scrolling.
 		"--caps", "vision",
 		// Not the default (.playwright-mcp in the project), which would show
@@ -93,6 +107,8 @@ func playwrightArgs() []string {
 		"--output-dir", filesDir,
 	}
 }
+
+const cdpConnectTimeout = 25 * time.Second
 
 func cdpUp() bool {
 	c, err := net.DialTimeout("tcp", "127.0.0.1:"+cdpPort(), time.Second)
@@ -175,6 +191,11 @@ func (b *procBackend) Stop() {
 		time.Sleep(3 * time.Second)
 		_ = p.Kill()
 	}()
+}
+
+func (b *procBackend) Kill() {
+	_ = b.stdin.Close()
+	_ = b.cmd.Process.Kill()
 }
 
 func loadCache(path string) (*cache, error) {

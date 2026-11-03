@@ -6,9 +6,55 @@
 .composer {
   position: relative;
   padding-inline: var(--space-4);
+  // The field's fill and, on desktop, the recessed tray under it.
+  --composer-field: var(--theme-surface);
+  --composer-tray: #{colors.theme-color('surface-tertiary', 0.55)};
+
+  :global([data-theme='dark']) & {
+    --composer-field: var(--theme-surface-secondary);
+    --composer-tray: #{colors.theme-color('surface', 0.45)};
+  }
 
   @include responsive.media('sm-up') {
     padding-inline: var(--space-6);
+  }
+}
+
+// Desktop: one elevated card, the field on top and the controls tray tucked
+// under it. Phones keep the bare field with the controls row below it.
+.card {
+  position: relative;
+
+  @include responsive.media('desktop') {
+    border: 1px solid var(--theme-border);
+    border-radius: var(--radius-3xl);
+    background-color: var(--composer-field);
+    box-shadow: var(--shadow-sm);
+    transition:
+      border-color var(--duration-base),
+      box-shadow var(--duration-base),
+      transform var(--duration-base);
+
+    &:has(.field:focus-within) {
+      border-color: var(--theme-border-secondary);
+      box-shadow:
+        var(--shadow-medium),
+        0 0 0 3px colors.theme-color('text-quaternary', 0.12);
+    }
+
+    &:has(.field:global(.#{state.$state-dragging})) {
+      border-color: var(--theme-border-hover);
+      transform: scale(1.01);
+    }
+  }
+}
+
+.footer {
+  @include responsive.media('desktop') {
+    border-top: 1px solid var(--theme-border);
+    border-radius: 0 0 calc(var(--radius-3xl) - 1px) calc(var(--radius-3xl) - 1px);
+    background-color: var(--composer-tray);
+    padding: var(--space-1) var(--space-1-5);
   }
 }
 
@@ -36,6 +82,31 @@
   &:global(.#{state.$state-dragging}) {
     border-color: var(--theme-border-hover);
     transform: scale(1.01);
+  }
+
+  // Phones: the field is the whole composer, so typing into it should read at
+  // a glance (the desktop card has its shadow lift for that).
+  @include responsive.media('mobile') {
+    &:focus-within {
+      border-color: colors.theme-color('text-quaternary', 0.7);
+      box-shadow:
+        var(--shadow-sm),
+        0 0 0 3px colors.theme-color('text-quaternary', 0.2);
+    }
+  }
+
+  // Desktop: the card draws the frame, focus and drag states.
+  @include responsive.media('desktop') {
+    border: none;
+    border-radius: calc(var(--radius-3xl) - 1px);
+    background-color: transparent;
+    box-shadow: none;
+
+    &:focus-within,
+    &:global(.#{state.$state-dragging}) {
+      box-shadow: none;
+      transform: none;
+    }
   }
 }
 
@@ -66,11 +137,27 @@
 .actions {
   display: flex;
   align-items: center;
-  justify-content: flex-end;
-  gap: var(--space-0-5);
+  justify-content: space-between;
+  gap: var(--space-2);
   padding: var(--space-1) var(--space-2-5) var(--space-2-5);
 
   @include responsive.media('mobile') {
-    padding: 0 var(--space-2) var(--space-2);
+    padding: 0 var(--space-1-5) var(--space-1-5);
   }
+}
+
+.actions-leading,
+.actions-trailing {
+  display: flex;
+  align-items: center;
+  gap: var(--space-0-5);
+
+  // Room between the 44px tap rings so neighbours don't steal taps.
+  @include responsive.media('touch') {
+    gap: var(--space-2);
+  }
+}
+
+.actions-trailing {
+  margin-left: auto;
 }

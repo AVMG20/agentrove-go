@@ -64,6 +64,7 @@ export const ImagePreviewModal = memo(function ImagePreviewModal({
       onClose={requestClose}
       size="4xl"
       className={styles.viewer}
+      sheetHandle={false}
       ariaLabel={`Image preview: ${filename}`}
     >
       <div className={styles.header}>

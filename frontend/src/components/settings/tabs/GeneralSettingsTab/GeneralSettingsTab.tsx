@@ -8,10 +8,10 @@ import {
 import clsx from 'clsx';
 import { Button } from '@/components/ui/primitives/Button/Button';
 import { Select } from '@/components/ui/primitives/Select/Select';
+import { SegmentedControl } from '@/components/ui/primitives/SegmentedControl/SegmentedControl';
 import { Switch } from '@/components/ui/primitives/Switch/Switch';
 import type { ApiFieldKey, GeneralSecretFieldConfig } from '@/types/settings.types';
 import type { UserSettings } from '@/types/user.types';
-import type { Theme } from '@/types/ui.types';
 import { useUIStore } from '@/store/uiStore';
 import { SecretInput } from '@/components/settings/inputs/SecretInput/SecretInput';
 import { ModelSelector } from '@/components/chat/model-selector/ModelSelector';
@@ -56,25 +56,18 @@ const AUTO_COMPACT_WINDOWS = [
   { value: 1_000_000, label: '1M' },
 ];
 
-// Dropdown rather than a row of buttons — 9 themes is too many to lay out inline.
-// Width is bounded on the wrapper since Select itself is w-full.
+const THEME_OPTIONS = THEMES.map(({ value, label }) => ({ value, label }));
+
 function ThemeControl() {
   const theme = useUIStore((state) => state.theme);
+  const setTheme = useUIStore((state) => state.setTheme);
   return (
-    <div className={styles['theme-control']}>
-      <Select
-        value={theme}
-        onChange={(e) => useUIStore.getState().setTheme(e.target.value as Theme)}
-        className={styles['theme-select']}
-        aria-label="Theme"
-      >
-        {THEMES.map((opt) => (
-          <option key={opt.value} value={opt.value}>
-            {opt.label}
-          </option>
-        ))}
-      </Select>
-    </div>
+    <SegmentedControl
+      options={THEME_OPTIONS}
+      value={theme}
+      onChange={setTheme}
+      className={styles['theme-control']}
+    />
   );
 }
 
@@ -216,11 +209,11 @@ export function GeneralSettingsTab({
                 Claude summarizes the conversation once its context reaches this many tokens.
               </p>
             </div>
-            <div className={styles['theme-control']}>
+            <div className={styles['select-control']}>
               <Select
                 value={settings.auto_compact_window}
                 onChange={(e) => onAutoCompactWindowChange(Number(e.target.value))}
-                className={styles['theme-select']}
+                className={styles.select}
                 aria-label="Auto-compact"
               >
                 {AUTO_COMPACT_WINDOWS.map((opt) => (

@@ -15,7 +15,8 @@
 }
 
 .title {
-  @include type.type-body(500);
+  // Every settings section opens with the same heading size.
+  @include type.type-title;
   color: var(--theme-text-primary);
 }
 

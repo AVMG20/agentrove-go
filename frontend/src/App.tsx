@@ -7,7 +7,6 @@ import { useAppBadge } from '@/hooks/useAppBadge';
 import { Toaster } from 'react-hot-toast';
 import { useAuthStore } from '@/store/authStore';
 import { useResolvedTheme } from '@/hooks/useResolvedTheme';
-import { useUIStore } from '@/store/uiStore';
 import { useCurrentUserQuery } from '@/hooks/queries/useAuthQueries';
 import { LoadingScreen } from '@/components/ui/LoadingScreen/LoadingScreen';
 import { useGlobalStream } from '@/hooks/useGlobalStream';
@@ -21,7 +20,6 @@ import { AppShellRoute } from '@/components/routes/AppShellRoute/AppShellRoute';
 import { authStorage } from '@/utils/storage';
 import { watchRemoteSignOut } from '@/utils/authSession';
 import { useNotificationPermissionPrompt } from '@/hooks/useNotificationPermissionPrompt';
-import { PALETTES } from '@/styles/palettes';
 import { ErrorBoundary } from '@/components/ui/ErrorBoundary/ErrorBoundary';
 
 const LandingPage = lazyNamed(() => import('@/pages/LandingPage/LandingPage'), 'LandingPage');
@@ -107,7 +105,6 @@ function AppContent() {
 
 export default function App() {
   const resolvedTheme = useResolvedTheme();
-  const theme = useUIStore((state) => state.theme);
   const [authHydrated, setAuthHydrated] = useState(false);
 
   useMountEffect(() => {
@@ -118,18 +115,10 @@ export default function App() {
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', resolvedTheme);
-    // data-palette selects CSS-var overrides; light/dark/system have no override block.
-    document.documentElement.setAttribute('data-palette', theme);
-    const metaThemeColor = document.querySelector('meta[name="theme-color"]');
-    if (metaThemeColor) {
-      const palette =
-        theme === 'light' || theme === 'dark' || theme === 'system' ? null : PALETTES[theme];
-      metaThemeColor.setAttribute(
-        'content',
-        palette?.surface ?? (resolvedTheme === 'dark' ? '#0a0a0b' : '#ffffff'),
-      );
-    }
-  }, [resolvedTheme, theme]);
+    document
+      .querySelector('meta[name="theme-color"]')
+      ?.setAttribute('content', resolvedTheme === 'dark' ? '#0a0a0b' : '#ffffff');
+  }, [resolvedTheme]);
 
   useAppBadge();
 

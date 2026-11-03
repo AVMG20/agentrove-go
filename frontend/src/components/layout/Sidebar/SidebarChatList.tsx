@@ -103,6 +103,7 @@ export function SidebarChatList({
                       noProject={section.chats[0]?.no_project}
                       onNewThread={onNewWorkspaceThread}
                       onOpenMenu={rowProps.onOpenWorkspaceMenu}
+                      onMenuAt={rowProps.onWorkspaceMenuAt}
                       drag={folderDrag(section.key)}
                     >
                       {section.chats.map((chat) => (

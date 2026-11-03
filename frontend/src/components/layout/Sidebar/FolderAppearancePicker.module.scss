@@ -98,3 +98,71 @@
   border-radius: var(--radius-full);
   background-color: var(--folder-color, var(--theme-text-quaternary));
 }
+
+// Phones: the picker fills an action sheet (no menu panel padding around it),
+// so it brings its own and lets the presets share the full width.
+.picker {
+  @include responsive.media('mobile') {
+    padding: var(--space-1) var(--space-4) var(--space-4);
+  }
+}
+
+.back {
+  @include responsive.media('mobile') {
+    height: var(--touch-target, var(--space-11));
+    width: var(--touch-target, var(--space-11));
+    margin-left: calc(var(--space-2) * -1);
+  }
+}
+
+.back-icon {
+  @include responsive.media('mobile') {
+    height: var(--space-5);
+    width: var(--space-5);
+  }
+}
+
+.title {
+  @include responsive.media('mobile') {
+    @include type.type-large(600);
+  }
+}
+
+.label {
+  @include responsive.media('mobile') {
+    @include type.type-default(500);
+    padding: var(--space-3) 0 var(--space-2);
+  }
+}
+
+.grid {
+  @include responsive.media('mobile') {
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+    gap: var(--space-2);
+    padding-inline: 0;
+  }
+}
+
+.option {
+  @include responsive.media('mobile') {
+    height: auto;
+    width: 100%;
+    aspect-ratio: 1;
+    border-radius: var(--radius-xl);
+    background-color: var(--theme-surface-tertiary);
+  }
+}
+
+.option-icon {
+  @include responsive.media('mobile') {
+    height: var(--space-6);
+    width: var(--space-6);
+  }
+}
+
+.swatch {
+  @include responsive.media('mobile') {
+    height: var(--space-6);
+    width: var(--space-6);
+  }
+}

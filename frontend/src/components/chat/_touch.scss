@@ -1,0 +1,40 @@
+// Touch-target helpers for chat controls. On a coarse pointer a control must
+// offer a >= 44px hit area; these keep the desktop look and only grow on touch.
+
+@use '@/styles/globals/responsive' as responsive;
+
+// Grows the control's own box to at least 44px on touch (for ghost buttons whose
+// box is invisible until pressed, so the bigger box costs no visual weight).
+@mixin touch-box {
+  @include responsive.media('touch') {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: var(--space-11);
+    min-width: var(--space-11);
+  }
+}
+
+// Keeps the visual size and extends the tappable area with an invisible ring
+// around the control (for filled controls such as the send button).
+@mixin touch-hit-area($bleed: var(--space-1)) {
+  @include responsive.media('touch') {
+    position: relative;
+
+    &::after {
+      content: '';
+      position: absolute;
+      inset: calc(-1 * #{$bleed});
+      border-radius: inherit;
+    }
+  }
+}
+
+// Visual feedback on press, since touch has no hover.
+@mixin touch-press {
+  @include responsive.media('touch') {
+    &:active:not(:disabled) {
+      background-color: var(--theme-surface-active);
+    }
+  }
+}

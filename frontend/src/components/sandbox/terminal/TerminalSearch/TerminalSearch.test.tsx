@@ -51,7 +51,7 @@ function renderSearch() {
   return render(
     <TerminalSearch
       isReady
-      palette="dark"
+      mode="dark"
       searchAddonRef={{ current: searchAddon as unknown as SearchAddon }}
       terminalRef={{ current: terminal as unknown as XTerm }}
     />,

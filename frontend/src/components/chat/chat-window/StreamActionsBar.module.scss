@@ -12,6 +12,22 @@
     padding-left: var(--space-6);
     padding-right: var(--space-6);
   }
+
+  // Phones: one swipeable row of chips instead of a wrapping stack.
+  @include responsive.media('mobile') {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    scrollbar-width: none;
+
+    &::-webkit-scrollbar {
+      display: none;
+    }
+
+    > * {
+      flex-shrink: 0;
+    }
+  }
 }
 
 .stream-actions-label {
@@ -20,6 +36,11 @@
 
 .action-button {
   gap: var(--space-1-5);
+
+  // Finger-sized on touch (the sm button is 32px).
+  @include responsive.media('touch') {
+    min-height: var(--space-10);
+  }
 }
 
 .action-icon {

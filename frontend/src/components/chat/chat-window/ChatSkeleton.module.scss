@@ -5,7 +5,7 @@
   margin-left: auto;
   margin-right: auto;
   // Matches the conversation column measure (ConversationLayout)
-  max-width: 48rem;
+  max-width: var(--chat-measure);
   padding: var(--space-4) var(--space-6);
 }
 

@@ -1,4 +1,5 @@
 import { Search, SquarePen } from 'lucide-react';
+import clsx from 'clsx';
 import { Button } from '@/components/ui/primitives/Button/Button';
 import {
   COMMAND_MENU_SHORTCUT,
@@ -18,7 +19,11 @@ const SEARCH_SHORTCUT = formatShortcut(COMMAND_MENU_SHORTCUT);
 export function SidebarActions({ onNewChat, onOpenSearch }: SidebarActionsProps) {
   return (
     <nav className={styles.actions} aria-label="Primary">
-      <Button onClick={onNewChat} variant="unstyled" className={styles.action}>
+      <Button
+        onClick={onNewChat}
+        variant="unstyled"
+        className={clsx(styles.action, styles['action--primary'])}
+      >
         <SquarePen className={styles['action-icon']} />
         <span className={styles['action-label']}>New thread</span>
         {NEW_THREAD_SHORTCUT && <kbd className={styles.kbd}>{NEW_THREAD_SHORTCUT}</kbd>}

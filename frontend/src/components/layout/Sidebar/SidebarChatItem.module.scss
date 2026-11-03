@@ -49,7 +49,7 @@
 
 // 1px halo punching the dot out from the surface behind it
 .status-ring {
-  box-shadow: 0 0 0 1px var(--theme-surface-secondary);
+  box-shadow: 0 0 0 1px var(--sidebar-surface, var(--theme-surface-secondary));
 }
 
 .workspace-badge {

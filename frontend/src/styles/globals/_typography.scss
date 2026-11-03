@@ -7,6 +7,7 @@
 //   type-large      16px
 //   type-title      18px — dialog titles only
 //   type-page-title 24px — page headings
+//   type-display    30px — the home greeting only
 
 @mixin typography-tokens {
   :root {
@@ -55,6 +56,10 @@
 
 @mixin type-page-title($weight: 600) {
   @include type(1.5rem, 2rem, $weight, $letter-spacing: -0.02em);
+}
+
+@mixin type-display($weight: 600) {
+  @include type(1.875rem, 2.25rem, $weight, $letter-spacing: -0.025em);
 }
 
 // Panel/sidebar section headers: 12px medium muted label

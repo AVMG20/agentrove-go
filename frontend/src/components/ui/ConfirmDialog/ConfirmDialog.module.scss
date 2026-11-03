@@ -1,5 +1,6 @@
 @use '@/styles/globals/typography' as type;
 @use '@/styles/globals/colors' as colors;
+@use '@/styles/globals/responsive' as responsive;
 
 .body {
   padding: var(--space-5);
@@ -53,4 +54,11 @@
   border-top: 1px solid var(--theme-border);
   background-color: var(--theme-surface-secondary);
   padding: var(--space-3) var(--space-5);
+
+  // Phones: the sheet's two answers split its width, within thumb reach.
+  @include responsive.media('mobile') {
+    > * {
+      flex: 1;
+    }
+  }
 }

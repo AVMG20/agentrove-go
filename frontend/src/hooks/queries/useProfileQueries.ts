@@ -3,6 +3,7 @@ import { useMemo } from 'react';
 import { profileService } from '@/services/profileService';
 import type { Profile, ProfileInput, ProfileLogin } from '@/types/profile.types';
 import { createMutation } from './createMutation';
+import { snapshotQueries } from './optimistic';
 import { queryKeys } from './queryKeys';
 
 const LOGIN_POLL_MS = 1500;
@@ -49,14 +50,47 @@ export const useUpdateProfileMutation = createMutation<
   { profileId: string; data: ProfileInput }
 >(({ profileId, data }) => profileService.updateProfile(profileId, data), invalidateProfiles);
 
+// Shared by the optimistic edits below: only the last in flight refetches.
+const profileMutationKey = ['profile-mutation'] as const;
+
+async function applyProfilesChange(
+  queryClient: QueryClient,
+  update: (profiles: Profile[]) => Profile[],
+) {
+  const snapshot = await snapshotQueries(queryClient, [
+    { queryKey: queryKeys.profiles, exact: true },
+  ]);
+  queryClient.setQueryData<Profile[]>(queryKeys.profiles, (old) => old && update(old));
+  return snapshot;
+}
+
+const settleProfiles = (queryClient: QueryClient) => void invalidateProfiles(queryClient);
+
+// Optimistic: the account's card leaves the list at once.
 export const useDeleteProfileMutation = createMutation<void, Error, string>(
   (profileId) => profileService.deleteProfile(profileId),
-  invalidateProfiles,
+  () => undefined,
+  {
+    mutationKey: profileMutationKey,
+    apply: (queryClient, profileId) =>
+      applyProfilesChange(queryClient, (profiles) => profiles.filter((p) => p.id !== profileId)),
+    settle: settleProfiles,
+  },
 );
 
+// Optimistic: the Default badge moves at once.
 export const useSetDefaultProfileMutation = createMutation<Profile, Error, string>(
   (profileId) => profileService.setDefaultProfile(profileId),
-  invalidateProfiles,
+  () => undefined,
+  {
+    mutationKey: profileMutationKey,
+    scope: 'profile-default',
+    apply: (queryClient, profileId) =>
+      applyProfilesChange(queryClient, (profiles) =>
+        profiles.map((p) => ({ ...p, is_default: p.id === profileId })),
+      ),
+    settle: settleProfiles,
+  },
 );
 
 export const useStartProfileLoginMutation = createMutation<ProfileLogin, Error, string>(

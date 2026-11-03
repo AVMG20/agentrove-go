@@ -14,8 +14,17 @@
 .tablist {
   display: flex;
   height: var(--space-9);
+  flex-shrink: 0;
   align-items: center;
+  // Many terminals scroll sideways instead of squeezing the tabs.
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scrollbar-width: none;
   border-bottom: 1px solid colors.theme-color('border', 0.5);
+
+  @include responsive.media('touch') {
+    height: var(--space-11);
+  }
 }
 
 .tab {
@@ -26,8 +35,13 @@
   align-items: center;
   gap: var(--space-1-5);
   border-right: 1px solid colors.theme-color('border', 0.3);
+  flex-shrink: 0;
   padding-inline: var(--space-3);
   color: var(--theme-text-quaternary);
+
+  @include responsive.media('touch') {
+    padding-inline: var(--space-4) var(--space-1);
+  }
 
   &[aria-selected='true'] {
     background-color: var(--theme-surface-secondary);
@@ -48,7 +62,10 @@
   opacity: 0;
   transition: opacity var(--duration-fast);
 
+  // No hover on touch: always shown, with a finger-sized target.
   @include responsive.media('touch') {
+    display: flex;
+    padding: var(--space-2-5);
     opacity: 1;
   }
 
@@ -72,9 +89,14 @@
   display: flex;
   height: 100%;
   align-items: center;
+  flex-shrink: 0;
   padding-inline: var(--space-2);
   color: var(--theme-text-quaternary);
   @include anim.transition-colors;
+
+  @include responsive.media('touch') {
+    padding-inline: var(--space-3-5);
+  }
 
   @include responsive.hover {
     color: var(--theme-text-secondary);

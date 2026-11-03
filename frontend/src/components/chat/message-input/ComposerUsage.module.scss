@@ -4,6 +4,7 @@
 @use '@/styles/globals/controls' as controls;
 @use '@/styles/globals/responsive' as responsive;
 @use '@/styles/globals/zlayer' as z;
+@use '@/components/chat/touch' as touch;
 
 .usage {
   position: relative;
@@ -27,17 +28,32 @@
   @include responsive.hover {
     background-color: var(--theme-surface-hover);
   }
+
+  @include touch.touch-press;
+  // Phones: 28px, with a 44px tappable ring.
+  @include touch.touch-hit-area(var(--space-2));
 }
 
 .ring {
   height: var(--space-4);
   width: var(--space-4);
+
+  @include responsive.media('touch') {
+    height: var(--space-5);
+    width: var(--space-5);
+  }
 }
 
 .track {
   fill: none;
   stroke: var(--theme-border-secondary);
   stroke-width: 2.5;
+
+  // Phones: an empty context window still shows the ring (the light theme's
+  // border grey vanished on the white field).
+  @include responsive.media('mobile') {
+    stroke: colors.theme-color('text-quaternary', 0.45);
+  }
 }
 
 .progress {

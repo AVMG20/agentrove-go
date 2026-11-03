@@ -8,7 +8,9 @@ import {
 } from 'react';
 import type { LucideIcon } from 'lucide-react';
 import { Button } from '@/components/ui/primitives/Button/Button';
+import { ActionSheet } from '@/components/ui/shared/Sheet/ActionSheet';
 import { DROPDOWN_MARGIN } from '@/config/constants';
+import { useIsMobile } from '@/hooks/useIsMobile';
 import styles from './SidebarMenu.module.scss';
 
 interface SidebarMenuProps {
@@ -18,10 +20,36 @@ interface SidebarMenuProps {
   // A panel that isn't a list of menu items (the folder icon picker).
   role?: AriaRole;
   'aria-label'?: string;
+  // Phones show the menu as an action sheet headed by what it acts on.
+  title?: ReactNode;
+  subtitle?: ReactNode;
   children: ReactNode;
 }
 
-export function SidebarMenu({
+// A row's options: a floating menu beside its button on desktop, an action
+// sheet on phones (where a small popover is hard to hit and easy to lose).
+export function SidebarMenu(props: SidebarMenuProps) {
+  const isMobile = useIsMobile();
+  if (isMobile) {
+    const { ref, onClose, role = 'menu', 'aria-label': ariaLabel, title, subtitle } = props;
+    return (
+      <ActionSheet
+        ref={ref}
+        onClose={() => onClose?.()}
+        role={role === 'menu' ? 'menu' : 'dialog'}
+        aria-label={ariaLabel}
+        title={title}
+        subtitle={subtitle}
+        bodyClassName={styles['sheet-body']}
+      >
+        {props.children}
+      </ActionSheet>
+    );
+  }
+  return <FloatingSidebarMenu {...props} />;
+}
+
+function FloatingSidebarMenu({
   ref,
   position,
   onClose,
@@ -80,6 +108,8 @@ interface SidebarMenuItemProps {
   onClick: () => void;
   danger?: boolean;
   disabled?: boolean;
+  // Right-hand hint, e.g. a chevron for an item that opens a sub-view.
+  trailing?: ReactNode;
   children: ReactNode;
 }
 
@@ -88,6 +118,7 @@ export function SidebarMenuItem({
   onClick,
   danger = false,
   disabled,
+  trailing,
   children,
 }: SidebarMenuItemProps) {
   return (
@@ -99,7 +130,8 @@ export function SidebarMenuItem({
       disabled={disabled}
     >
       <Icon className={styles.icon} />
-      {children}
+      <span className={styles.label}>{children}</span>
+      {trailing && <span className={styles.trailing}>{trailing}</span>}
     </Button>
   );
 }

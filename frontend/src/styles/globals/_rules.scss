@@ -136,6 +136,25 @@
     cursor: pointer;
   }
 
+  // An app, not a document: controls react to the first tap (no double-tap-zoom
+  // wait), and a long press on one doesn't raise the copy/preview callout.
+  a,
+  button,
+  label,
+  summary,
+  [role='button'],
+  [role='tab'],
+  [role='menuitem'] {
+    touch-action: manipulation;
+  }
+
+  button,
+  [role='button'],
+  [role='tab'],
+  [role='menuitem'] {
+    -webkit-touch-callout: none;
+  }
+
   :disabled {
     cursor: default;
   }

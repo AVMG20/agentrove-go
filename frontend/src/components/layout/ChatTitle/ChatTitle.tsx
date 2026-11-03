@@ -44,10 +44,13 @@ function TitleEditor({
     const title = value.trim();
     onDone();
     if (!title || title === initial) return;
-    updateChat.mutate(
-      { chatId, updateData: { title } },
-      { onError: (error) => toast.error(error.message || 'Failed to rename thread') },
-    );
+    // mutateAsync: this editor unmounts before the request ends, and mutate
+    // callbacks don't fire once it has.
+    updateChat
+      .mutateAsync({ chatId, updateData: { title } })
+      .catch((error: unknown) =>
+        toast.error(error instanceof Error ? error.message : 'Failed to rename thread'),
+      );
   };
 
   return (
@@ -88,13 +91,13 @@ function ArchivedBadge({ chatId, canRestore }: { chatId: string; canRestore: boo
       disabled={archiveChat.isPending}
       // Not the title's double-click rename.
       onDoubleClick={(e) => e.stopPropagation()}
+      // mutateAsync: the optimistic restore unmounts this badge at once, and
+      // mutate callbacks don't fire once it has.
       onClick={() =>
-        archiveChat.mutate(
-          { chatId, archived: false },
-          {
-            onSuccess: () => toast.success('Thread restored'),
-            onError: (error) => toast.error(error.message || 'Failed to restore thread'),
-          },
+        archiveChat.mutateAsync({ chatId, archived: false }).then(
+          () => toast.success('Thread restored'),
+          (error: unknown) =>
+            toast.error(error instanceof Error ? error.message : 'Failed to restore thread'),
         )
       }
     >

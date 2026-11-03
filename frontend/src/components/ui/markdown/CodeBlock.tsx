@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import type { HTMLAttributes } from 'react';
 import clsx from 'clsx';
+import { Check, Copy } from 'lucide-react';
 import { Button } from '../primitives/Button/Button';
 import styles from './CodeBlock.module.scss';
 
@@ -20,17 +21,20 @@ export function CodeBlock({ language, codeContent, className, ...props }: CodeBl
     setTimeout(() => setIsCopied(false), 2000);
   };
 
+  const CopyIcon = isCopied ? Check : Copy;
+
   return (
     <div className={styles['code-block']}>
       <div className={styles['code-header']}>
-        <div className={styles['code-lang']}>{language}</div>
+        <span className={styles['code-lang']}>{language}</span>
         <Button
           onClick={handleCopy}
           variant="unstyled"
-          className={styles['code-copy']}
+          className={clsx(styles['code-copy'], isCopied && styles['code-copy--copied'])}
           aria-label="Copy code"
         >
-          {isCopied ? 'Copied!' : 'Copy'}
+          <CopyIcon aria-hidden className={styles['code-copy-icon']} />
+          <span className={styles['code-copy-label']}>{isCopied ? 'Copied' : 'Copy'}</span>
         </Button>
       </div>
       <pre className={styles['code-pre']}>

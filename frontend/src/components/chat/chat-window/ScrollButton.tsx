@@ -17,6 +17,9 @@ export const ScrollButton = memo(function ScrollButton({ onClick }: ScrollButton
         aria-label="Scroll to bottom"
       >
         <ChevronDown className={styles['scroll-icon']} />
+        <span className={styles['scroll-label']} aria-hidden>
+          Latest
+        </span>
       </Button>
     </div>
   );

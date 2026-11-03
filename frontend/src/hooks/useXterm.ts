@@ -8,7 +8,7 @@ import type { SearchAddon } from '@xterm/addon-search';
 import { logger } from '@/utils/logger';
 import { buildTerminalTheme } from '@/utils/terminal';
 import type { TerminalSize } from '@/types/sandbox.types';
-import type { Palette } from '@/types/ui.types';
+import type { ResolvedTheme } from '@/types/ui.types';
 
 // Write-only OSC 52 — sandbox must not read clipboard via PTY; silent no-op without secure clipboard.
 const WRITE_ONLY_CLIPBOARD: IClipboardProvider = {
@@ -21,7 +21,7 @@ const WRITE_ONLY_CLIPBOARD: IClipboardProvider = {
 
 interface UseXtermOptions {
   isVisible: boolean;
-  mode: Palette;
+  mode: ResolvedTheme;
   onData: (data: string) => void;
   onFit: (size: TerminalSize) => void;
 }
@@ -169,7 +169,7 @@ export const useXterm = ({ isVisible, mode, onData, onFit }: UseXtermOptions): U
     terminal.options.theme = buildTerminalTheme(mode);
 
     if (isVisible) {
-      // Palette can nudge cell metrics; refit after theme swap settles.
+      // Theme swaps can nudge cell metrics; refit after the swap settles.
       const frame = requestAnimationFrame(() => {
         fitTerminal();
       });

@@ -2,6 +2,7 @@
 @use '@/styles/globals/typography' as type;
 @use '@/styles/globals/animations' as anim;
 @use '@/styles/globals/responsive' as responsive;
+@use '@/components/chat/touch' as touch;
 
 .uploading-overlay {
   pointer-events: none;
@@ -139,6 +140,7 @@
 
 .message-preview {
   @include type.type-default;
+  min-width: 0;
   @include type.type-overflow;
   color: var(--theme-text-secondary);
 }
@@ -148,6 +150,10 @@
   flex-shrink: 0;
   align-items: center;
   gap: var(--space-1);
+
+  @include responsive.media('touch') {
+    gap: 0;
+  }
 }
 
 .sending {
@@ -170,6 +176,7 @@
 
 .retry-btn {
   @include type.type-meta(500);
+  @include touch.touch-hit-area(var(--space-3));
   border-radius: var(--radius-sm);
   padding: 0 var(--space-0-5);
   color: var(--theme-error-text);
@@ -187,6 +194,15 @@
   border-radius: var(--radius-md);
   padding: 0 var(--space-1-5);
   cursor: pointer;
+  @include touch.touch-press;
+  @include touch.touch-hit-area(var(--space-0-5));
+
+  // Finger-sized on touch; the card's own padding absorbs the extra height.
+  @include responsive.media('touch') {
+    height: var(--space-10);
+    min-width: var(--space-10);
+    margin-block: calc(-1 * var(--space-1-5));
+  }
 
   &--save {
     @include type.type-meta(500);
@@ -232,4 +248,9 @@
 .action-glyph {
   height: var(--space-3);
   width: var(--space-3);
+
+  @include responsive.media('touch') {
+    height: var(--space-4);
+    width: var(--space-4);
+  }
 }

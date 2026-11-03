@@ -2,6 +2,8 @@ import { memo, type Ref } from 'react';
 import { Archive, Edit2, Trash2, Pin, PinOff, SplitSquareHorizontal } from 'lucide-react';
 import { FloatingTooltip } from '@/components/ui/FloatingTooltip/FloatingTooltip';
 import type { Chat } from '@/types/chat.types';
+import { stripMarkdownTitle } from '@/utils/format';
+import { formatRelativeTime } from '@/utils/date';
 import { SidebarMenu, SidebarMenuItem } from './SidebarMenu';
 import styles from './ChatDropdown.module.scss';
 
@@ -33,7 +35,13 @@ export const ChatDropdown = memo(function ChatDropdown({
   const isPinned = !!chat.pinned_at;
 
   return (
-    <SidebarMenu ref={ref} position={position} onClose={onClose}>
+    <SidebarMenu
+      ref={ref}
+      position={position}
+      onClose={onClose}
+      title={stripMarkdownTitle(chat.title)}
+      subtitle={`Updated ${formatRelativeTime(chat.updated_at)}`}
+    >
       <SidebarMenuItem icon={isPinned ? PinOff : Pin} onClick={() => onTogglePin(chat)}>
         {isPinned ? 'Unpin' : 'Pin'}
       </SidebarMenuItem>

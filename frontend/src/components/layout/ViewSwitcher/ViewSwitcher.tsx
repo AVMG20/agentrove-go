@@ -62,57 +62,60 @@ export function ViewSwitcher() {
   // Highlight = on screen; background-mounted views stay unlit (click surfaces).
   const visibleSet = useMemo(() => new Set(visibleLayout.flat()), [visibleLayout]);
 
+  const artifactChatId = slot ? splitChatIds[slot - 1] : routeChatId;
+
   return (
     <div className={styles['view-switcher']}>
-      {views.map((view) => {
-        const Icon = VIEW_ICONS[view];
-        const isActive = visibleSet.has(viewTypeToTileId(view, slot));
-        const button = (
-          <Button
-            variant="unstyled"
-            // Left-click toggles full; shift/right-click splits beside the active pane.
-            onClick={(e) => {
-              if (e.shiftKey && !isMobile) {
+      {/* The workspace views read as one segmented control; the session panel
+          is a separate toggle beside it. */}
+      <div className={styles.segment} role="group" aria-label="Workspace views">
+        {views.map((view) => {
+          const Icon = VIEW_ICONS[view];
+          const isActive = visibleSet.has(viewTypeToTileId(view, slot));
+          const button = (
+            <Button
+              variant="unstyled"
+              // Left-click toggles full; shift/right-click splits beside the active pane.
+              onClick={(e) => {
+                if (e.shiftKey && !isMobile) {
+                  useUIStore.getState().addViewToSplit(view, 'row');
+                  return;
+                }
+                useUIStore.getState().toggleView(view, true);
+              }}
+              onContextMenu={(e) => {
+                // Splitting is a desktop layout; leave the native long-press menu
+                // alone on mobile, where the workspace is single-pane anyway.
+                if (isMobile) return;
+                e.preventDefault();
                 useUIStore.getState().addViewToSplit(view, 'row');
-                return;
-              }
-              useUIStore.getState().toggleView(view, true);
-            }}
-            onContextMenu={(e) => {
-              // Splitting is a desktop layout; leave the native long-press menu
-              // alone on mobile, where the workspace is single-pane anyway.
-              if (isMobile) return;
-              e.preventDefault();
-              useUIStore.getState().addViewToSplit(view, 'row');
-            }}
-            className={styles['view-button']}
-            aria-label={`Toggle ${VIEW_LABELS[view]} view`}
-            aria-pressed={isActive}
-          >
-            <Icon className={styles.icon} />
-          </Button>
-        );
-        return showTooltips ? (
-          <Tooltip key={view} content={viewTooltip(view)} position="bottom-end">
-            {button}
-          </Tooltip>
-        ) : (
-          <Fragment key={view}>{button}</Fragment>
-        );
-      })}
-      {/* Same pane-scoping as the views: the focused split chat's artifacts. */}
-      {(slot ? splitChatIds[slot - 1] : routeChatId) && !isMobile && (
-        <ArtifactButton
-          chatId={(slot ? splitChatIds[slot - 1] : routeChatId) as string}
-          showTooltip={showTooltips}
-        />
-      )}
+              }}
+              className={styles['view-button']}
+              aria-label={`Toggle ${VIEW_LABELS[view]} view`}
+              aria-pressed={isActive}
+            >
+              <Icon className={styles.icon} />
+            </Button>
+          );
+          return showTooltips ? (
+            <Tooltip key={view} content={viewTooltip(view)} position="bottom-end">
+              {button}
+            </Tooltip>
+          ) : (
+            <Fragment key={view}>{button}</Fragment>
+          );
+        })}
+        {/* Same pane-scoping as the views: the focused split chat's artifacts. */}
+        {artifactChatId && !isMobile && (
+          <ArtifactButton chatId={artifactChatId} showTooltip={showTooltips} />
+        )}
+      </div>
       {!isLandingPage && !isMobile && (
         <Tooltip content={SESSION_PANEL_TOOLTIP} position="bottom-end">
           <Button
             variant="unstyled"
             onClick={() => useUIStore.getState().toggleSessionPanel()}
-            className={styles['view-button']}
+            className={clsx(styles['view-button'], styles['view-button--standalone'])}
             aria-label="Toggle session panel"
             aria-pressed={sessionPanelShown}
           >

@@ -1,3 +1,5 @@
+@use '@/styles/globals/controls' as controls;
+
 .toggle-button {
   display: flex;
 }
@@ -6,6 +8,8 @@
   height: var(--space-8);
   width: var(--space-8);
   transition: all var(--duration-base) var(--easing-in-out);
+  // Last, so it overrides the desktop size on touch screens.
+  @include controls.touch-icon-button('.icon');
 }
 
 .icon {

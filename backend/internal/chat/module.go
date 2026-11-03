@@ -648,7 +648,12 @@ const browserPrompt = "<browser>A headless Chromium runs in this box; use the mc
 	"(it starts on first use). Dev servers you run in the box are reachable from it at http://localhost:<port>. " +
 	"Browser tools can only read and write files in /tmp/playwright-mcp: screenshots and saved output land there " +
 	"(copy them elsewhere with Bash if needed), and a file to upload must be copied there first. " +
-	"The user can watch and use the same browser in the Browser tab.</browser>\n"
+	"The user can watch and use the same browser in the Browser tab. Other agents may use it too: you get a tab of " +
+	"your own, so leave the other tabs alone. A browser call that takes over 90s fails and restarts the browser " +
+	"connection, undoing emulation set up through CDP sessions. To emulate touch, use browser_run_code_unsafe with " +
+	"page.context().newCDPSession(page): Emulation.setTouchEmulationEnabled, and taps via Input.dispatchTouchEvent " +
+	"(page.touchscreen needs hasTouch, which an attached browser lacks); never Emulation.setEmitTouchEventsForMouse, " +
+	"which makes mouse input hang.</browser>\n"
 
 var artifactTools = []string{"mcp__agentrove__create_artifact", "mcp__agentrove__update_artifact",
 	"mcp__agentrove__edit_artifact", "mcp__agentrove__restore_artifact", "mcp__agentrove__get_artifact",

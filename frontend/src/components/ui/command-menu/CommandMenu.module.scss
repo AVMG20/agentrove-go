@@ -23,18 +23,46 @@
   box-shadow: var(--shadow-strong);
   backdrop-filter: blur(24px);
   @include anim.fade-in;
+
+  // Phones: just under the status bar with a small gutter, so the list gets the
+  // height above the keyboard rather than an 80px gap.
+  @include responsive.media('mobile') {
+    margin: calc(var(--safe-area-top) + var(--space-2)) var(--space-2) 0;
+    width: auto;
+    flex: 1;
+    max-width: none;
+  }
 }
 
 .panel {
   height: 28rem;
 }
 
-.filters {
+.filters-row {
   display: flex;
   align-items: center;
-  gap: var(--space-1);
   border-bottom: 1px solid colors.theme-color('border', 0.5);
+}
+
+.filters {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  align-items: center;
+  gap: var(--space-1);
   padding: var(--space-2) var(--space-3);
+
+  // Phones: more tabs than width, so the row swipes sideways instead of
+  // clipping the last ones at the edge.
+  @include responsive.media('mobile') {
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    scrollbar-width: none;
+
+    &::-webkit-scrollbar {
+      display: none;
+    }
+  }
 }
 
 .filter {
@@ -51,6 +79,29 @@
 
   &--active {
     background-color: var(--theme-surface-active);
+    color: var(--theme-text-primary);
+  }
+
+  @include responsive.media('mobile') {
+    flex-shrink: 0;
+  }
+
+  @include responsive.media('touch') {
+    min-height: var(--space-9);
+    padding-inline: var(--space-3);
+  }
+}
+
+// Phone-only way out (CommandMenu.tsx), iOS style: a text button at the row's end.
+.cancel {
+  @include type.type-body(500);
+  @include anim.transition-colors;
+  min-height: var(--touch-target);
+  flex-shrink: 0;
+  padding-inline: var(--space-3);
+  color: var(--theme-text-secondary);
+
+  &:active {
     color: var(--theme-text-primary);
   }
 }

@@ -10,7 +10,13 @@
   flex-shrink: 0;
   align-items: stretch;
   overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scrollbar-width: none;
   border-bottom: 1px solid colors.theme-color('border', 0.5);
+
+  @include responsive.media('touch') {
+    height: var(--space-11);
+  }
 }
 
 .tab {
@@ -81,6 +87,14 @@
   width: var(--space-6);
   align-items: center;
   justify-content: center;
+
+  // Touch: the close button is always shown, so the unsaved dot sits beside it
+  // rather than under it, and the slot widens to a finger-sized target.
+  @include responsive.media('touch') {
+    width: auto;
+    gap: var(--space-0-5);
+    padding-right: var(--space-0-5);
+  }
 }
 
 .tab-dot {
@@ -89,6 +103,11 @@
   width: var(--space-1-5);
   border-radius: var(--radius-full);
   background-color: var(--theme-text-quaternary);
+
+  @include responsive.media('touch') {
+    position: static;
+    flex-shrink: 0;
+  }
 }
 
 .tab-close {
@@ -112,6 +131,7 @@
 
   // No hover on touch: keep it visible so it can be found and tapped.
   @include responsive.media('touch') {
+    padding: var(--space-2-5);
     opacity: 1;
   }
 }

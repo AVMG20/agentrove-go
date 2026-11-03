@@ -208,8 +208,7 @@ const SETTING_COMMANDS: ActionCommandItem[] = [
     hideOnMobile: true,
     requiresChat: true,
   },
-  // Opens the theme picker sub-mode (every theme as a list) instead of one command per
-  // theme — keeps the chord space sane as themes grow.
+  // Opens the theme picker sub-mode (Light / Dark / System) instead of one command per theme.
   { type: 'action', id: 'set-theme', label: 'Set theme', icon: Palette },
   { type: 'action', id: 'open-settings', label: 'Settings', icon: Settings, shortcut: ',' },
 ];

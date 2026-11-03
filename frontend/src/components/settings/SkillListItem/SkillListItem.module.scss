@@ -2,6 +2,7 @@
 @use '@/styles/globals/typography' as type;
 @use '@/styles/globals/responsive' as responsive;
 @use '@/styles/globals/animations' as anim;
+@use '@/styles/globals/controls' as controls;
 
 .skill-list-item {
   border: 1px solid colors.theme-color('border', 0.5);
@@ -43,6 +44,11 @@
   display: flex;
   flex-shrink: 0;
   gap: var(--space-0-5);
+
+  // Touch: the 44px buttons sit edge to edge.
+  @include responsive.media('touch') {
+    gap: 0;
+  }
 }
 
 .edit-button {
@@ -55,6 +61,8 @@
   @include responsive.hover {
     color: var(--theme-text-secondary);
   }
+
+  @include controls.touch-icon-button('.edit-icon', var(--space-4));
 }
 
 .edit-icon {

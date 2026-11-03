@@ -196,23 +196,65 @@
   }
 }
 
-// Touch has no hover: keep the controls a tap away, at finger size.
+// Touch has no hover. Rows are finger-height list cells: the timestamp stays
+// at rest, a long press opens the options as a sheet, and only the open
+// thread keeps its options button (an obvious way in where it matters most).
 @include responsive.media('touch') {
   .row {
-    padding-block: var(--space-2-5);
+    @include type.type-noselect;
+    min-height: var(--touch-target, var(--space-11));
+    padding-block: var(--space-2);
+    -webkit-touch-callout: none;
+
+    // The press itself is the feedback (no hover to preview it).
+    @include responsive.active((active)) {
+      &:not(:has([data-row-action]:active)) {
+        background-color: var(--theme-surface-hover);
+      }
+    }
+  }
+
+  .title-btn {
+    @include type.type-large;
+  }
+
+  .title-col {
+    padding-right: var(--space-8);
   }
 
   .timestamp {
-    display: none;
+    right: var(--space-2-5);
   }
 
   .dropdown-btn {
     right: 0;
-    padding: var(--space-3);
+    height: var(--touch-target, var(--space-11));
+    width: var(--touch-target, var(--space-11));
+    display: none;
+    align-items: center;
+    justify-content: center;
     opacity: 1;
   }
 
-  // Touch reaches Archive through the options menu.
+  .row--revealed {
+    .timestamp {
+      opacity: 0;
+    }
+
+    .dropdown-btn {
+      display: flex;
+    }
+  }
+
+  .row:focus-within .timestamp {
+    opacity: 1;
+  }
+
+  .row--revealed:focus-within .timestamp {
+    opacity: 0;
+  }
+
+  // Touch reaches Archive through the options sheet.
   .hover-action-btn {
     display: none;
   }
@@ -229,4 +271,9 @@
 .dropdown-icon {
   height: var(--space-3);
   width: var(--space-3);
+
+  @include responsive.media('touch') {
+    height: var(--space-4);
+    width: var(--space-4);
+  }
 }

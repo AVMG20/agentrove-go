@@ -19,4 +19,3 @@ export const stateClasses = {
   PENDING: 'is-pending',
   CURRENT: 'is-current',
 } as const;
-

@@ -12,12 +12,17 @@
   flex-shrink: 0;
   flex-direction: column;
   border-right: 1px solid var(--theme-border);
-  background-color: var(--theme-surface-secondary);
+  // What the sidebar sits on, for the halos that punch status dots out of it.
+  --sidebar-surface: var(--theme-surface-secondary);
+  background-color: var(--sidebar-surface);
   transition-duration: var(--sidebar-transition-duration, 0ms);
   transition-timing-function: var(--easing-in-out);
 
   // Desktop: docked in the flow; closing slides it out and the page takes the room.
+  // Part of the chrome: no rule of its own, the main panel's edge divides them.
   @include responsive.media('desktop') {
+    --sidebar-surface: var(--theme-surface-chrome);
+    border-right: none;
     margin-left: calc(var(--sidebar-width) * -1);
     transition-property: margin-left;
 
@@ -26,29 +31,40 @@
     }
   }
 
-  // Mobile: a drawer over the page (the shell adds a scrim behind it).
+  // Mobile: a drawer over the page (the shell adds a scrim behind it). A bit
+  // wider than the desktop default so rows breathe, but always leaving a strip
+  // of the page (and its scrim) to tap back to.
   @include responsive.media('mobile') {
     @include z.z('drawer');
+    @include type.type-noselect;
     position: fixed;
     inset: 0 auto 0 0;
-    width: min(var(--sidebar-width), 85vw);
+    width: min(85vw, var(--space-80));
     // Landscape: clear of the notch side.
     padding-left: var(--safe-area-left);
+    border-right: none;
+    border-radius: 0 var(--radius-xl) var(--radius-xl) 0;
     transform: translateX(-100%);
-    transition-property: transform;
-    box-shadow: var(--shadow-strong);
+    transition-property: transform, box-shadow;
+    transition-timing-function: var(--easing-drawer);
+    // No shadow while parked off screen (it would bleed onto the page edge).
+    box-shadow: none;
+    overscroll-behavior: contain;
 
     // none, not translateX(0): a transform would become the containing block
     // for the row menus' position: fixed.
     &--open {
       transform: none;
+      box-shadow: var(--shadow-strong);
     }
   }
 
   // Mobile drawer following the finger while dragged open or closed (useDrawerSwipe).
   :global(#{responsive.layout-mode('mobile')}[data-drawer-dragging]) & {
     transform: translateX(calc((var(--drawer-progress) - 1) * 100%));
+    box-shadow: var(--shadow-strong);
     transition: none;
+    will-change: transform;
   }
 }
 
@@ -60,6 +76,19 @@
   justify-content: space-between;
   gap: var(--space-2);
   padding: var(--safe-area-top) var(--space-2) 0 var(--space-3);
+
+  // Same height as the title bar beside it, so the two read as one top edge.
+  @include responsive.media('touch') {
+    height: calc(var(--space-12) + var(--safe-area-top));
+  }
+
+  @include responsive.media('mobile') {
+    padding-right: var(--space-1);
+  }
+
+  @include responsive.media('phone-landscape') {
+    height: calc(var(--space-11) + var(--safe-area-top));
+  }
 }
 
 .brand {
@@ -75,20 +104,34 @@
   margin-left: calc(var(--space-2) * -1);
   color: var(--theme-text-primary);
 
-  @include responsive.hover {
+  @include responsive.active {
     background-color: var(--theme-surface-hover);
+  }
+
+  @include responsive.media('touch') {
+    min-height: var(--touch-target);
+    gap: var(--space-2-5);
   }
 }
 
 .brand-name {
   @include type.type-body(600);
   @include type.type-overflow;
+
+  @include responsive.media('mobile') {
+    @include type.type-large(600);
+  }
 }
 
 .logo {
   height: var(--space-4);
   width: var(--space-4);
   flex-shrink: 0;
+
+  @include responsive.media('mobile') {
+    height: var(--space-5);
+    width: var(--space-5);
+  }
 
   &--on-light {
     display: block;
@@ -115,4 +158,10 @@
   border-top: 1px solid var(--theme-border);
   padding: var(--space-2) var(--space-3);
   padding-bottom: calc(var(--space-2) + var(--safe-area-bottom, 0px));
+
+  @include responsive.media('mobile') {
+    gap: var(--space-1);
+    padding-inline: var(--space-2);
+    padding-bottom: calc(var(--space-2) + var(--device-safe-area-bottom));
+  }
 }

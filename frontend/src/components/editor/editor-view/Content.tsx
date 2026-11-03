@@ -66,8 +66,7 @@ export const Content = memo(function Content({
   onMount,
   theme,
 }: ContentProps) {
-  // Surface tokens track the active palette's CSS vars, matching Monaco's
-  // editor.background for every palette — not just the default light/dark.
+  // Surface tokens match Monaco's editor.background in both light and dark.
   const loadingFallback = (
     <div className={styles['content-loading']}>
       <div className={styles['content-loading-pulse']}>Loading editor...</div>

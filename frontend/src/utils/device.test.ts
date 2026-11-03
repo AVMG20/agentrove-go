@@ -4,6 +4,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   applyLayoutAttributes,
   isCoarsePointer,
+  isIOS,
+  isStandalone,
   readLayoutMode,
   subscribeLayoutMode,
   TOUCH_MEDIA_QUERY,
@@ -47,6 +49,13 @@ describe('readLayoutMode', () => {
     screenStub = stubScreen(390, 844);
     setViewport(844, 390);
     expect(readLayoutMode()).toEqual({ mobile: true, phoneLandscape: true });
+  });
+
+  it('keeps a portrait viewport upright when the screen claims landscape (emulators)', () => {
+    media = stubTouch();
+    screenStub = stubScreen(390, 844, 'landscape-primary');
+    setViewport(390, 844);
+    expect(readLayoutMode()).toEqual({ mobile: true, phoneLandscape: false });
   });
 
   it('keeps a tablet on the desktop layout while the keyboard shrinks its viewport', () => {
@@ -116,5 +125,29 @@ describe('subscribeLayoutMode', () => {
     window.dispatchEvent(new Event('resize'));
     media.set(TOUCH_MEDIA_QUERY, true);
     expect(onChange).toHaveBeenCalledTimes(3);
+  });
+});
+
+describe('isIOS / isStandalone', () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  it('recognises iPhones and iPads, including iPadOS posing as a Mac', () => {
+    const ua = vi.spyOn(navigator, 'userAgent', 'get');
+    const touchPoints = vi.spyOn(navigator, 'maxTouchPoints', 'get').mockReturnValue(0);
+    ua.mockReturnValue('Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X)');
+    expect(isIOS()).toBe(true);
+    ua.mockReturnValue('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)');
+    expect(isIOS()).toBe(false);
+    touchPoints.mockReturnValue(5);
+    expect(isIOS()).toBe(true);
+    ua.mockReturnValue('Mozilla/5.0 (Linux; Android 15; Pixel 9)');
+    expect(isIOS()).toBe(false);
+  });
+
+  it('reads the standalone display mode', () => {
+    media = stubMatchMedia({ '(display-mode: standalone)': true });
+    expect(isStandalone()).toBe(true);
+    media.set('(display-mode: standalone)', false);
+    expect(isStandalone()).toBe(false);
   });
 });

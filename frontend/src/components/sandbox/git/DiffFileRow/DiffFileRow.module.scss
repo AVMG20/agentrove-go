@@ -94,6 +94,10 @@
   gap: var(--space-2);
   padding: var(--space-1-5) var(--space-3);
   text-align: left;
+
+  @include responsive.media('touch') {
+    min-height: var(--space-11);
+  }
 }
 
 .chevron {
@@ -140,6 +144,10 @@
   display: flex;
   flex-shrink: 0;
   margin-right: var(--space-3);
+
+  @include responsive.media('touch') {
+    margin-right: var(--space-1);
+  }
 }
 
 .file-action {
@@ -166,6 +174,7 @@
 
   // No hover on touch: keep it visible so it can be found and tapped.
   @include responsive.media('touch') {
+    padding: var(--space-2-5);
     opacity: 1;
   }
 
@@ -184,6 +193,10 @@
   @include anim.transition-colors;
   border-radius: var(--radius-md);
   padding: var(--space-1);
+
+  @include responsive.media('touch') {
+    padding: var(--space-2-5);
+  }
 
   &--reviewed {
     color: var(--theme-success-text);

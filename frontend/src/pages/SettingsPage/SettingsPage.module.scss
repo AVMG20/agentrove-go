@@ -32,7 +32,7 @@
   }
 
   @include responsive.media('lg-up') {
-    padding: var(--space-8) var(--space-8) var(--space-16);
+    padding: var(--space-10) var(--space-10) var(--space-16);
   }
 }
 

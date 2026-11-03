@@ -3,6 +3,7 @@ import clsx from 'clsx';
 import { MoreHorizontal, type LucideIcon } from 'lucide-react';
 import { Button } from '@/components/ui/primitives/Button/Button';
 import { stateClasses } from '@/config/stateClasses';
+import { useRowContextMenu } from './useRowContextMenu';
 import styles from './SidebarRow.module.scss';
 
 interface SidebarRowProps {
@@ -20,6 +21,8 @@ interface SidebarRowProps {
   onDropdownClick: (e: MouseEvent<HTMLButtonElement>) => void;
   // One-click action beside the options button, shown on hover (e.g. Archive).
   hoverAction?: { icon: LucideIcon; label: string; onClick: () => void };
+  // Right-click / long-press: the same options, anchored at that point.
+  onContextMenu?: (point: { x: number; y: number }) => void;
 }
 
 export function SidebarRow({
@@ -34,11 +37,14 @@ export function SidebarRow({
   dropdownLabel,
   onDropdownClick,
   hoverAction,
+  onContextMenu,
 }: SidebarRowProps) {
+  const contextMenu = useRowContextMenu(onContextMenu);
   return (
     // Keyboard users reach the same action through the title button.
     <div
       ref={ref}
+      {...contextMenu}
       onClick={
         onRowClick &&
         ((e) => {
@@ -66,6 +72,7 @@ export function SidebarRow({
 
       {hoverAction && (
         <Button
+          data-row-action
           onClick={hoverAction.onClick}
           onMouseDown={(e) => e.stopPropagation()}
           variant="unstyled"
@@ -78,6 +85,7 @@ export function SidebarRow({
       )}
 
       <Button
+        data-row-action
         onClick={onDropdownClick}
         onMouseDown={(e) => e.stopPropagation()}
         variant="unstyled"

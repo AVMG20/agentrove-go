@@ -1,7 +1,6 @@
 // @vitest-environment happy-dom
 import { describe, it, expect, beforeEach } from 'vitest';
 import { buildTerminalTheme, terminalStorageKey, clearTerminalStorage } from './terminal';
-import { CUSTOM_PALETTE_TOKENS } from '@/utils/theme';
 
 describe('terminalStorageKey', () => {
   it('joins chat id and panel key under the terminal namespace', () => {
@@ -20,7 +19,7 @@ describe('buildTerminalTheme', () => {
       selectionBackground: 'rgba(0, 0, 0, 0.15)',
       selectionInactiveBackground: 'rgba(0, 0, 0, 0.08)',
     });
-    // Light palettes override the ANSI 16 — the built-ins are dark-background colors.
+    // Light overrides the ANSI 16 — the built-ins are dark-background colors.
     expect(theme?.white).toBe('#555555');
     expect(theme?.brightYellow).toBe('#b5ba00');
   });
@@ -33,23 +32,8 @@ describe('buildTerminalTheme', () => {
       cursorAccent: '#0a0a0a',
       selectionBackground: 'rgba(255, 255, 255, 0.2)',
     });
-    // Dark palettes keep xterm's built-in ANSI defaults.
+    // Dark keeps xterm's built-in ANSI defaults.
     expect(theme?.white).toBeUndefined();
-  });
-
-  it('derives a dark custom palette from its shared tokens', () => {
-    const theme = buildTerminalTheme('dim');
-    expect(theme?.background).toBe(CUSTOM_PALETTE_TOKENS.dim.surfaceSecondary);
-    expect(theme?.foreground).toBe(CUSTOM_PALETTE_TOKENS.dim.textPrimary);
-    // dim rides the dark base -> dark cursor accent.
-    expect(theme?.cursorAccent).toBe('#0a0a0a');
-  });
-
-  it('derives a light custom palette with light-mode accents', () => {
-    const theme = buildTerminalTheme('sepia');
-    expect(theme?.background).toBe(CUSTOM_PALETTE_TOKENS.sepia.surfaceSecondary);
-    expect(theme?.foreground).toBe(CUSTOM_PALETTE_TOKENS.sepia.textPrimary);
-    expect(theme?.cursorAccent).toBe('#ffffff');
   });
 });
 

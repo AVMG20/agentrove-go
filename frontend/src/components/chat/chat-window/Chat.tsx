@@ -12,6 +12,7 @@ import { ChatInlineElicitation } from './ChatInlineElicitation';
 import { StreamActionsBar } from './StreamActionsBar';
 import { Input } from '@/components/chat/message-input/Input';
 import { ChatSkeleton } from './ChatSkeleton';
+import { ChatEmptyState } from './ChatEmptyState';
 import { ConversationColumn, ConversationLayout, ConversationScroller } from './ConversationLayout';
 import { MessageTrail } from './MessageTrail';
 import { FindInChat } from './FindInChat';
@@ -479,6 +480,8 @@ export const Chat = memo(function Chat() {
     >
       {isInitialLoading && messages.length === 0 ? (
         <ChatSkeleton messageCount={3} />
+      ) : messages.length === 0 && !hasNextPage && !listFooter ? (
+        <ChatEmptyState onPickStarter={setInputMessage} />
       ) : (
         <>
           {/* Single wrapper so the stick-to-bottom ResizeObserver tracks all content */}

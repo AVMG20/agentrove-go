@@ -1,21 +1,33 @@
+@use '@/styles/globals/colors' as colors;
 @use '@/styles/globals/typography' as type;
 @use '@/styles/globals/animations' as anim;
 @use '@/styles/globals/controls' as controls;
 @use '@/styles/globals/responsive' as responsive;
 
-// iOS-style tab bar under the page. It sits on the home-indicator inset itself,
+// App-style tab bar under the page. It sits on the home-indicator inset itself,
 // so the shell zeroes --safe-area-bottom for the page above it.
 .bar {
   @include type.type-noselect;
   display: flex;
   flex-shrink: 0;
+  gap: var(--space-0-5);
   border-top: 1px solid var(--theme-border);
   background-color: var(--theme-surface);
-  padding-bottom: var(--device-safe-area-bottom);
+  padding: var(--space-1) var(--space-1) var(--device-safe-area-bottom);
+  // A drag that starts on the bar is never a page scroll or a refresh.
+  overscroll-behavior: none;
+  touch-action: manipulation;
+  -webkit-touch-callout: none;
 
   // The keyboard covers this edge; give the room back to the chat.
   :global(html[data-keyboard-open]) & {
     display: none;
+  }
+
+  // On its side the home indicator still needs a little room, but less.
+  @include responsive.media('phone-landscape') {
+    padding-top: 0;
+    padding-bottom: max(var(--space-1), var(--device-safe-area-bottom) - var(--space-3));
   }
 }
 
@@ -24,18 +36,14 @@
   @include anim.transition-colors;
   display: flex;
   min-width: 0;
-  height: var(--space-12);
+  min-height: var(--space-14);
   flex: 1;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: var(--space-0-5);
-  color: var(--theme-text-quaternary);
-  -webkit-tap-highlight-color: transparent;
-
-  &:active {
-    color: var(--theme-text-secondary);
-  }
+  gap: var(--space-1);
+  border-radius: var(--radius-lg);
+  color: var(--theme-text-tertiary);
 
   &[aria-current='page'] {
     color: var(--theme-text-primary);
@@ -43,9 +51,41 @@
 
   // Phone on its side: height is what's scarce, so icon and label share a row.
   @include responsive.media('phone-landscape') {
-    height: var(--space-10);
+    min-height: var(--touch-target);
     flex-direction: row;
-    gap: var(--space-1-5);
+    gap: var(--space-1);
+  }
+}
+
+// The pill behind the icon, lit on the current view.
+.indicator {
+  @include anim.transition-colors(var(--duration-fast));
+  display: flex;
+  height: var(--space-8);
+  width: var(--space-14);
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-full);
+  transition-property: background-color, transform;
+
+  .tab[aria-current='page'] & {
+    background-color: var(--theme-surface-active);
+  }
+
+  @include responsive.media('phone-landscape') {
+    height: var(--space-7);
+    width: var(--space-10);
+  }
+}
+
+// Finger down on any tab: the pill dips in, so a tap always shows where it
+// landed (after the .indicator rules, which it overrides).
+.tab {
+  @include responsive.active((active)) {
+    .indicator {
+      background-color: colors.theme-color('text-primary', 0.08);
+      transform: scale(0.94);
+    }
   }
 }
 
@@ -58,4 +98,8 @@
   @include type.type-meta(500);
   @include type.type-overflow;
   max-width: 100%;
+
+  .tab[aria-current='page'] & {
+    font-weight: 600;
+  }
 }

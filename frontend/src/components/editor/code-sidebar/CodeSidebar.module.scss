@@ -58,6 +58,10 @@
   @include responsive.hover {
     color: var(--theme-text-secondary);
   }
+
+  @include responsive.media('touch') {
+    padding: var(--space-3);
+  }
 }
 
 .tree-header {
@@ -66,6 +70,11 @@
   align-items: center;
   justify-content: space-between;
   padding-inline: var(--space-3);
+
+  @include responsive.media('touch') {
+    height: var(--space-11);
+    padding-right: var(--space-1);
+  }
 }
 
 .tree-header__actions {
@@ -105,6 +114,12 @@
   text-align: left;
   color: var(--theme-text-secondary);
 
+  @include responsive.media('touch') {
+    @include type.type-body;
+    min-height: var(--space-11);
+    padding-inline: var(--space-4);
+  }
+
   @include responsive.hover {
     background-color: var(--theme-surface-hover);
     color: var(--theme-text-primary);
@@ -124,4 +139,9 @@
   gap: var(--space-2);
   border-bottom: 1px solid colors.theme-color('border', 0.5);
   padding-inline: var(--space-3);
+
+  @include responsive.media('touch') {
+    height: var(--space-11);
+    padding-inline: var(--space-1) var(--space-3);
+  }
 }

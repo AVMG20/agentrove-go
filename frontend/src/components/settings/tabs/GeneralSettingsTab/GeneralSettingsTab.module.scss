@@ -13,12 +13,25 @@
   background-color: var(--theme-surface);
   padding: var(--space-5);
   box-shadow: var(--shadow-xs);
+
+  // Dark: a step up from the page so the card reads as a surface, not an outline.
+  :global([data-theme='dark']) & {
+    background-color: var(--theme-surface-secondary);
+  }
+
+  @include responsive.media('desktop') {
+    padding: var(--space-6);
+  }
 }
 
 .section-title {
   @include type.type-large(600);
   margin-bottom: var(--space-4);
   color: var(--theme-text-primary);
+
+  @include responsive.media('desktop') {
+    margin-bottom: var(--space-5);
+  }
 }
 
 .stack {
@@ -45,6 +58,10 @@
 }
 
 .theme-control {
+  flex-shrink: 0;
+}
+
+.select-control {
   width: var(--space-48);
   flex-shrink: 0;
 
@@ -54,7 +71,7 @@
   }
 }
 
-.theme-select {
+.select {
   @include type.type-body;
   height: var(--space-9);
 }

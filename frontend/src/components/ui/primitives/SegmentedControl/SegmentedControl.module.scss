@@ -72,6 +72,26 @@
     border-radius: 6px;
   }
 
+  // Touch: finger-sized segments. md fills a 44px control (the 3px container
+  // inset on each side included); sm, for dense toolbars, gets 38px.
+  @include responsive.media('touch') {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+
+    &--md {
+      @include type.type-body(500);
+      min-height: calc(var(--touch-target) - 6px);
+      padding-inline: var(--space-4);
+    }
+
+    &--sm {
+      @include type.type-default(500);
+      min-height: var(--space-8);
+      padding-inline: var(--space-3);
+    }
+  }
+
   &[aria-checked='true'] {
     color: var(--theme-text-primary);
   }

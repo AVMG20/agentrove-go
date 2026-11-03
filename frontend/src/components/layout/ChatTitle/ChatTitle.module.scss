@@ -15,7 +15,12 @@
 
 .title--button {
   @include anim.transition-colors;
+  @include type.type-noselect;
   border-radius: var(--radius-md);
+  // Phone: the whole title is the button, a full finger tall.
+  min-height: var(--touch-target);
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-2);
 
   @include responsive.active {
     background-color: var(--theme-surface-hover);
@@ -27,6 +32,12 @@
   @include type.type-overflow;
   min-width: 0;
   color: var(--theme-text-primary);
+
+  // A phone's navigation-bar title: one size up and heavier, so it reads as
+  // the screen's heading.
+  .title--button & {
+    @include type.type-large(600);
+  }
 }
 
 .title-input {
@@ -70,8 +81,8 @@
 }
 
 .chevron {
-  height: var(--space-3-5);
-  width: var(--space-3-5);
+  height: var(--space-4);
+  width: var(--space-4);
   flex-shrink: 0;
   color: var(--theme-text-tertiary);
 }

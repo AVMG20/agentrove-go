@@ -88,6 +88,16 @@
   }
 }
 
+// The sheet's grab handle (SheetHandle), phones only. It overlaps the top of
+// the content's own padding a little, so the sheet doesn't grow a tall lip; it
+// stays above that padding to keep its whole strip draggable.
+.container > .handle {
+  @include responsive.show('mobile', flex);
+  @include z.z('raised');
+  position: relative;
+  margin-bottom: calc(-1 * var(--space-2));
+}
+
 @keyframes modal-sheet-enter {
   from {
     opacity: 0;

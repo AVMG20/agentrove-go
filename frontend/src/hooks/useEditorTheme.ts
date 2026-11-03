@@ -1,9 +1,6 @@
 import { useCallback } from 'react';
 import { useResolvedTheme } from '@/hooks/useResolvedTheme';
-import { useUIStore } from '@/store/uiStore';
-import type { CustomPalette, PaletteTokens } from '@/utils/theme';
-import { CUSTOM_PALETTE_TOKENS, DARK_PALETTES } from '@/utils/theme';
-import type { Palette } from '@/types/ui.types';
+import type { ResolvedTheme } from '@/types/ui.types';
 import type * as monaco from 'monaco-editor';
 
 const LIGHT_THEME: monaco.editor.IStandaloneThemeData = {
@@ -128,58 +125,14 @@ const DARK_THEME: monaco.editor.IStandaloneThemeData = {
   },
 };
 
-// Reuse light/dark syntax; re-skin surfaces so canvas matches chrome (not white/black).
-function skin(
-  base: monaco.editor.IStandaloneThemeData,
-  tokens: PaletteTokens,
-): monaco.editor.IStandaloneThemeData {
-  const surface = tokens.surfaceSecondary;
-  const widget = tokens.surface;
-  return {
-    ...base,
-    rules: base.rules.map((r) => (r.token === '' ? { ...r, background: surface } : r)),
-    colors: {
-      ...base.colors,
-      'editor.background': surface,
-      'editorSuggestWidget.background': widget,
-      'editorWidget.background': widget,
-      'peekViewEditor.background': surface,
-      'peekViewResult.background': widget,
-      'peekViewTitle.background': widget,
-      // Selection/hover/badge must track the palette too — the base theme's
-      // grays read inverted against re-skinned surfaces.
-      'peekViewResult.selectionBackground': tokens.surfaceTertiary,
-      'peekViewResult.selectionForeground': tokens.textPrimary,
-      'list.focusBackground': tokens.surfaceTertiary,
-      'list.activeSelectionBackground': tokens.surfaceTertiary,
-      'list.activeSelectionForeground': tokens.textPrimary,
-      'list.inactiveSelectionBackground': tokens.surfaceTertiary,
-      'list.hoverBackground': tokens.surfaceTertiary,
-      'badge.background': tokens.surfaceTertiary,
-      'badge.foreground': tokens.textSecondary,
-    },
-  };
-}
-
-const CUSTOM_THEMES = Object.fromEntries(
-  (Object.keys(CUSTOM_PALETTE_TOKENS) as CustomPalette[]).map((p) => {
-    const tokens = CUSTOM_PALETTE_TOKENS[p];
-    const base = DARK_PALETTES.has(p) ? DARK_THEME : LIGHT_THEME;
-    return [p, skin(base, tokens)];
-  }),
-) as Record<CustomPalette, monaco.editor.IStandaloneThemeData>;
-
-const THEME_DATA: Record<Palette, monaco.editor.IStandaloneThemeData> = {
+const THEME_DATA: Record<ResolvedTheme, monaco.editor.IStandaloneThemeData> = {
   light: LIGHT_THEME,
   dark: DARK_THEME,
-  ...CUSTOM_THEMES,
 };
 
 export function useEditorTheme() {
   const resolvedTheme = useResolvedTheme();
-  const rawTheme = useUIStore((s) => s.theme);
-  const palette: Palette = rawTheme === 'system' ? resolvedTheme : rawTheme;
-  const themeName = `custom-${palette}`;
+  const themeName = `custom-${resolvedTheme}`;
 
   const setupEditorTheme = useCallback(
     (monaco: typeof import('monaco-editor')) => {

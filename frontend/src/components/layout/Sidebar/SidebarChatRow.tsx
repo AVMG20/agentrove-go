@@ -15,9 +15,12 @@ export interface ChatRowProps {
   onOpenInSplit?: (chatId: string) => void;
   canOpenChatInSplit: (chatId: string) => boolean;
   onDropdownClick: (e: React.MouseEvent<HTMLButtonElement>, chat: Chat) => void;
+  // Right-click / long-press on a row.
+  onChatMenuAt: (point: { x: number; y: number }, chat: Chat) => void;
   onArchive: (chat: Chat) => void;
   // Project group headers' options menu (grouped view).
   onOpenWorkspaceMenu: (e: React.MouseEvent<HTMLButtonElement>, workspaceId: string) => void;
+  onWorkspaceMenuAt: (point: { x: number; y: number }, workspaceId: string) => void;
 }
 
 interface SidebarChatRowProps {
@@ -40,6 +43,7 @@ export function SidebarChatRow({ chat, rowProps, hideWorkspace = false }: Sideba
     onOpenInSplit,
     canOpenChatInSplit,
     onDropdownClick,
+    onChatMenuAt,
     onArchive,
   } = rowProps;
 
@@ -57,6 +61,7 @@ export function SidebarChatRow({ chat, rowProps, hideWorkspace = false }: Sideba
       onOpenInSplit={onOpenInSplit}
       canOpenInSplit={canOpenChatInSplit(chat.id)}
       onDropdownClick={onDropdownClick}
+      onMenuAt={onChatMenuAt}
       onArchive={onArchive}
     />
   );

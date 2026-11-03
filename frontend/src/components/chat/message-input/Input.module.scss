@@ -15,6 +15,34 @@
     margin-left: auto;
   }
 
+  // Desktop: the composer card's tray already pads it.
+  @include responsive.media('desktop') {
+    padding: 0;
+  }
+
+  // Phones: account, model, effort, mode (and persona, branch) are labelled
+  // chips that can outgrow the width. Rather than wrapping or squashing, the
+  // whole row swipes sideways (every picker opens as a bottom sheet portalled
+  // to <body>, so the scroller clips nothing). The block padding keeps the
+  // chips' 44px touch rings inside the scroller.
+  @include responsive.media('mobile') {
+    gap: var(--space-1-5);
+    margin-inline: calc(-1 * var(--space-2));
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    scrollbar-width: none;
+    padding: var(--space-1-5) var(--space-2) var(--space-1);
+    scroll-padding-inline: var(--space-2);
+
+    &::-webkit-scrollbar {
+      display: none;
+    }
+
+    > * {
+      flex-shrink: 0;
+    }
+  }
+
   // Phone on its side with the keyboard up: the model/effort/mode row waits
   // until the keyboard goes, so the field and send button stay on screen.
   :global(#{responsive.layout-mode('phone-landscape')}[data-keyboard-open]) & {

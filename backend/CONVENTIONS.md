@@ -115,8 +115,9 @@ Nothing browser-related runs until it is used.
   HOME) with its libraries and fonts, `socat`, and two helpers.
 - **`agentrove-browser`** (shell, `sandbox/docker/`): `ensure` starts
   Chromium under `flock` (idempotent, race-safe), waits for CDP on
-  `127.0.0.1:9222` and prints the browser websocket path; `stop`; `reset`
-  (stop and wipe the profile); `status`. The profile persists in
+  `127.0.0.1:9222` and prints the browser websocket path (a running browser
+  that doesn't answer within ~8s is restarted); `stop [pid]` (with a pid, only
+  if it still is that browser); `reset` (stop and wipe the profile); `status`. The profile persists in
   `~/.agentrove/browser-profile`; it is shared by the user and the agent, so
   anything the user logs into in the viewer is usable by the agent (`reset`
   wipes it). Runtime state is in `/tmp/agentrove-browser`.
@@ -142,8 +143,29 @@ Nothing browser-related runs until it is used.
   cwd and output dir) and drops the client's roots, so the pre-allowed tools
   that take a `filename` (screenshot, snapshot, evaluate, network bodies,
   uploads) can't read or write the project; it prunes that dir to the newest
-  300 files / 200MB. Bumping
-  `PLAYWRIGHT_MCP_VERSION` means checking `browserTools` against its tool list.
+  300 files / 200MB.
+  One hung page (a busy script, a JS dialog whose CDP session went away)
+  makes every later `connectOverCDP` time out in `initializeServer`, since
+  Playwright waits for each page to answer, and neither playwright-mcp nor the
+  CLI bounds a tool call. So the proxy fails a `tools/call` after
+  `AGENTROVE_BROWSER_MCP_CALL_TIMEOUT_SECONDS` (90; 0 = none) with a tool error
+  and kills playwright-mcp (which drops its CDP sessions and emulation); a
+  cancelled call gets 5s. Before each playwright-mcp start it heals the
+  browser (`browser.go`, a minimal websocket client): pages that don't
+  evaluate `0` within 5s are closed through `/json/close`, and a browser whose
+  `/json/version` doesn't answer is stopped (`agentrove-browser stop <pid>`)
+  for `ensure` to relaunch; if the new playwright-mcp still can't connect,
+  the browser is restarted once. Each session drives a tab of its own
+  (`tabs.go`): the first call opens it (`browser_tabs new`), a restarted
+  playwright-mcp is put back on it (it would start on the browser's first
+  page, the same for every agent), a tab closed under the agent is replaced
+  (and the agent told), `browser_close` closes it, and the session's tabs
+  close when it ends. The proxy finds tabs by CDP target id with its own
+  `browser_run_code_unsafe` snippets in JSON mode (`_meta.json`). A browser
+  context per agent would isolate more but hide the user's logins.
+  Bumping `PLAYWRIGHT_MCP_VERSION` means checking `browserTools` against its
+  tool list, and that `browser_tabs`, `browser_run_code_unsafe` and
+  `_meta.json` still behave as `tabs.go` expects.
 - **Viewer** (`internal/browserview`, route
   `GET /api/v1/sandbox/{sandbox_id}/browser/ws` in `sandboxapi/browser.go`):
   auth is the first frame as for the terminal, then ownership via

@@ -10,7 +10,8 @@
 }
 
 .title {
-  @include type.type-large(600);
+  // Every settings section opens with the same heading size.
+  @include type.type-title;
   color: var(--theme-text-primary);
 }
 
@@ -225,6 +226,11 @@
   align-items: center;
   gap: var(--space-0-5);
   margin-left: auto;
+
+  // Touch: the 44px buttons sit edge to edge.
+  @include responsive.media('touch') {
+    gap: 0;
+  }
 }
 
 .text-btn {
@@ -233,6 +239,8 @@
   @include responsive.hover {
     color: var(--theme-text-primary);
   }
+
+  @include controls.touch-target;
 }
 
 .action-btn {
@@ -243,6 +251,8 @@
   @include responsive.hover {
     color: var(--theme-text-primary);
   }
+
+  @include controls.touch-icon-button('.action-icon', var(--space-4));
 }
 
 .action-icon {

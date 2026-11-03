@@ -31,6 +31,16 @@
     background-color: var(--theme-surface-hover);
     color: var(--theme-text-primary);
   }
+
+  // A 44px target on touch; the negative margin keeps the header's height.
+  @include responsive.media('touch') {
+    display: inline-flex;
+    min-height: var(--touch-target);
+    min-width: var(--touch-target);
+    align-items: center;
+    justify-content: center;
+    margin: calc(-1 * var(--space-2-5)) calc(-1 * var(--space-2-5)) calc(-1 * var(--space-2-5)) 0;
+  }
 }
 
 .close-icon {

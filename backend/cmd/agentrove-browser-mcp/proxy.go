@@ -13,6 +13,17 @@ import (
 	"time"
 )
 
+const (
+	defaultCallTimeout = 90 * time.Second
+	// The proxy's own calls (claiming a tab) are the first of a new
+	// playwright-mcp, so they include connecting to the browser (at most
+	// --cdp-timeout).
+	defaultInternalTimeout = 40 * time.Second
+	// A call the client cancelled is given this long to finish before
+	// playwright-mcp is restarted under it: it may be what hangs.
+	cancelGrace = 5 * time.Second
+)
+
 // filesDir is where playwright-mcp may read and write files: its output dir,
 // and the only root the proxy gives it. Tool calls that take a filename
 // (screenshots, snapshots, evaluate results, response bodies, uploads)
@@ -38,7 +49,10 @@ type backend interface {
 	Send(line []byte) error
 	// Lines yields its output, one message per line; closed when it exits.
 	Lines() <-chan []byte
+	// Stop ends it gracefully; Kill at once, dropping its CDP connection
+	// (and so every session and emulation it set up).
 	Stop()
+	Kill()
 }
 
 type message struct {
@@ -56,6 +70,23 @@ type proxy struct {
 	idle      time.Duration
 	// prune trims filesDir; run when a backend stops.
 	prune func()
+	// callTimeout bounds every tools/call (0: none). Neither playwright-mcp
+	// nor the CLI bound them: a hung page, input dispatch or run_code
+	// would hold the agent forever. On expiry the agent gets a tool error
+	// and playwright-mcp is killed, so whatever hung goes with its
+	// connection, and the next call starts over.
+	callTimeout     time.Duration
+	internalTimeout time.Duration
+	// heal runs before each playwright-mcp start: it closes hung pages and
+	// stops a hung browser (see browserCtl.heal), which would otherwise make
+	// it time out connecting.
+	heal func()
+	// restartBrowser stops the browser when a new playwright-mcp couldn't
+	// connect to it even so; start then launches a fresh one.
+	restartBrowser func()
+	// With listPages set, each client drives a tab of its own (see tabs.go).
+	listPages func() ([]string, error)
+	closePage func(id string)
 
 	outMu sync.Mutex
 	out   io.Writer
@@ -63,12 +94,25 @@ type proxy struct {
 	mu         sync.Mutex
 	be         backend
 	initParams json.RawMessage
-	pending    map[string]json.RawMessage // client requests the backend hasn't answered, by idKey
+	pending    map[string]*call         // client requests the backend hasn't answered, by idKey
+	internal   map[string]*internalWait // the proxy's own requests, by idKey
+	seq        int
 	lastUse    time.Time
+	tabState
+}
+
+// call is a client request forwarded to the backend.
+type call struct {
+	id        json.RawMessage
+	tool      string // tools/call only
+	tabAction string // browser_tabs only
+	timer     *time.Timer
+	cancelled bool
 }
 
 func newProxy(c *cache, out io.Writer, start func() (backend, error)) *proxy {
-	return &proxy{cache: c, out: out, start: start, pending: map[string]json.RawMessage{}}
+	return &proxy{cache: c, out: out, start: start, pending: map[string]*call{}, internal: map[string]*internalWait{},
+		internalTimeout: defaultInternalTimeout, tabState: tabState{owned: map[string]bool{}}}
 }
 
 // idKey normalizes a JSON-RPC id so a response matches its request however
@@ -101,7 +145,7 @@ func (p *proxy) run(ctx context.Context, in io.Reader) {
 			}
 		}
 	}()
-	defer p.stopBackend()
+	defer p.shutdown()
 	for {
 		select {
 		case <-ctx.Done():
@@ -173,6 +217,9 @@ func (p *proxy) handle(line []byte) {
 			return
 		}
 	}
+	if m.Method == "notifications/cancelled" {
+		p.cancel(m.Params)
+	}
 	if !running && !m.isRequest() {
 		// Notifications and stray responses need no backend: a new one asks
 		// for roots itself.
@@ -181,7 +228,7 @@ func (p *proxy) handle(line []byte) {
 
 	if m.Method == "tools/call" && running && p.browserUp != nil && !p.browserUp() {
 		// The browser was reset or crashed; a fresh playwright-mcp reconnects.
-		p.stopBackend()
+		p.stopBackend(false)
 		running = false
 	}
 	if !running {
@@ -195,6 +242,18 @@ func (p *proxy) handle(line []byte) {
 			// No cache: the backend's own answer.
 			p.reply(m.ID, json.RawMessage(init))
 			return
+		}
+	} else if m.Method == "tools/call" {
+		if err := p.keepTab(); err != nil {
+			// playwright-mcp or the browser couldn't even say which tab it
+			// is on: start over.
+			log.Printf("check the tab: %v; restarting playwright-mcp", err)
+			p.stopBackend(true)
+			if _, err := p.spawn(); err != nil {
+				log.Print(err)
+				p.failRequest(m, err)
+				return
+			}
 		}
 	}
 	p.forward(m, line)
@@ -248,7 +307,25 @@ func (p *proxy) forward(m message, line []byte) {
 		return
 	}
 	if m.isRequest() {
-		p.pending[idKey(m.ID)] = m.ID
+		c := &call{id: m.ID}
+		if m.Method == "tools/call" {
+			var params struct {
+				Name      string `json:"name"`
+				Arguments struct {
+					Action string `json:"action"`
+				} `json:"arguments"`
+			}
+			_ = json.Unmarshal(m.Params, &params)
+			c.tool = params.Name
+			if c.tool == "browser_tabs" {
+				c.tabAction = params.Arguments.Action
+			}
+			if p.callTimeout > 0 {
+				key := idKey(m.ID)
+				c.timer = time.AfterFunc(p.callTimeout, func() { p.expire(be, key) })
+			}
+		}
+		p.pending[idKey(m.ID)] = c
 	}
 	p.lastUse = time.Now()
 	p.mu.Unlock()
@@ -257,9 +334,105 @@ func (p *proxy) forward(m message, line []byte) {
 	}
 }
 
-// spawn starts a backend and initializes it with the client's initialize
-// params, returning its initialize result.
+// expire fails a tool call that ran past callTimeout and kills its
+// playwright-mcp. A hung page or CDP session would keep the next call stuck
+// too; the next call starts a new one, after heal has closed what is hung.
+func (p *proxy) expire(be backend, key string) {
+	p.mu.Lock()
+	c := p.pending[key]
+	if c == nil || p.be != be {
+		p.mu.Unlock()
+		return
+	}
+	delete(p.pending, key)
+	p.mu.Unlock()
+	if c.cancelled {
+		log.Printf("cancelled %s still running; restarting playwright-mcp", c.tool)
+	} else {
+		log.Printf("%s didn't answer in %s; restarting playwright-mcp", c.tool, p.callTimeout)
+	}
+	if !c.cancelled {
+		p.reply(c.id, toolError(timeoutMessage(p.callTimeout)))
+	}
+	p.stopIf(be, true)
+}
+
+func timeoutMessage(d time.Duration) string {
+	return fmt.Sprintf("The browser call timed out after %s; the page may be stuck (a JS dialog, a busy script, "+
+		"or input that never completes). The browser connection was restarted, which also undid emulation set up "+
+		"through CDP sessions, and the next call reconnects. Retry, or call browser_navigate to reload the page.", d)
+}
+
+func toolError(text string) map[string]any {
+	return map[string]any{"content": []map[string]any{{"type": "text", "text": text}}, "isError": true}
+}
+
+// cancel handles the client's notifications/cancelled: the call's answer is
+// no longer wanted, and if it doesn't come soon, what it is stuck on is
+// restarted rather than left to the next call.
+func (p *proxy) cancel(params json.RawMessage) {
+	var n struct {
+		RequestID json.RawMessage `json:"requestId"`
+	}
+	if json.Unmarshal(params, &n) != nil || len(n.RequestID) == 0 {
+		return
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if c := p.pending[idKey(n.RequestID)]; c != nil && !c.cancelled {
+		c.cancelled = true
+		if c.timer != nil {
+			c.timer.Reset(min(cancelGrace, p.callTimeout))
+		}
+	}
+}
+
+// spawn starts a backend, initialized with the client's initialize params,
+// and puts it on the client's tab, returning its initialize result. When it
+// can't connect to the browser, the browser is restarted once.
 func (p *proxy) spawn() (json.RawMessage, error) {
+	init, err := p.startBackend()
+	if err != nil {
+		return nil, err
+	}
+	err = p.claimTab(true)
+	if err != nil && connectFailed(err) && p.restartBrowser != nil {
+		log.Printf("playwright-mcp couldn't connect to the browser (%v); restarting the browser", err)
+		p.stopBackend(true)
+		p.restartBrowser()
+		if init, err = p.startBackend(); err != nil {
+			return nil, err
+		}
+		err = p.claimTab(true)
+	}
+	switch {
+	case err == nil:
+	case connectFailed(err):
+		p.stopBackend(true)
+		return nil, fmt.Errorf("connect to the browser: %w", err)
+	default:
+		// Still usable, just on whatever tab playwright-mcp picked.
+		log.Printf("couldn't give this session its own tab: %v", err)
+	}
+	return init, nil
+}
+
+// connectFailed reports whether err (from the first calls of a new
+// playwright-mcp) means it couldn't connect to the browser.
+func connectFailed(err error) bool {
+	if errors.Is(err, errInternalTimeout) {
+		return true
+	}
+	s := err.Error()
+	return strings.Contains(s, "connectOverCDP") || strings.Contains(s, "initializeServer") || strings.Contains(s, "ECONNREFUSED")
+}
+
+// startBackend heals the browser, then starts a backend and initializes it
+// with the client's initialize params.
+func (p *proxy) startBackend() (json.RawMessage, error) {
+	if p.heal != nil {
+		p.heal()
+	}
 	be, err := p.start()
 	if err != nil {
 		return nil, err
@@ -272,16 +445,16 @@ func (p *proxy) spawn() (json.RawMessage, error) {
 	}
 	req, _ := json.Marshal(map[string]any{"jsonrpc": "2.0", "id": json.RawMessage(replayID), "method": "initialize", "params": params})
 	if err := be.Send(append(req, '\n')); err != nil {
-		be.Stop()
+		be.Kill()
 		return nil, fmt.Errorf("initialize playwright-mcp: %w", err)
 	}
 	init, err := awaitResponse(be.Lines(), strings.Trim(replayID, `"`), 60*time.Second, p.writeLine)
 	if err != nil {
-		be.Stop()
+		be.Kill()
 		return nil, fmt.Errorf("initialize playwright-mcp: %w", err)
 	}
 	if err := be.Send([]byte(`{"jsonrpc":"2.0","method":"notifications/initialized"}` + "\n")); err != nil {
-		be.Stop()
+		be.Kill()
 		return nil, err
 	}
 	p.mu.Lock()
@@ -339,27 +512,47 @@ func (p *proxy) pump(be backend) {
 		}
 		p.mu.Lock()
 		current := p.be == be
-		if current && len(m.ID) > 0 && m.Method == "" {
-			// A response for a call the client no longer waits on (already
-			// failed when its backend was replaced) is dropped.
+		var c *call
+		if len(m.ID) > 0 && m.Method == "" {
 			key := idKey(m.ID)
-			_, current = p.pending[key]
-			delete(p.pending, key)
-			p.lastUse = time.Now()
+			if w := p.internal[key]; w != nil {
+				delete(p.internal, key)
+				p.mu.Unlock()
+				w.ch <- line
+				continue
+			}
+			// A response for a call the client no longer waits on (failed
+			// when its backend was replaced, timed out, or cancelled) is
+			// dropped.
+			if c = p.pending[key]; c != nil && current {
+				delete(p.pending, key)
+				if c.timer != nil {
+					c.timer.Stop()
+				}
+				p.lastUse = time.Now()
+			}
+			current = current && c != nil && !c.cancelled
 		}
 		p.mu.Unlock()
-		if current {
-			p.writeLine(line)
+		if !current {
+			continue
 		}
+		if c != nil {
+			line = p.afterCall(be, c, line)
+		}
+		p.writeLine(line)
 	}
 	p.mu.Lock()
 	var orphaned []json.RawMessage
 	if p.be == be {
 		p.be = nil
-		for _, id := range p.pending {
-			orphaned = append(orphaned, id)
+		orphaned = p.takePending()
+	}
+	for key, w := range p.internal {
+		if w.be == be {
+			delete(p.internal, key)
+			close(w.ch)
 		}
-		p.pending = map[string]json.RawMessage{}
 	}
 	p.mu.Unlock()
 	// Answer what it left behind, or the CLI waits on those calls forever.
@@ -368,23 +561,54 @@ func (p *proxy) pump(be backend) {
 	}
 }
 
-func (p *proxy) stopBackend() {
+// takePending empties pending, returning the ids still owed an answer.
+// Callers hold mu.
+func (p *proxy) takePending() []json.RawMessage {
+	var ids []json.RawMessage
+	for _, c := range p.pending {
+		if c.timer != nil {
+			c.timer.Stop()
+		}
+		if !c.cancelled {
+			ids = append(ids, c.id)
+		}
+	}
+	p.pending = map[string]*call{}
+	return ids
+}
+
+// stopBackend stops the running backend, if any; kill skips the graceful
+// shutdown, which a hung page could hold up.
+func (p *proxy) stopBackend(kill bool) { p.stopIf(nil, kill) }
+
+// stopIf stops the running backend if it is want (any when nil).
+func (p *proxy) stopIf(want backend, kill bool) {
 	p.mu.Lock()
 	be := p.be
-	p.be = nil
-	pending := p.pending
-	p.pending = map[string]json.RawMessage{}
-	p.mu.Unlock()
-	if be == nil {
+	if be == nil || (want != nil && be != want) {
+		p.mu.Unlock()
 		return
 	}
-	be.Stop()
+	p.be = nil
+	pending := p.takePending()
+	p.mu.Unlock()
+	if kill {
+		be.Kill()
+	} else {
+		be.Stop()
+	}
 	for _, id := range pending {
 		p.replyError(id, -32603, "The browser restarted; retry the call.")
 	}
 	if p.prune != nil {
 		go p.prune()
 	}
+}
+
+// shutdown ends the session: playwright-mcp, and the tabs it opened.
+func (p *proxy) shutdown() {
+	p.stopBackend(false)
+	p.closeOwnedTabs()
 }
 
 func (p *proxy) reapLoop(ctx context.Context) {
@@ -409,7 +633,7 @@ func (p *proxy) reapIdle() {
 	idle := p.be != nil && len(p.pending) == 0 && time.Since(p.lastUse) >= p.idle
 	p.mu.Unlock()
 	if idle {
-		p.stopBackend()
+		p.stopBackend(false)
 	}
 }
 

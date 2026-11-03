@@ -47,6 +47,11 @@
 
 .action {
   gap: var(--space-1-5);
+
+  // Finger-sized on touch (the sm button is 32px).
+  @include responsive.media('touch') {
+    min-height: var(--space-10);
+  }
 }
 
 .action-icon {

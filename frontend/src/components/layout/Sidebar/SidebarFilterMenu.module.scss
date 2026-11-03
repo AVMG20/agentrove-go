@@ -27,11 +27,32 @@
   &--active {
     color: var(--theme-text-primary);
   }
+
+  // Touch: a 44px target in the section header (as tall as the header row
+  // already is), its end flush with the rows' fill below.
+  @include responsive.media('touch') {
+    min-height: var(--touch-target);
+    min-width: var(--touch-target);
+    justify-content: center;
+    margin: 0 calc(var(--space-2) * -1) 0 0;
+    padding: 0 var(--space-2);
+    color: var(--theme-text-tertiary);
+
+    @include responsive.active((active)) {
+      background-color: var(--theme-surface-hover);
+      color: var(--theme-text-primary);
+    }
+  }
 }
 
 .trigger-icon {
   height: var(--space-3-5);
   width: var(--space-3-5);
+
+  @include responsive.media('touch') {
+    height: var(--space-4);
+    width: var(--space-4);
+  }
 }
 
 .count {
@@ -140,4 +161,14 @@
   width: var(--space-3);
   flex-shrink: 0;
   color: var(--theme-text-quaternary);
+}
+
+// Touch: finger-height rows in the panel and its flyouts.
+@include responsive.media('touch') {
+  .category-row,
+  .link-row,
+  .clear-all {
+    @include type.type-body;
+    min-height: var(--touch-target);
+  }
 }

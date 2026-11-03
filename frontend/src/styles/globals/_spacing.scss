@@ -80,5 +80,18 @@ $space-steps: (
     // Notch side of a phone in landscape.
     --safe-area-left: env(safe-area-inset-left, 0px);
     --safe-area-right: env(safe-area-inset-right, 0px);
+
+    // Finger-sized hit area (Apple HIG 44pt) and the glyph that sits in it. Use via
+    // controls.touch-target / controls.touch-icon-button under the 'touch' query.
+    --touch-target: 2.75rem;
+    --touch-icon: 1.375rem;
+
+    // Reading measure of the chat column, shared by the messages, composer and
+    // skeleton (~80ch of 15px prose); wide windows give code and tables a bit more.
+    --chat-measure: 48rem;
+
+    @media (min-width: 1280px) {
+      --chat-measure: 50rem;
+    }
   }
 }

@@ -1,8 +1,10 @@
+import clsx from 'clsx';
 import { memo, useEffect, useLayoutEffect, useRef, useState, type RefObject } from 'react';
 import { MessageCircleQuestion, MessageSquarePlus } from 'lucide-react';
 import { Button } from '@/components/ui/primitives/Button/Button';
 import { InlineAskPanel } from '@/components/chat/inline-ask/InlineAskPanel';
 import { useUIStore, type ChatTextSelection } from '@/store/uiStore';
+import { isCoarsePointer } from '@/utils/device';
 import styles from './ChatSelectionActions.module.scss';
 
 // Must match .inline-ask width/max-width in InlineAskPanel.module.scss so the
@@ -15,6 +17,9 @@ const TOOLBAR_HALF_WIDTH = 110;
 // Keeps the toolbar (placed above the selection) from being clipped at the
 // top of the scrollable content.
 const TOOLBAR_CLEARANCE = 44;
+// Touch selections change by dragging native handles, which fire no pointerup:
+// re-read the selection once it has been still this long.
+const TOUCH_SETTLE_MS = 250;
 
 // Selection geometry in scroller-content coordinates, so the toolbar and ask
 // panel scroll with the message they anchor to (same feel as the editor's
@@ -25,6 +30,9 @@ interface SelectionAnchor {
   bottom: number;
   center: number;
   left: number;
+  // Touch: the OS puts its own copy/select callout above the selection, so ours
+  // goes underneath.
+  below: boolean;
 }
 
 interface ChatSelectionActionsProps {
@@ -84,15 +92,29 @@ export const ChatSelectionActions = memo(function ChatSelectionActions({
         bottom: rect.bottom - scrollerRect.top + scroller.scrollTop,
         center,
         left: rect.left - scrollerRect.left,
+        below: isCoarsePointer(),
       });
     };
 
     // Selection is final by pointerup; keyboard selection settles on Shift release.
-    const handlePointerUp = () => evaluate();
+    // A press on the toolbar itself must not re-read (and maybe drop) the
+    // selection before the button's click lands.
+    const handlePointerUp = (e: PointerEvent) => {
+      if (e.target instanceof Element && e.target.closest('[data-selection-ui]')) return;
+      evaluate();
+    };
     const handleKeyUp = (e: KeyboardEvent) => {
       if (e.key === 'Shift') evaluate();
     };
+    let settleTimer: ReturnType<typeof setTimeout> | undefined;
     const handleSelectionChange = () => {
+      if (isCoarsePointer()) {
+        // Also defers clearing: a tap on the toolbar can collapse the selection
+        // before its click lands, which would unmount the button under the finger.
+        clearTimeout(settleTimer);
+        settleTimer = setTimeout(evaluate, TOUCH_SETTLE_MS);
+        return;
+      }
       const selection = document.getSelection();
       if (!selection || selection.isCollapsed) setAnchor(null);
     };
@@ -103,6 +125,7 @@ export const ChatSelectionActions = memo(function ChatSelectionActions({
       document.removeEventListener('pointerup', handlePointerUp);
       document.removeEventListener('keyup', handleKeyUp);
       document.removeEventListener('selectionchange', handleSelectionChange);
+      clearTimeout(settleTimer);
     };
   }, [chatId, scrollerRef]);
 
@@ -144,9 +167,9 @@ export const ChatSelectionActions = memo(function ChatSelectionActions({
     <div className={styles['selection-layer']}>
       {anchor && (
         <div
-          className={styles.toolbar}
+          className={clsx(styles.toolbar, anchor.below && styles['toolbar--below'])}
           data-selection-ui
-          style={{ top: anchor.top, left: anchor.center }}
+          style={{ top: anchor.below ? anchor.bottom : anchor.top, left: anchor.center }}
           // Keep the click from collapsing the selection before it lands.
           onMouseDown={(e) => e.preventDefault()}
         >

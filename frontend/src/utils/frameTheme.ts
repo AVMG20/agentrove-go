@@ -1,7 +1,3 @@
-import type { CustomPalette } from '@/utils/theme';
-import { CUSTOM_PALETTE_TOKENS } from '@/utils/theme';
-import type { Theme } from '@/types/ui.types';
-
 // Hex values mirror tailwind.config.js design tokens — kept in sync manually
 // because sandboxed frames are separate documents with no Tailwind context.
 // Names follow the MCP Apps standard host style variables.
@@ -58,29 +54,8 @@ const LIGHT_VARS: Record<string, string> = {
   ...SHARED_VARS,
 };
 
-// Custom palettes only diverge in the structural surface/text tokens — they inherit
-// the base dark/light semantic colors and borders.
-const PALETTE_OVERRIDES = Object.fromEntries(
-  (Object.keys(CUSTOM_PALETTE_TOKENS) as CustomPalette[]).map((palette) => {
-    const t = CUSTOM_PALETTE_TOKENS[palette];
-    return [
-      palette,
-      {
-        '--color-text-primary': t.textPrimary,
-        '--color-text-secondary': t.textSecondary,
-        '--color-text-tertiary': t.textTertiary,
-        '--color-background-primary': t.surface,
-        '--color-background-secondary': t.surfaceSecondary,
-        '--color-background-tertiary': t.surfaceTertiary,
-      },
-    ];
-  }),
-) as Partial<Record<Theme, Record<string, string>>>;
-
-export const getFrameThemeVariables = (isDark: boolean, theme: Theme): Record<string, string> => ({
-  ...(isDark ? DARK_VARS : LIGHT_VARS),
-  ...PALETTE_OVERRIDES[theme],
-});
+export const getFrameThemeVariables = (isDark: boolean): Record<string, string> =>
+  isDark ? DARK_VARS : LIGHT_VARS;
 
 export const FRAME_BASE_CSS = `
   button { background: transparent; border: 0.5px solid var(--color-border-secondary); border-radius: var(--border-radius-md); padding: 6px 14px; font-size: 13px; color: var(--color-text-primary); cursor: pointer; font-family: var(--font-sans); }

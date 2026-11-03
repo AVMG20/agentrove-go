@@ -1,6 +1,7 @@
 @use '@/styles/globals/typography' as type;
 @use '@/styles/globals/animations' as anim;
 @use '@/styles/globals/responsive' as responsive;
+@use '@/components/chat/touch' as touch;
 
 .worked-rollup {
   margin-bottom: var(--space-2);
@@ -14,6 +15,13 @@
   gap: var(--space-1);
   padding: var(--space-0-5) 0;
   color: var(--theme-text-tertiary);
+
+  // A full-row, finger-sized target on touch.
+  @include responsive.media('touch') {
+    min-height: var(--space-11);
+    width: 100%;
+    margin-block: calc(-1 * var(--space-2));
+  }
 
   // Light base tertiary → dark base quaternary; hover diverges too, so both
   // themes need explicit steps a single semantic token can't express.

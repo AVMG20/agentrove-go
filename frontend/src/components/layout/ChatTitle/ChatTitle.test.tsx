@@ -6,13 +6,16 @@ import { MemoryRouter } from 'react-router-dom';
 import { useUIStore } from '@/store/uiStore';
 import { ChatTitle } from './ChatTitle';
 
-const { mutate, mobile } = vi.hoisted(() => ({ mutate: vi.fn(), mobile: { value: true } }));
+const { mutateAsync, mobile } = vi.hoisted(() => ({
+  mutateAsync: vi.fn(() => Promise.resolve()),
+  mobile: { value: true },
+}));
 
 vi.mock('@/hooks/queries/useChatQueries', () => ({
   useChatQuery: (chatId: string | undefined) => ({
     data: chatId ? { id: chatId, title: '**Fix** the login bug' } : undefined,
   }),
-  useUpdateChatMutation: () => ({ mutate }),
+  useUpdateChatMutation: () => ({ mutateAsync }),
 }));
 vi.mock('@/hooks/useBlockedChatIds', () => ({ useBlockedChatIds: () => new Set(['c1']) }));
 vi.mock('@/hooks/useWorkingChatIds', () => ({ useWorkingChatIds: () => new Set<string>() }));
@@ -24,7 +27,7 @@ vi.mock('@/hooks/useIsMobile', async (importOriginal) => ({
 afterEach(() => {
   cleanup();
   useUIStore.setState({ sessionSheetOpen: false });
-  mutate.mockReset();
+  mutateAsync.mockClear();
   mobile.value = true;
 });
 
@@ -55,15 +58,12 @@ describe('ChatTitle', () => {
     // Escape cancels without saving.
     fireEvent.keyDown(input, { key: 'Escape' });
     expect(screen.queryByLabelText('Thread title')).toBeNull();
-    expect(mutate).not.toHaveBeenCalled();
+    expect(mutateAsync).not.toHaveBeenCalled();
 
     fireEvent.doubleClick(screen.getByRole('heading'));
     const again = screen.getByLabelText('Thread title');
     fireEvent.change(again, { target: { value: '  Login fix ' } });
     fireEvent.blur(again);
-    expect(mutate).toHaveBeenCalledWith(
-      { chatId: 'c1', updateData: { title: 'Login fix' } },
-      expect.anything(),
-    );
+    expect(mutateAsync).toHaveBeenCalledWith({ chatId: 'c1', updateData: { title: 'Login fix' } });
   });
 });

@@ -1,6 +1,7 @@
 @use '@/styles/globals/typography' as type;
 @use '@/styles/globals/animations' as anim;
 @use '@/styles/globals/responsive' as responsive;
+@use '@/components/chat/touch' as touch;
 
 .button {
   @include anim.transition-colors;
@@ -10,6 +11,11 @@
   gap: var(--space-1);
   padding-block: var(--space-0-5);
   color: var(--theme-text-tertiary);
+
+  @include responsive.media('touch') {
+    min-height: var(--space-10);
+    margin-block: calc(-1 * var(--space-1-5));
+  }
 
   @include responsive.hover {
     color: var(--theme-text-primary);
