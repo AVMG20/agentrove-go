@@ -1,0 +1,190 @@
+@use '@/styles/globals/colors' as colors;
+@use '@/styles/globals/typography' as type;
+@use '@/styles/globals/animations' as anim;
+@use '@/styles/globals/controls' as controls;
+@use '@/styles/globals/responsive' as responsive;
+@use '@/styles/globals/zlayer' as z;
+
+// Floats over the bottom of the thread list, just above the footer rule.
+.card {
+  @include z.z('raised');
+  @include anim.fade-in(var(--duration-base));
+  position: absolute;
+  left: var(--space-2);
+  right: var(--space-2);
+  bottom: var(--space-2);
+  display: flex;
+  max-height: 45%;
+  flex-direction: column;
+  border: 1px solid var(--theme-border);
+  border-radius: var(--radius-xl);
+  padding: var(--space-2) var(--space-1);
+  background-color: var(--theme-surface-secondary);
+  box-shadow: var(--shadow-medium);
+
+  :global([data-theme='dark']) & {
+    background-color: var(--theme-surface-tertiary);
+  }
+}
+
+.header {
+  @include type.type-meta(500);
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 0 var(--space-2) var(--space-1);
+  color: var(--theme-text-tertiary);
+}
+
+.header-dot {
+  @include anim.pulse;
+  height: var(--space-1-5);
+  width: var(--space-1-5);
+  flex-shrink: 0;
+  border-radius: var(--radius-full);
+  background-color: colors.theme-color('info', 0.7);
+
+  &--idle {
+    animation: none;
+    background-color: var(--theme-text-quaternary);
+  }
+
+  @include responsive.media('reduced-motion') {
+    animation: none;
+  }
+}
+
+.header-label {
+  flex: 1;
+}
+
+.header-count {
+  font-variant-numeric: tabular-nums;
+}
+
+.list {
+  display: flex;
+  min-height: 0;
+  flex-direction: column;
+  gap: var(--space-0-5);
+  overflow-y: auto;
+}
+
+.entry {
+  @include controls.focus-ring;
+  @include anim.transition-colors;
+  display: flex;
+  width: 100%;
+  flex-direction: column;
+  gap: var(--space-0-5);
+  border-radius: var(--radius-md);
+  padding: var(--space-1-5) var(--space-2);
+  text-align: left;
+
+  @include responsive.hover {
+    background-color: var(--theme-surface-hover);
+  }
+}
+
+.entry-title-row {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: var(--space-1-5);
+}
+
+.entry-icon {
+  display: flex;
+  height: var(--space-3-5);
+  width: var(--space-3-5);
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+}
+
+.icon {
+  height: var(--space-3-5);
+  width: var(--space-3-5);
+  color: var(--theme-text-tertiary);
+
+  &--automation {
+    color: var(--theme-warning);
+  }
+}
+
+.entry-title {
+  @include type.type-body(600);
+  @include type.type-overflow;
+  min-width: 0;
+  color: var(--theme-text-primary);
+}
+
+// Indented under the title, past the icon.
+.entry-detail {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  padding-left: var(--space-5);
+}
+
+.activity {
+  @include type.type-meta;
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: var(--space-1-5);
+  color: var(--theme-text-tertiary);
+
+  &--done {
+    color: var(--theme-success);
+  }
+
+  &--blocked {
+    color: var(--theme-warning);
+  }
+}
+
+// Muted, unlike the accent spinner elsewhere: the card lists several at once.
+.activity .spinner {
+  flex-shrink: 0;
+  color: var(--theme-text-quaternary);
+}
+
+.activity-icon {
+  height: var(--space-3);
+  width: var(--space-3);
+  flex-shrink: 0;
+}
+
+.blocked-dot {
+  height: var(--space-1-5);
+  width: var(--space-1-5);
+  flex-shrink: 0;
+  border-radius: var(--radius-full);
+  background-color: currentColor;
+}
+
+.activity-text {
+  @include type.type-overflow;
+  min-width: 0;
+}
+
+.meta {
+  @include type.type-meta;
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--theme-text-quaternary);
+}
+
+.meta-workspace {
+  @include type.type-overflow;
+  min-width: 0;
+  flex: 1;
+}
+
+.meta-time {
+  flex-shrink: 0;
+  font-variant-numeric: tabular-nums;
+}

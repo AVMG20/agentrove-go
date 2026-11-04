@@ -17,6 +17,7 @@ import toast from 'react-hot-toast';
 import { SidebarActions } from './SidebarActions';
 import { SidebarChatList } from './SidebarChatList';
 import { SidebarOverlays } from './SidebarOverlays';
+import { WorkingSessionsCard } from './WorkingSessionsCard';
 import { type ChatRowProps } from './SidebarChatRow';
 import { buildRecentChatSections, moveFolder, type FolderDropPlacement } from './sidebarGrouping';
 import { useSidebarChatActions } from './useSidebarChatActions';
@@ -81,6 +82,10 @@ export function ThreadsPanel({ hidden = false }: { hidden?: boolean }) {
   });
 
   const hasAnyContent = pinnedChats.length > 0 || recentChats.length > 0;
+  const chatsById = useMemo(
+    () => new Map([...recentChats, ...pinnedChats].map((chat) => [chat.id, chat])),
+    [pinnedChats, recentChats],
+  );
 
   const hasActiveFilters = countActiveSidebarFilters(filters) > 0;
   // Status filters OR together (any selected badge state matches); workspace ANDs with them.
@@ -215,6 +220,15 @@ export function ThreadsPanel({ hidden = false }: { hidden?: boolean }) {
         onLoadMore={loadMore}
         onNewWorkspaceThread={workspaceActions.handleNewWorkspaceThread}
         onMoveFolder={handleMoveFolder}
+      />
+
+      <WorkingSessionsCard
+        chatsById={chatsById}
+        workspaceBadgeById={workspaceBadgeById}
+        workingChatIds={streamingChatIdSet}
+        completedChatIds={completedChatIds}
+        blockedChatIds={blockedChatIdSet}
+        onSelect={chatActions.handleChatSelect}
       />
 
       <SidebarOverlays

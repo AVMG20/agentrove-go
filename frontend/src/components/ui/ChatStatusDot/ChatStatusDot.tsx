@@ -2,7 +2,7 @@ import clsx from 'clsx';
 import type { ChatStatusTone } from '@/utils/message';
 import styles from './ChatStatusDot.module.scss';
 
-// red+ping=needs you, amber=running (compact; usually spinner), green=done, blue=unread
+// amber+ping=needs you, grey=running, green=done, blue=unread
 const TONE_STYLE: Record<ChatStatusTone, { tone: ChatStatusTone; ping: boolean }> = {
   blocked: { tone: 'blocked', ping: true },
   running: { tone: 'running', ping: false },

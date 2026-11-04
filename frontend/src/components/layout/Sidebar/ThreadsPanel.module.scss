@@ -1,4 +1,6 @@
 .panel {
+  // Anchors the floating Working card over the list's bottom edge.
+  position: relative;
   display: flex;
   min-height: 0;
   flex: 1;

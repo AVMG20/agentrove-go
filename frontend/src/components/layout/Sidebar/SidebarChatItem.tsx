@@ -1,7 +1,7 @@
 import { memo, useEffect, useRef, type MouseEvent } from 'react';
 import { Archive, Zap } from 'lucide-react';
 import { ChatStatusDot } from '@/components/ui/ChatStatusDot/ChatStatusDot';
-import { chatStatusTone, CHAT_STATUS_LABEL, type ChatStatusTone } from '@/utils/message';
+import { chatStatusTone, CHAT_STATUS_LABEL } from '@/utils/message';
 import { FloatingTooltip } from '@/components/ui/FloatingTooltip/FloatingTooltip';
 import { ProviderIcon } from '@/components/ui/icons/ProviderIcon';
 import { useChatAgentKind } from '@/hooks/useChatAgentKind';
@@ -62,28 +62,25 @@ export const SidebarChatItem = memo(function SidebarChatItem({
     <ProviderIcon provider={agentKind} className={styles['provider-icon']} />
   ) : null;
   // Persistent status on the leading icon (visible even on hover), mirroring the
-  // sidebar precedence. Running shows the spinner; the other three show a dot.
+  // sidebar precedence. Every status is a dot; running's is a muted grey one.
   const status = chatStatusTone({
     blocked: isChatBlocked,
     streaming: isChatStreaming,
     completed: isChatCompleted,
     unread: isUnread,
   });
-  const showSpinner = status === 'running';
-  // The main slot shows the spinner for 'running', so it takes no dot there; every
-  // other status renders its tone directly.
-  const statusTone: ChatStatusTone | null = showSpinner ? null : status;
+  const isRunning = status === 'running';
   const statusLabel = status ? CHAT_STATUS_LABEL[status] : null;
   // Mirrors the leading-slot render below — the workspace line indents to stay flush with the title
   const hasLeadingSlot = anchorIcon != null || status != null;
   const statusSlot = hasLeadingSlot ? (
-    // Running swaps to a spinner; blocked/done/unread show a colored dot on the
-    // icon corner (or centered when there's no provider icon to anchor it).
+    // The status dot sits on the icon corner (or centers when there's no
+    // provider icon to anchor it).
     <span className={styles['status-slot']}>
-      {showSpinner ? <span aria-hidden className={styles['item-spinner']} /> : anchorIcon}
-      {statusTone && (
+      {anchorIcon}
+      {status && (
         <ChatStatusDot
-          tone={statusTone}
+          tone={status}
           // Corner-overlay only when there's an icon to anchor to; otherwise
           // the dot centers in the reserved box.
           className={clsx(anchorIcon && styles['status-corner'])}
@@ -96,7 +93,7 @@ export const SidebarChatItem = memo(function SidebarChatItem({
     .filter(Boolean)
     .join(' · ');
   const restingIcon = restingTooltip ? (
-    // Wordless dot/spinner carries status; the word lives in a tooltip
+    // Wordless dot carries status; the word lives in a tooltip
     <FloatingTooltip content={restingTooltip} className={styles['status-tooltip']}>
       {statusSlot}
     </FloatingTooltip>
@@ -116,7 +113,7 @@ export const SidebarChatItem = memo(function SidebarChatItem({
       ref={rowRef}
       isActive={isActive}
       isRevealed={isDropdownOpen}
-      isWorking={showSpinner}
+      isWorking={isRunning}
       onRowClick={handleSelect}
       leading={restingIcon}
       title={

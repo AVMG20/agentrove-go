@@ -44,7 +44,8 @@
 }
 
 .dot--running {
-  background-color: var(--theme-accent);
+  // Working is the common case; a muted grey keeps a busy list calm.
+  background-color: var(--theme-text-quaternary);
 }
 
 .dot--completed {
