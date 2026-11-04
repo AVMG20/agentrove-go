@@ -1,6 +1,5 @@
 import { memo, useEffect, useRef, type MouseEvent } from 'react';
 import { Archive, Zap } from 'lucide-react';
-import { AsciiSpinner } from '@/components/ui/AsciiSpinner/AsciiSpinner';
 import { ChatStatusDot } from '@/components/ui/ChatStatusDot/ChatStatusDot';
 import { chatStatusTone, CHAT_STATUS_LABEL, type ChatStatusTone } from '@/utils/message';
 import { FloatingTooltip } from '@/components/ui/FloatingTooltip/FloatingTooltip';
@@ -81,7 +80,7 @@ export const SidebarChatItem = memo(function SidebarChatItem({
     // Running swaps to a spinner; blocked/done/unread show a colored dot on the
     // icon corner (or centered when there's no provider icon to anchor it).
     <span className={styles['status-slot']}>
-      {showSpinner ? <AsciiSpinner className={styles['item-spinner']} /> : anchorIcon}
+      {showSpinner ? <span aria-hidden className={styles['item-spinner']} /> : anchorIcon}
       {statusTone && (
         <ChatStatusDot
           tone={statusTone}

@@ -51,29 +51,17 @@
   }
 }
 
-// A turn is running: an accent wash and tick, so it reads at a glance even
-// among a long list (the open thread's fill and tick take over when active).
-.row--working:not(:global(.#{state.$state-active})) {
-  background-color: colors.theme-color('accent', 0.1);
-
-  &::before {
-    content: '';
-    position: absolute;
-    left: 0;
-    top: var(--space-1-5);
-    bottom: var(--space-1-5);
-    width: 2px;
-    border-radius: var(--radius-full);
-    background-color: colors.theme-color('accent', 0.6);
-  }
-
-  @include responsive.hover {
-    background-color: colors.theme-color('accent', 0.16);
-  }
-
-  .timestamp {
-    color: var(--theme-accent);
-  }
+// A turn is running: a muted tick marks it at a glance (the open thread's
+// accent tick takes over when active).
+.row--working:not(:global(.#{state.$state-active}))::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: var(--space-1-5);
+  bottom: var(--space-1-5);
+  width: 2px;
+  border-radius: var(--radius-full);
+  background-color: var(--theme-text-tertiary);
 }
 
 .row--clickable {
@@ -116,16 +104,15 @@
     font-weight: 500;
   }
 
-  // Running threads must stand out from idle ones: full-strength text with
-  // an accent sweep that never rests.
+  // Running threads: a neutral glimmer that sweeps often, brighter than the
+  // idle rows' resting text without pulling the eye like a color would.
   &--working {
     @include anim.text-shimmer(
-      $base: var(--theme-text-primary),
-      $highlight: var(--theme-accent),
-      $duration: 1.6s,
-      $sweep: 100%
+      $base: var(--theme-text-secondary),
+      $highlight: var(--theme-text-primary),
+      $duration: 1.4s,
+      $sweep: 80%
     );
-    font-weight: 500;
   }
 }
 

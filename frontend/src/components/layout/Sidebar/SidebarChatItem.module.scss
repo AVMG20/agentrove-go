@@ -1,3 +1,4 @@
+@use '@/styles/globals/colors' as colors;
 @use '@/styles/globals/typography' as type;
 @use '@/styles/globals/animations' as anim;
 @use '@/styles/globals/responsive' as responsive;
@@ -26,11 +27,19 @@
 }
 
 .item-spinner {
-  @include type.type-title;
-  line-height: 1;
-  // Braille dots are thin; heavier and a touch larger so they read as motion.
-  font-size: 1.2em;
-  font-weight: 700;
+  @include anim.spin;
+  // A spinning accent arc on a faint track: plainly "working" at a glance.
+  box-sizing: border-box;
+  height: var(--space-3);
+  width: var(--space-3);
+  border: 2px solid colors.theme-color('accent', 0.25);
+  border-top-color: var(--theme-accent);
+  border-radius: var(--radius-full);
+  animation-duration: 0.8s;
+
+  @include responsive.media('reduced-motion') {
+    animation: none;
+  }
 }
 
 .provider-icon {
