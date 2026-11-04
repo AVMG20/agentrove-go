@@ -23,6 +23,8 @@ interface SidebarRowProps {
   hoverAction?: { icon: LucideIcon; label: string; onClick: () => void };
   // Right-click / long-press: the same options, anchored at that point.
   onContextMenu?: (point: { x: number; y: number }) => void;
+  // An agent turn is running here: the row gets an accent wash.
+  isWorking?: boolean;
 }
 
 export function SidebarRow({
@@ -38,6 +40,7 @@ export function SidebarRow({
   onDropdownClick,
   hoverAction,
   onContextMenu,
+  isWorking = false,
 }: SidebarRowProps) {
   const contextMenu = useRowContextMenu(onContextMenu);
   return (
@@ -56,6 +59,7 @@ export function SidebarRow({
         isActive && stateClasses.ACTIVE,
         (isRevealed || isActive) && styles['row--revealed'],
         onRowClick && styles['row--clickable'],
+        isWorking && styles['row--working'],
       )}
     >
       {/* Pad for timestamp/dropdown so long titles truncate before them. */}

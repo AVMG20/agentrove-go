@@ -11,12 +11,10 @@ const h = vi.hoisted(() => ({
   profiles: [] as Profile[],
   isLoading: false,
   isMobile: false,
-  isSplitMode: false,
   usage: {} as Record<string, AccountUsage | undefined>,
   refresh: vi.fn(),
 }));
 
-vi.mock('@/hooks/useIsSplitMode', () => ({ useIsSplitMode: () => h.isSplitMode }));
 vi.mock('@/hooks/useIsMobile', () => ({ useIsMobile: () => h.isMobile }));
 vi.mock('@/store/authStore', () => ({
   useAuthStore: (select: (s: { isAuthenticated: boolean }) => unknown) =>
@@ -95,7 +93,6 @@ beforeEach(() => {
   vi.setSystemTime(NOW);
   h.isLoading = false;
   h.isMobile = false;
-  h.isSplitMode = false;
   h.refresh.mockReset();
   h.profiles = [
     profile({
@@ -154,12 +151,6 @@ describe('AccountSwitcher', () => {
     expect(trigger().getAttribute('aria-label')).toBe(
       'Account: Personal, usage 39% 4h 18m · 6% 6d 19h',
     );
-  });
-
-  it('keeps the numbers off the trigger in split mode', () => {
-    h.isSplitMode = true;
-    renderSwitcher();
-    expect(within(trigger()).queryByText(/39%/)).toBeNull();
   });
 
   it('opens on the usage card with every window', () => {

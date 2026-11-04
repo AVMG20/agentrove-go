@@ -11,7 +11,6 @@ import { useProfileMap } from '@/hooks/queries/useProfileQueries';
 import { useAccountUsage } from '@/hooks/queries/useUsageQueries';
 import { useDropdown } from '@/hooks/useDropdown';
 import { useIsMobile } from '@/hooks/useIsMobile';
-import { useIsSplitMode } from '@/hooks/useIsSplitMode';
 import { useNow } from '@/hooks/useNow';
 import {
   PROVIDER_NAMES,
@@ -76,8 +75,6 @@ export function AccountSwitcher({
   const sheetRef = useRef<HTMLDivElement>(null);
   const { isOpen, setIsOpen, dropdownRef } = useDropdown(sheetRef);
   const isMobile = useIsMobile();
-  // Split panes are narrow: the bar stays, the numbers move into the popover.
-  const isSplitMode = useIsSplitMode();
   const [view, setView] = useState<View>('usage');
   const panelId = useId();
 
@@ -324,8 +321,7 @@ export function AccountSwitcher({
         )}
         {isMobile
           ? compactUsage && <span className={styles['trigger-usage-compact']}>{compactUsage}</span>
-          : usageText &&
-            !isSplitMode && <span className={styles['trigger-usage']}>{usageText}</span>}
+          : usageText && <span className={styles['trigger-usage']}>{usageText}</span>}
       </button>
 
       {isOpen &&

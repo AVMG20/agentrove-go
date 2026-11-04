@@ -9,6 +9,8 @@ export interface PublishedArtifact {
 
 const CREATE_ARTIFACT = 'mcp__agentrove__create_artifact';
 
+export const isCreateArtifact = (toolName: string) => toolName === CREATE_ARTIFACT;
+
 export const extractArtifact = (result: unknown): PublishedArtifact | null => {
   const artifact = parseAgentRoveResult(result).data?.artifact;
   if (typeof artifact !== 'object' || artifact === null) return null;

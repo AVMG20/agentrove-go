@@ -117,6 +117,7 @@ export const SidebarChatItem = memo(function SidebarChatItem({
       ref={rowRef}
       isActive={isActive}
       isRevealed={isDropdownOpen}
+      isWorking={showSpinner}
       onRowClick={handleSelect}
       leading={restingIcon}
       title={

@@ -97,6 +97,12 @@
 
   // Phones get the compact form below; the full numbers are a tap away.
   @include responsive.hide('mobile');
+
+  // A narrow composer (a slim split pane): the bar stays, the numbers move
+  // into the popover rather than ellipsizing.
+  @container composer-footer (max-width: 480px) {
+    display: none;
+  }
 }
 
 .trigger-usage-compact {

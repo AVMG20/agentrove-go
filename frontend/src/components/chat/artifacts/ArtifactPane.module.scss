@@ -12,6 +12,8 @@
   flex: 1;
   flex-direction: column;
   background-color: var(--theme-surface);
+  // Header controls condense when the pane is slim.
+  container: artifact-pane / inline-size;
 }
 
 .header {
@@ -101,6 +103,36 @@
 
 .fresh-text {
   @include type.type-overflow;
+}
+
+.visibility {
+  @include type.type-meta(500);
+  @include type.type-noselect;
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: var(--space-1-5);
+  margin-right: var(--space-1);
+  border: 1px solid colors.theme-color('border', 0.5);
+  border-radius: var(--radius-md);
+  padding: var(--space-1) var(--space-2);
+  color: var(--theme-text-secondary);
+  cursor: pointer;
+}
+
+.visibility-icon {
+  height: var(--space-3);
+  width: var(--space-3);
+  color: var(--theme-text-tertiary);
+}
+
+.visibility-label {
+  min-width: var(--space-10);
+
+  // A slim pane keeps the icon and switch; the state is in the icon.
+  @container artifact-pane (max-width: 420px) {
+    display: none;
+  }
 }
 
 .icon-button {

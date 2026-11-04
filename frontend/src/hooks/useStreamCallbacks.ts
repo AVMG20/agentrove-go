@@ -18,6 +18,12 @@ import type {
   PermissionRequest,
 } from '@/types/chat.types';
 import type { ToolEventPayload } from '@/types/tools.types';
+import {
+  extractArtifact,
+  isCreateArtifact,
+} from '@/components/chat/tools/agentrove/artifactResult';
+import { isMobileViewport } from '@/hooks/useIsMobile';
+import { useUIStore } from '@/store/uiStore';
 import type { QueueProcessingData, StreamEnvelope, StreamState } from '@/types/stream.types';
 import { useMessageCache } from '@/hooks/useMessageCache';
 import { useMessageQueueStore } from '@/store/messageQueueStore';
@@ -94,6 +100,17 @@ interface UseStreamCallbacksResult {
 // SSE pipeline: buffer envelopes, flush on a coalescing timer, own start/replay/stop + terminal handlers.
 // Messages sent into a turn that ended are in the chat now or back in the
 // server's queue; drop their "Waiting for Claude…" copies.
+// A newly published artifact opens beside the chat that made it (desktop only;
+// on a phone it would take over the screen). Edits leave the pane alone. Skips
+// one already showing, e.g. a replayed event after a reconnect.
+function openCreatedArtifact(chatId: string, tool: ToolEventPayload) {
+  if (isMobileViewport()) return;
+  const artifact = extractArtifact(tool.result);
+  const ui = useUIStore.getState();
+  if (!artifact || ui.artifactByChat[chatId] === artifact.id) return;
+  ui.toggleArtifact(chatId, artifact.id);
+}
+
 function settleSteeredQueue(chatId: string) {
   const queueStore = useMessageQueueStore.getState();
   if (queueStore.getQueue(chatId).some((m) => m.awaitingPickup)) {
@@ -346,7 +363,9 @@ export function useStreamCallbacks({
 
       if (envelope.kind === 'tool_completed') {
         const tool = (envelope.payload as { tool?: ToolEventPayload })?.tool;
-        if (tool?.name === 'EnterPlanMode' && chatId) {
+        if (tool && isCreateArtifact(tool.name) && envelope.chatId === chatIdRef.current) {
+          openCreatedArtifact(envelope.chatId, tool);
+        } else if (tool?.name === 'EnterPlanMode' && chatId) {
           useChatSettingsStore.getState().setPermissionMode(chatId, 'plan');
         } else if (tool?.name === 'ExitPlanMode' && chatId) {
           if (tool.permission_mode) {

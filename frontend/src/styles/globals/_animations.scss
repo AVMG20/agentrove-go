@@ -146,12 +146,18 @@
 
 // "Working" text: a soft highlight sweeps across the glyphs, then rests.
 // Clipped to the text, so ellipsis truncation still works on the same element.
-@mixin text-shimmer($base: var(--theme-text-tertiary), $highlight: var(--theme-text-primary)) {
+// $sweep is the share of each cycle spent sweeping (100%: no rest between).
+@mixin text-shimmer(
+  $base: var(--theme-text-tertiary),
+  $highlight: var(--theme-text-primary),
+  $duration: 2.6s,
+  $sweep: 65%
+) {
   @keyframes text-shimmer {
     0% {
       background-position: 100% 0;
     }
-    65%,
+    #{$sweep},
     100% {
       background-position: 0 0;
     }
@@ -168,5 +174,5 @@
   background-clip: text;
   -webkit-background-clip: text;
   color: transparent;
-  animation: text-shimmer 2.6s ease-in-out infinite;
+  animation: text-shimmer $duration ease-in-out infinite;
 }

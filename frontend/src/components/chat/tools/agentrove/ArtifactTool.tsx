@@ -6,7 +6,7 @@ import { FloatingTooltip } from '@/components/ui/FloatingTooltip/FloatingTooltip
 import { queryKeys } from '@/hooks/queries/queryKeys';
 import { useOpenArtifactId } from '@/hooks/useOpenArtifact';
 import { useUIStore } from '@/store/uiStore';
-import type { Artifact } from '@/types/artifact.types';
+import type { Artifact, ArtifactView } from '@/types/artifact.types';
 import type { ToolAggregate } from '@/types/tools.types';
 import { AgentRoveTool } from './AgentRoveTool';
 import { extractArtifact, type PublishedArtifact } from './artifactResult';
@@ -107,6 +107,12 @@ function useRefreshOnNewVersion(artifact: PublishedArtifact, chatId: string | un
   const { id, version } = artifact;
   useEffect(() => {
     if (!chatId) return;
+    // An open viewer behind this version reloads now, even for an artifact
+    // this chat's list doesn't hold (another chat's, edited here).
+    const view = queryClient.getQueryData<ArtifactView>(queryKeys.artifactView(id));
+    if (view && view.version < version) {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.artifactView(id) });
+    }
     // Not loaded yet: the first fetch will be current anyway.
     const list = queryClient.getQueryData<Artifact[]>(queryKeys.chatArtifacts(chatId));
     const listed = list?.find((a) => a.id === id);

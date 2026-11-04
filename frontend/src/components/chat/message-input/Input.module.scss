@@ -9,6 +9,9 @@
   gap: var(--space-2);
   // No bottom inset here: the chat's composer surface already pads for it.
   padding: var(--space-1-5) var(--space-2) 0;
+  // The account's usage numbers drop out when this row gets narrow (see
+  // AccountSwitcher.module.scss), however many panes are open.
+  container: composer-footer / inline-size;
 
   // Controls stay right-aligned when there's no usage to show.
   > :last-child {

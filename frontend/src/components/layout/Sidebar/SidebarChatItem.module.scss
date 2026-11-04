@@ -28,6 +28,9 @@
 .item-spinner {
   @include type.type-title;
   line-height: 1;
+  // Braille dots are thin; heavier and a touch larger so they read as motion.
+  font-size: 1.2em;
+  font-weight: 700;
 }
 
 .provider-icon {

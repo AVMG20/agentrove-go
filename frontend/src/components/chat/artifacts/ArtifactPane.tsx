@@ -1,11 +1,26 @@
 import { useEffect, useState, type ReactNode } from 'react';
-import { AppWindow, ArrowUpRight, Link2, Loader2, RotateCw, Sparkles, X } from 'lucide-react';
+import {
+  AppWindow,
+  ArrowUpRight,
+  Globe,
+  Link2,
+  Loader2,
+  Lock,
+  RotateCw,
+  Sparkles,
+  X,
+} from 'lucide-react';
 import toast from 'react-hot-toast';
 import { Button } from '@/components/ui/primitives/Button/Button';
 import { Dropdown } from '@/components/ui/primitives/Dropdown/Dropdown';
+import { Switch } from '@/components/ui/primitives/Switch/Switch';
 import { FloatingTooltip } from '@/components/ui/FloatingTooltip/FloatingTooltip';
 import { ArtifactFrame } from '@/components/artifacts/ArtifactFrame';
-import { useArtifactViewQuery, useChatArtifactsQuery } from '@/hooks/queries/useArtifactQueries';
+import {
+  useArtifactViewQuery,
+  useChatArtifactsQuery,
+  useUpdateArtifactMutation,
+} from '@/hooks/queries/useArtifactQueries';
 import { latestArtifact } from '@/hooks/useOpenArtifact';
 import { artifactService } from '@/services/artifactService';
 import { useUIStore } from '@/store/uiStore';
@@ -98,6 +113,15 @@ function ArtifactDetail({
   const choices = listed || !view ? artifacts : [view, ...artifacts];
   const href = `/artifacts/${artifactId}`;
 
+  const updateArtifact = useUpdateArtifactMutation();
+  const setPublic = async (isPublic: boolean) => {
+    try {
+      await updateArtifact.mutateAsync({ artifactId, data: { is_public: isPublic } });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to change visibility');
+    }
+  };
+
   const copyLink = async () => {
     try {
       await navigator.clipboard.writeText(artifactService.getShareUrl(artifactId));
@@ -149,6 +173,26 @@ function ArtifactDetail({
             <span className={styles['fresh-text']}>New: {fresh.title}</span>
           </Button>
         </FloatingTooltip>
+      )}
+      {view?.is_owner && (
+        // Same control as the standalone page: who can open the link.
+        <label className={styles.visibility}>
+          {view.is_public ? (
+            <Globe aria-hidden className={styles['visibility-icon']} />
+          ) : (
+            <Lock aria-hidden className={styles['visibility-icon']} />
+          )}
+          <span className={styles['visibility-label']}>
+            {view.is_public ? 'Public' : 'Private'}
+          </span>
+          <Switch
+            size="sm"
+            checked={view.is_public}
+            disabled={updateArtifact.isPending}
+            onCheckedChange={(checked) => void setPublic(checked)}
+            aria-label={view.is_public ? 'Make private' : 'Make public'}
+          />
+        </label>
       )}
       <IconButton label="Reload" onClick={() => void reload()} disabled={!view}>
         <RotateCw className={styles.glyph} />
