@@ -64,7 +64,7 @@ function createDefaultForm(): AutomationForm {
     trigger_type: 'schedule',
     schedule: { ...DEFAULT_SCHEDULE },
     github_repo: '',
-    github_events: ['pull_request_opened'],
+    github_events: ['pull_request_opened', 'pull_request_synchronize'],
     github_poll_minutes: DEFAULT_GITHUB_POLL_MINUTES,
     timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
     permission_mode: DEFAULT_PERMISSION_MODE,

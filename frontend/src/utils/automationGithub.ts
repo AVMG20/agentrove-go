@@ -4,6 +4,7 @@ import type { GitHubTriggerEvent } from '@/types/automation.types';
 
 export const GITHUB_EVENT_OPTIONS: { value: GitHubTriggerEvent; label: string }[] = [
   { value: 'pull_request_opened', label: 'Pull request opened' },
+  { value: 'pull_request_synchronize', label: 'New commits on a PR (continues its thread)' },
   { value: 'issue_opened', label: 'Issue opened' },
   { value: 'issue_comment_created', label: 'New comment on an issue or PR' },
   { value: 'release_published', label: 'Release published' },
@@ -11,6 +12,7 @@ export const GITHUB_EVENT_OPTIONS: { value: GitHubTriggerEvent; label: string }[
 
 const SHORT_EVENT_LABELS: Record<GitHubTriggerEvent, string> = {
   pull_request_opened: 'PRs',
+  pull_request_synchronize: 'PR commits',
   issue_opened: 'Issues',
   issue_comment_created: 'Comments',
   release_published: 'Releases',

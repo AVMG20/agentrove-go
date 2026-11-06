@@ -28,21 +28,23 @@ const activityPageSize = 50
 var githubRepoRE = regexp.MustCompile(`^[A-Za-z0-9-]+/[A-Za-z0-9._-]+$`)
 
 // GitHubEvents are the trigger events a GitHub automation can watch.
-var GitHubEvents = []string{"pull_request_opened", "issue_opened", "issue_comment_created", "release_published"}
+var GitHubEvents = []string{"pull_request_opened", "pull_request_synchronize", "issue_opened", "issue_comment_created", "release_published"}
 
 var githubEventLabels = map[string]string{
-	"pull_request_opened":   "PR",
-	"issue_opened":          "Issue",
-	"issue_comment_created": "Comment",
-	"release_published":     "Release",
+	"pull_request_opened":      "PR",
+	"pull_request_synchronize": "PR",
+	"issue_opened":             "Issue",
+	"issue_comment_created":    "Comment",
+	"release_published":        "Release",
 }
 
 // githubWebhookEvents maps a trigger to the (webhook event, action) GitHub delivers.
 var githubWebhookEvents = map[string][2]string{
-	"pull_request_opened":   {"pull_request", "opened"},
-	"issue_opened":          {"issues", "opened"},
-	"issue_comment_created": {"issue_comment", "created"},
-	"release_published":     {"release", "published"},
+	"pull_request_opened":      {"pull_request", "opened"},
+	"pull_request_synchronize": {"pull_request", "synchronize"},
+	"issue_opened":             {"issues", "opened"},
+	"issue_comment_created":    {"issue_comment", "created"},
+	"release_published":        {"release", "published"},
 }
 
 func NormalizeGitHubRepo(v string) (string, error) {
@@ -270,6 +272,39 @@ func activity(kind, repo string, item map[string]any, number *int, title string)
 		Event: kind, Repo: repo, Number: number, Title: title, URL: str(item["html_url"]),
 		Author: author, Body: str(item["body"]), CreatedAt: created.UTC(),
 	}
+}
+
+// OpenPull is an open pull request and the commit its branch points at.
+type OpenPull struct {
+	Number    int
+	Title     string
+	URL       string
+	Author    string
+	HeadSHA   string
+	CreatedAt time.Time
+}
+
+// ListOpenPulls returns the most recently updated open PRs. New commits are
+// spotted by comparing HeadSHA with the last one seen, so no cursor is needed.
+func (g *GitHubClient) ListOpenPulls(ctx context.Context, repo string) ([]OpenPull, error) {
+	items, err := g.getList(ctx, "/repos/"+repo+"/pulls", url.Values{
+		"state": {"open"}, "sort": {"updated"}, "direction": {"desc"}, "per_page": {strconv.Itoa(activityPageSize)},
+	})
+	if err != nil {
+		return nil, err
+	}
+	out := make([]OpenPull, 0, len(items))
+	for _, item := range items {
+		n := intPtr(item["number"])
+		head, _ := item["head"].(map[string]any)
+		sha := str(head["sha"])
+		if n == nil || sha == "" {
+			continue
+		}
+		a := activity("pull_request_synchronize", repo, item, n, str(item["title"]))
+		out = append(out, OpenPull{Number: *n, Title: a.Title, URL: a.URL, Author: a.Author, HeadSHA: sha, CreatedAt: a.CreatedAt})
+	}
+	return out, nil
 }
 
 // CreateWebhook needs admin:repo_hook (classic) or Webhooks: write (fine-grained).

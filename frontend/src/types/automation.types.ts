@@ -5,6 +5,7 @@ export type AutomationTriggerType = 'schedule' | 'github';
 
 export type GitHubTriggerEvent =
   | 'pull_request_opened'
+  | 'pull_request_synchronize'
   | 'issue_opened'
   | 'issue_comment_created'
   | 'release_published';

@@ -7,6 +7,7 @@ import (
 	"crypto/rand"
 	"database/sql"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -82,6 +83,15 @@ func scan(row interface{ Scan(...any) error }) (*Automation, error) {
 		&x.GithubWebhookError, &x.CreatedByAgent, &x.CreatedAt, &x.UpdatedAt, &x.LastRunChatID)
 	x.GithubWebhookActive = x.GithubWebhookID != nil
 	return x, err
+}
+
+func (x *Automation) watches(event string) bool {
+	for _, e := range x.events() {
+		if e == event {
+			return true
+		}
+	}
+	return false
 }
 
 func (x *Automation) events() []string {
@@ -415,6 +425,18 @@ func (s *Service) Update(ctx context.Context, id, userID string, in *Input, base
 	if err != nil {
 		return nil, err
 	}
+	if set["trigger_type"] || set["github_repo"] {
+		// PR numbers belong to the old repo.
+		if _, err := s.a.DB.ExecContext(ctx, `DELETE FROM automation_github_threads WHERE automation_id = ?`, x.ID); err != nil {
+			return nil, err
+		}
+	} else if reenabled {
+		// Like the cursor: pushes made while disabled aren't replayed. The
+		// threads stay, so the next push still continues them.
+		if _, err := s.a.DB.ExecContext(ctx, `UPDATE automation_github_threads SET head_sha = NULL WHERE automation_id = ?`, x.ID); err != nil {
+			return nil, err
+		}
+	}
 	// Re-register when what the hook watches changed, or retry a failed setup
 	// on any save (e.g. after the token gained the webhook scope).
 	if set["trigger_type"] || set["github_repo"] || set["github_events"] || (x.TriggerType == "github" && oldHook == nil) {
@@ -535,6 +557,17 @@ func (s *Service) HandleWebhook(ctx context.Context, id string, body []byte, sig
 	}
 	for _, e := range x.events() {
 		if we, ok := githubWebhookEvents[e]; ok && we[0] == event && we[1] == action {
+			if e == eventPRPushed {
+				var p struct {
+					Number int    `json:"number"`
+					Before string `json:"before"`
+				}
+				_ = json.Unmarshal(body, &p)
+				s.notePushBase(ctx, x.ID, p.Number, p.Before)
+				// GitHub's PR listing can lag the delivery past the settle
+				// delay; a second look a minute later catches the new head.
+				s.retrySoon(ctx, x.ID)
+			}
 			return true, nil
 		}
 	}
@@ -644,7 +677,11 @@ func (s *Service) RunDue(ctx context.Context) {
 func (s *Service) dispatch(ctx context.Context, x *Automation) {
 	var err error
 	if x.TriggerType == "github" {
-		err = s.pollGitHub(ctx, x)
+		var retry bool
+		retry, err = s.pollGitHub(ctx, x)
+		if retry {
+			s.retrySoon(ctx, x.ID)
+		}
 	} else {
 		_, err = s.fire(ctx, x, nil)
 	}
@@ -661,47 +698,77 @@ func (s *Service) dispatch(ctx context.Context, x *Automation) {
 }
 
 // pollGitHub advances the cursor (CAS) before firing: a crash mid-fire loses
-// those runs rather than re-firing them every poll after restart.
-func (s *Service) pollGitHub(ctx context.Context, x *Automation) error {
+// those runs rather than re-firing them every poll after restart. Pushes to
+// open PRs are tracked per PR instead (pollPushes); retry asks for an early
+// next check because a push is waiting on a busy thread.
+func (s *Service) pollGitHub(ctx context.Context, x *Automation) (retry bool, err error) {
 	gh := s.githubFor(ctx, x.UserID)
 	if gh == nil {
 		slog.Warn("automation has no GitHub token configured; skipping poll", "automation", x.ID)
-		return nil
+		return false, nil
 	}
 	if !x.GithubCursor.Valid {
 		// Never watched yet: start from now instead of replaying history.
 		_, err := s.a.DB.ExecContext(ctx, `UPDATE automations SET github_cursor = ? WHERE id = ?`, db.Now(), x.ID)
-		return err
+		return false, err
 	}
 	cursor := x.GithubCursor.Time
+	// Everything created up to here has been handled.
+	handled := cursor.Time
 	login, err := gh.AuthenticatedLogin(ctx)
 	if err != nil {
-		return err
+		return false, err
 	}
 	evs, err := gh.ListActivity(ctx, db.Deref(x.GithubRepo), x.events(), cursor.Time, login)
 	if err != nil {
-		return err
+		return false, err
 	}
 	if len(evs) > maxGitHubEventsPerPoll {
 		evs = evs[:maxGitHubEventsPerPoll]
 	}
-	if len(evs) == 0 {
-		return nil
-	}
-	res, err := s.a.DB.ExecContext(ctx, `UPDATE automations SET github_cursor = ? WHERE id = ? AND github_cursor = ?`,
-		db.T(evs[len(evs)-1].CreatedAt), x.ID, cursor)
-	if err != nil {
-		return err
-	}
-	if n, _ := res.RowsAffected(); n != 1 {
-		return nil
-	}
-	for i := range evs {
-		if _, err := s.fire(ctx, x, &evs[i]); err != nil {
-			return err
+	if len(evs) > 0 {
+		res, err := s.a.DB.ExecContext(ctx, `UPDATE automations SET github_cursor = ? WHERE id = ? AND github_cursor = ?`,
+			db.T(evs[len(evs)-1].CreatedAt), x.ID, cursor)
+		if err != nil {
+			return false, err
+		}
+		if n, _ := res.RowsAffected(); n != 1 {
+			evs = nil // another check took these
+		} else {
+			handled = evs[len(evs)-1].CreatedAt
 		}
 	}
-	return nil
+	for i := range evs {
+		ev := &evs[i]
+		if ev.Event == eventPROpened && ev.Number != nil {
+			// Starts the PR's thread; its later pushes continue it.
+			chatID, err := s.fire(ctx, x, ev)
+			if err != nil {
+				return false, err
+			}
+			if err := s.startThread(ctx, x.ID, *ev.Number, chatID); err != nil {
+				return false, err
+			}
+			continue
+		}
+		if ev.Event == "issue_comment_created" {
+			if err := s.fireComment(ctx, x, ev); err != nil {
+				return false, err
+			}
+			continue
+		}
+		if _, err := s.fire(ctx, x, ev); err != nil {
+			return false, err
+		}
+	}
+	if !x.watches(eventPRPushed) {
+		return false, nil
+	}
+	var openedCursor *time.Time
+	if x.watches(eventPROpened) {
+		openedCursor = &handled
+	}
+	return s.pollPushes(ctx, x, gh, openedCursor)
 }
 
 // EventPrompt appends the triggering GitHub item to the automation prompt.
