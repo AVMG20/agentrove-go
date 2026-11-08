@@ -72,6 +72,9 @@ type UserSettings struct {
 	// The identity the user's agents commit under; empty keeps ~/.gitconfig's.
 	GitAuthorName  *string `json:"git_author_name"`
 	GitAuthorEmail *string `json:"git_author_email"`
+	// Off: Claude leaves its Co-Authored-By trailer out of commits and its
+	// footer out of PR descriptions.
+	CommitAttribution bool `json:"commit_attribution"`
 	// Server-wide SANDBOX_BROWSER_ENABLED, so the UI can hide the browser.
 	BrowserAvailable bool    `json:"browser_available"`
 	CreatedAt        db.Time `json:"created_at"`

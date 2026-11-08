@@ -299,6 +299,13 @@ func (m *Module) patch(w http.ResponseWriter, r *http.Request) error {
 		}
 		set("browser_tools_enabled", v)
 	}
+	if raw, ok := body["commit_attribution"]; ok {
+		var v bool
+		if err := json.Unmarshal(raw, &v); err != nil {
+			return httpx.Unprocessable("commit_attribution must be a boolean")
+		}
+		set("commit_attribution", v)
+	}
 	if raw, ok := body["sidebar_folder_order"]; ok {
 		v, err := m.decodeFolderOrder(r.Context(), u.ID, raw)
 		if err != nil {

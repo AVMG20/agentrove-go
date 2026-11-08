@@ -27,6 +27,7 @@ interface GeneralSettingsTabProps {
   revealedFields: Record<ApiFieldKey, boolean>;
   onPersistSecret: (field: ApiFieldKey, value: string) => void;
   onPersistGitIdentity: (field: GitIdentityField, value: string) => void;
+  onCommitAttributionChange: (enabled: boolean) => void;
   onToggleVisibility: (field: ApiFieldKey) => void;
   onDeleteAllChats: () => void;
   onNotificationsEnabledChange: (enabled: boolean) => void;
@@ -197,6 +198,7 @@ export function GeneralSettingsTab({
   revealedFields,
   onPersistSecret,
   onPersistGitIdentity,
+  onCommitAttributionChange,
   onToggleVisibility,
   onDeleteAllChats,
   onNotificationsEnabledChange,
@@ -240,6 +242,19 @@ export function GeneralSettingsTab({
             savedValue={settings.git_author_email ?? ''}
             onPersist={onPersistGitIdentity}
           />
+          <div className={styles['pref-row-notif']}>
+            <div className={styles['pref-text']}>
+              <h3 className={styles['setting-title']}>Claude Attribution</h3>
+              <p className={styles['field-desc']}>
+                Add Claude&apos;s Co-Authored-By line to commits and its footer to pull requests.
+              </p>
+            </div>
+            <Switch
+              checked={settings.commit_attribution}
+              onCheckedChange={onCommitAttributionChange}
+              aria-label="Claude attribution"
+            />
+          </div>
         </div>
       </SectionCard>
 

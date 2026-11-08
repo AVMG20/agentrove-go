@@ -89,12 +89,12 @@ func (s *Store) GetChatByID(ctx context.Context, id string) (*models.Chat, error
 func (s *Store) GetUserSettings(ctx context.Context, userID string) (*models.UserSettings, error) {
 	st := &models.UserSettings{}
 	row := s.DB.QueryRowContext(ctx, `SELECT id, user_id, github_personal_access_token, custom_instructions, custom_env_vars, personas,
-		stream_actions, notifications_enabled, title_model_id, auto_compact_window, browser_tools_enabled, sidebar_folder_order, git_author_name, git_author_email, created_at, updated_at FROM user_settings WHERE user_id = ?`, userID)
+		stream_actions, notifications_enabled, title_model_id, auto_compact_window, browser_tools_enabled, sidebar_folder_order, git_author_name, git_author_email, commit_attribution, created_at, updated_at FROM user_settings WHERE user_id = ?`, userID)
 	err := row.Scan(&st.ID, &st.UserID, &st.GithubPersonalAccessToken, &st.CustomInstructions, &st.CustomEnvVars, &st.Personas,
-		&st.StreamActions, &st.NotificationsEnabled, &st.TitleModelID, &st.AutoCompactWindow, &st.BrowserToolsEnabled, &st.SidebarFolderOrder, &st.GitAuthorName, &st.GitAuthorEmail, &st.CreatedAt, &st.UpdatedAt)
+		&st.StreamActions, &st.NotificationsEnabled, &st.TitleModelID, &st.AutoCompactWindow, &st.BrowserToolsEnabled, &st.SidebarFolderOrder, &st.GitAuthorName, &st.GitAuthorEmail, &st.CommitAttribution, &st.CreatedAt, &st.UpdatedAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		now := db.Now()
-		st = &models.UserSettings{ID: uuid.NewString(), UserID: userID, NotificationsEnabled: true, TitleModelID: DefaultTitleModelID, CreatedAt: now, UpdatedAt: now}
+		st = &models.UserSettings{ID: uuid.NewString(), UserID: userID, NotificationsEnabled: true, CommitAttribution: true, TitleModelID: DefaultTitleModelID, CreatedAt: now, UpdatedAt: now}
 		_, err = s.DB.ExecContext(ctx, `INSERT INTO user_settings (id, user_id, notifications_enabled, title_model_id, created_at, updated_at)
 			VALUES (?, ?, 1, ?, ?, ?) ON CONFLICT(user_id) DO NOTHING`, st.ID, userID, st.TitleModelID, now, now)
 		if err != nil {

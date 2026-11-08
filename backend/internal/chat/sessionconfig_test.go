@@ -57,6 +57,25 @@ func TestSessionConfigBrowserTools(t *testing.T) {
 	}
 }
 
+// Turning commit attribution off tells Claude to leave out its trailer and PR footer.
+func TestSessionConfigCommitAttribution(t *testing.T) {
+	m, d := newTestModule(t)
+	m.a = &app.App{Cfg: &config.Config{}, DB: d, Store: &appstore.Store{DB: d}}
+	sb := &sandbox.Sandbox{Kind: sandbox.KindDocker, Root: "/home/user/projects/p"}
+	req := &turnRequest{chat: &models.Chat{ID: testChat}, userID: testUser}
+	if cfg := m.sessionConfig(sb, req); cfg.Settings["attribution"] != nil {
+		t.Fatalf("attribution set by default: %v", cfg.Settings["attribution"])
+	}
+	if _, err := d.Exec(`UPDATE user_settings SET commit_attribution = 0 WHERE user_id = ?`, testUser); err != nil {
+		t.Fatal(err)
+	}
+	cfg := m.sessionConfig(sb, req)
+	attr, _ := cfg.Settings["attribution"].(map[string]any)
+	if attr["commit"] != "" || attr["pr"] != "" || cfg.Settings["includeCoAuthoredBy"] != false {
+		t.Fatalf("settings = %v", cfg.Settings)
+	}
+}
+
 // A Claude profile keeps the user's own model aliases and drops
 // only the deployment's headers and aliases.
 func TestSessionConfigKeepsUserAliasesOnProfiles(t *testing.T) {

@@ -49,9 +49,6 @@ type Config struct {
 	MailServer   string
 	MailPort     int
 
-	GitAuthorName  string
-	GitAuthorEmail string
-
 	MCPEnabled             bool
 	MCPTokenLifetime       time.Duration
 	ArtifactsEnabled       bool
@@ -120,8 +117,6 @@ func Load() (*Config, error) {
 		MailFromName:             env("MAIL_FROM_NAME", "Bitbox"),
 		MailServer:               env("MAIL_SERVER", "smtp.sendgrid.net"),
 		MailPort:                 envInt("MAIL_PORT", 587),
-		GitAuthorName:            env("GIT_AUTHOR_NAME", ""),
-		GitAuthorEmail:           env("GIT_AUTHOR_EMAIL", ""),
 		MCPEnabled:               envBool("AGENTROVE_MCP_ENABLED", true),
 		// The token only works on the MCP endpoint. It is re-minted at
 		// half-life between turns (server.mcpConfigs), and a new token restarts

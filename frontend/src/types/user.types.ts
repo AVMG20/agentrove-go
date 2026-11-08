@@ -84,6 +84,8 @@ export interface UserSettings {
   // The name/email agents commit under; null keeps the box's ~/.gitconfig.
   git_author_name: string | null;
   git_author_email: string | null;
+  // Off: Claude leaves its Co-Authored-By trailer and PR footer out.
+  commit_attribution: boolean;
   // Read-only: whether the server runs box browsers at all.
   browser_available: boolean;
   created_at: string;

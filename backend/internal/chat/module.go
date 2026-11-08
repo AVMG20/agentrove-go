@@ -561,6 +561,12 @@ func (m *Module) sessionConfig(sb *sandbox.Sandbox, req *turnRequest) claude.Con
 	if err == nil && st.AutoCompactWindow > 0 {
 		cfg.Settings["autoCompactWindow"] = st.AutoCompactWindow
 	}
+	if err == nil && !st.CommitAttribution {
+		// Empty strings drop the Co-Authored-By trailer and the PR footer;
+		// includeCoAuthoredBy covers CLIs older than the attribution setting.
+		cfg.Settings["attribution"] = map[string]any{"commit": "", "pr": ""}
+		cfg.Settings["includeCoAuthoredBy"] = false
+	}
 	if sb.Kind == sandbox.KindDocker {
 		cfg.Binary = "claude"
 		m.installArtifactSkill(sb, req.userID)

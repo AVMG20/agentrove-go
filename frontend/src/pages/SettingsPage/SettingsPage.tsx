@@ -98,6 +98,7 @@ export function SettingsPage() {
         'github_personal_access_token',
         'git_author_name',
         'git_author_email',
+        'commit_attribution',
         'custom_instructions',
         'custom_env_vars',
         'personas',
@@ -167,6 +168,12 @@ export function SettingsPage() {
     value: string,
   ) => {
     void persistSettings((prev) => ({ ...prev, [field]: value.trim() || null })).catch(
+      () => undefined,
+    );
+  };
+
+  const handleCommitAttributionChange = (enabled: boolean) => {
+    void persistSettings((prev) => ({ ...prev, commit_attribution: enabled })).catch(
       () => undefined,
     );
   };
@@ -253,6 +260,7 @@ export function SettingsPage() {
         revealedFields={revealedFields}
         onPersistSecret={handlePersistSecret}
         onPersistGitIdentity={handlePersistGitIdentity}
+        onCommitAttributionChange={handleCommitAttributionChange}
         onToggleVisibility={toggleFieldVisibility}
         onDeleteAllChats={handleDeleteAllChats}
         onNotificationsEnabledChange={handleNotificationsEnabledChange}
