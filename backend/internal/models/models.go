@@ -69,6 +69,9 @@ type UserSettings struct {
 	BrowserToolsEnabled       bool                    `json:"browser_tools_enabled"`
 	// Workspace ids, in the order the sidebar shows their thread folders.
 	SidebarFolderOrder db.JSON[[]string] `json:"sidebar_folder_order"`
+	// The identity the user's agents commit under; empty keeps ~/.gitconfig's.
+	GitAuthorName  *string `json:"git_author_name"`
+	GitAuthorEmail *string `json:"git_author_email"`
 	// Server-wide SANDBOX_BROWSER_ENABLED, so the UI can hide the browser.
 	BrowserAvailable bool    `json:"browser_available"`
 	CreatedAt        db.Time `json:"created_at"`

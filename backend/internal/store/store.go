@@ -89,9 +89,9 @@ func (s *Store) GetChatByID(ctx context.Context, id string) (*models.Chat, error
 func (s *Store) GetUserSettings(ctx context.Context, userID string) (*models.UserSettings, error) {
 	st := &models.UserSettings{}
 	row := s.DB.QueryRowContext(ctx, `SELECT id, user_id, github_personal_access_token, custom_instructions, custom_env_vars, personas,
-		stream_actions, notifications_enabled, title_model_id, auto_compact_window, browser_tools_enabled, sidebar_folder_order, created_at, updated_at FROM user_settings WHERE user_id = ?`, userID)
+		stream_actions, notifications_enabled, title_model_id, auto_compact_window, browser_tools_enabled, sidebar_folder_order, git_author_name, git_author_email, created_at, updated_at FROM user_settings WHERE user_id = ?`, userID)
 	err := row.Scan(&st.ID, &st.UserID, &st.GithubPersonalAccessToken, &st.CustomInstructions, &st.CustomEnvVars, &st.Personas,
-		&st.StreamActions, &st.NotificationsEnabled, &st.TitleModelID, &st.AutoCompactWindow, &st.BrowserToolsEnabled, &st.SidebarFolderOrder, &st.CreatedAt, &st.UpdatedAt)
+		&st.StreamActions, &st.NotificationsEnabled, &st.TitleModelID, &st.AutoCompactWindow, &st.BrowserToolsEnabled, &st.SidebarFolderOrder, &st.GitAuthorName, &st.GitAuthorEmail, &st.CreatedAt, &st.UpdatedAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		now := db.Now()
 		st = &models.UserSettings{ID: uuid.NewString(), UserID: userID, NotificationsEnabled: true, TitleModelID: DefaultTitleModelID, CreatedAt: now, UpdatedAt: now}
@@ -120,7 +120,7 @@ func (s *Store) GetUserSettings(ctx context.Context, userID string) (*models.Use
 }
 
 // UserEnv is the env every sandbox command/agent of the user gets: custom
-// env vars plus the GitHub token for git/gh.
+// env vars, the GitHub token for git/gh, and the git identity to commit under.
 func (s *Store) UserEnv(ctx context.Context, userID string) map[string]string {
 	env := map[string]string{}
 	st, err := s.GetUserSettings(ctx, userID)
@@ -139,6 +139,16 @@ func (s *Store) UserEnv(ctx context.Context, userID string) map[string]string {
 	if tok := db.Deref(st.GithubPersonalAccessToken); tok != "" {
 		env["GITHUB_TOKEN"] = tok
 		env["GH_TOKEN"] = tok
+	}
+	// The env beats any user.name/user.email in ~/.gitconfig, so every agent
+	// commits as the user once they set it.
+	if name := db.Deref(st.GitAuthorName); name != "" {
+		env["GIT_AUTHOR_NAME"] = name
+		env["GIT_COMMITTER_NAME"] = name
+	}
+	if email := db.Deref(st.GitAuthorEmail); email != "" {
+		env["GIT_AUTHOR_EMAIL"] = email
+		env["GIT_COMMITTER_EMAIL"] = email
 	}
 	return env
 }

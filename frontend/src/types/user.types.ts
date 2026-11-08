@@ -81,6 +81,9 @@ export interface UserSettings {
   // Workspace ids in the order the sidebar shows their thread folders; folders
   // missing from it come first, most recent activity first.
   sidebar_folder_order: string[] | null;
+  // The name/email agents commit under; null keeps the box's ~/.gitconfig.
+  git_author_name: string | null;
+  git_author_email: string | null;
   // Read-only: whether the server runs box browsers at all.
   browser_available: boolean;
   created_at: string;

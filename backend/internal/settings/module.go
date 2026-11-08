@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"net/http"
 	"slices"
+	"strings"
+	"unicode"
 	"unicode/utf8"
 
 	"agentrove/internal/app"
@@ -77,6 +79,30 @@ func decodeList[T any](key string, raw json.RawMessage, validate func(*T) error)
 func lenBetween(s string, lo, hi int) bool {
 	n := utf8.RuneCountInString(s)
 	return n >= lo && n <= hi
+}
+
+// decodeGitIdentity reads a commit name or email: blank clears it (null), and
+// it must fit on one line of a git ident ("Name <email>"), so no control
+// characters or angle brackets.
+func decodeGitIdentity(key string, raw json.RawMessage) (*string, error) {
+	var v *string
+	if err := json.Unmarshal(raw, &v); err != nil {
+		return nil, httpx.Unprocessable(key + " must be a string or null")
+	}
+	if v == nil {
+		return nil, nil
+	}
+	t := strings.TrimSpace(*v)
+	if t == "" {
+		return nil, nil
+	}
+	if !lenBetween(t, 1, 200) || strings.ContainsAny(t, "<>") || strings.ContainsFunc(t, unicode.IsControl) {
+		return nil, httpx.Unprocessable(key + " must be one line of at most 200 characters without < or >")
+	}
+	if key == "git_author_email" && !strings.Contains(t, "@") {
+		return nil, httpx.Unprocessable("git_author_email must be an email address")
+	}
+	return &t, nil
 }
 
 func validateStreamAction(raw map[string]json.RawMessage, a *models.StreamAction) error {
@@ -193,6 +219,15 @@ func (m *Module) patch(w http.ResponseWriter, r *http.Request) error {
 				return err
 			}
 			set("github_personal_access_token", enc)
+		}
+	}
+	for _, key := range []string{"git_author_name", "git_author_email"} {
+		if raw, ok := body[key]; ok {
+			v, err := decodeGitIdentity(key, raw)
+			if err != nil {
+				return err
+			}
+			set(key, v)
 		}
 	}
 	if raw, ok := body["custom_instructions"]; ok {

@@ -57,6 +57,11 @@
   color: var(--theme-text-tertiary);
 }
 
+.text-input {
+  @include type.type-default;
+  margin-top: var(--space-2);
+}
+
 .theme-control {
   flex-shrink: 0;
 }

@@ -96,6 +96,8 @@ export function SettingsPage() {
       const payload: UserSettingsUpdate = {};
       const fields: (keyof UserSettingsUpdate)[] = [
         'github_personal_access_token',
+        'git_author_name',
+        'git_author_email',
         'custom_instructions',
         'custom_env_vars',
         'personas',
@@ -158,6 +160,15 @@ export function SettingsPage() {
   // persistSettings already surfaces failures via toast, so swallow the rejection here.
   const handlePersistSecret = (field: ApiFieldKey, value: string) => {
     void persistSettings((prev) => ({ ...prev, [field]: value || null })).catch(() => undefined);
+  };
+
+  const handlePersistGitIdentity = (
+    field: 'git_author_name' | 'git_author_email',
+    value: string,
+  ) => {
+    void persistSettings((prev) => ({ ...prev, [field]: value.trim() || null })).catch(
+      () => undefined,
+    );
   };
 
   const handlePersistInstructions = (value: string) => {
@@ -241,6 +252,7 @@ export function SettingsPage() {
         settings={localSettings}
         revealedFields={revealedFields}
         onPersistSecret={handlePersistSecret}
+        onPersistGitIdentity={handlePersistGitIdentity}
         onToggleVisibility={toggleFieldVisibility}
         onDeleteAllChats={handleDeleteAllChats}
         onNotificationsEnabledChange={handleNotificationsEnabledChange}

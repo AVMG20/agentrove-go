@@ -174,3 +174,52 @@ func TestSidebarFolderOrder(t *testing.T) {
 		t.Fatalf("order after reset = %v", out["sidebar_folder_order"])
 	}
 }
+
+// A commit name/email reaches every box command as GIT_AUTHOR_*/GIT_COMMITTER_*;
+// clearing it drops the vars so ~/.gitconfig applies again.
+func TestGitIdentity(t *testing.T) {
+	d, err := db.Open(t.TempDir() + "/t.db")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { d.Close() })
+	now := db.Now()
+	if _, err := d.Exec(`INSERT INTO users (id, email, username, hashed_password, is_active, created_at, updated_at) VALUES (?, 'a@b.c', 'a', 'x', 1, ?, ?)`, userID, now, now); err != nil {
+		t.Fatal(err)
+	}
+	keys, _ := auth.NewKeys(strings.Repeat("k", 40))
+	st := &store.Store{DB: d, Keys: keys}
+	a := &app.App{Cfg: &config.Config{APIPrefix: "/api/v1", SessionTTL: time.Hour}, DB: d, Keys: keys, Hub: events.NewHub(), Store: st, Sandboxes: &sandbox.Manager{}}
+	m := New(a)
+	patch := func(body string) error {
+		req := httptest.NewRequest("PATCH", "/api/v1/settings/", strings.NewReader(body))
+		req = req.WithContext(auth.WithUser(req.Context(), &models.User{ID: userID}))
+		req.Header.Set("Content-Type", "application/json")
+		return m.patch(httptest.NewRecorder(), req)
+	}
+	ctx := t.Context()
+	if err := patch(`{"git_author_name": "  Ada Lovelace ", "git_author_email": "ada@example.com"}`); err != nil {
+		t.Fatal(err)
+	}
+	env := st.UserEnv(ctx, userID)
+	for k, want := range map[string]string{"GIT_AUTHOR_NAME": "Ada Lovelace", "GIT_COMMITTER_NAME": "Ada Lovelace",
+		"GIT_AUTHOR_EMAIL": "ada@example.com", "GIT_COMMITTER_EMAIL": "ada@example.com"} {
+		if env[k] != want {
+			t.Fatalf("%s = %q, want %q", k, env[k], want)
+		}
+	}
+	for _, bad := range []string{`{"git_author_name": "a\nb"}`, `{"git_author_name": "a <b>"}`, `{"git_author_email": "nope"}`, `{"git_author_email": 1}`} {
+		if patch(bad) == nil {
+			t.Fatalf("accepted %s", bad)
+		}
+	}
+	if err := patch(`{"git_author_name": "", "git_author_email": null}`); err != nil {
+		t.Fatal(err)
+	}
+	env = st.UserEnv(ctx, userID)
+	for _, k := range []string{"GIT_AUTHOR_NAME", "GIT_COMMITTER_NAME", "GIT_AUTHOR_EMAIL", "GIT_COMMITTER_EMAIL"} {
+		if _, ok := env[k]; ok {
+			t.Fatalf("%s still set after clearing", k)
+		}
+	}
+}

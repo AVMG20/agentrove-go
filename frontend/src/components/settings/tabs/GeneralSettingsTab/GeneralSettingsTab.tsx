@@ -13,16 +13,20 @@ import { Switch } from '@/components/ui/primitives/Switch/Switch';
 import type { ApiFieldKey, GeneralSecretFieldConfig } from '@/types/settings.types';
 import type { UserSettings } from '@/types/user.types';
 import { useUIStore } from '@/store/uiStore';
+import { Input } from '@/components/ui/primitives/Input/Input';
 import { SecretInput } from '@/components/settings/inputs/SecretInput/SecretInput';
 import { ModelSelector } from '@/components/chat/model-selector/ModelSelector';
 import { THEMES } from '@/utils/theme';
 import styles from './GeneralSettingsTab.module.scss';
+
+type GitIdentityField = 'git_author_name' | 'git_author_email';
 
 interface GeneralSettingsTabProps {
   fields: GeneralSecretFieldConfig[];
   settings: UserSettings;
   revealedFields: Record<ApiFieldKey, boolean>;
   onPersistSecret: (field: ApiFieldKey, value: string) => void;
+  onPersistGitIdentity: (field: GitIdentityField, value: string) => void;
   onToggleVisibility: (field: ApiFieldKey) => void;
   onDeleteAllChats: () => void;
   onNotificationsEnabledChange: (enabled: boolean) => void;
@@ -107,6 +111,53 @@ function SecretField({
   );
 }
 
+function TextField({
+  field,
+  label,
+  description,
+  placeholder,
+  type,
+  autoComplete,
+  savedValue,
+  onPersist,
+}: {
+  field: GitIdentityField;
+  label: string;
+  description: string;
+  placeholder: string;
+  type: 'text' | 'email';
+  autoComplete: string;
+  savedValue: string;
+  onPersist: (field: GitIdentityField, value: string) => void;
+}) {
+  const { draft, setDraft, handleBlur } = useDraftField(savedValue, (v) => onPersist(field, v));
+  const id = `settings-${field}`;
+
+  return (
+    <div>
+      <div className={styles['field-header']}>
+        <div>
+          <label htmlFor={id} className={styles['setting-title']}>
+            {label}
+          </label>
+          <p className={styles['field-desc']}>{description}</p>
+        </div>
+      </div>
+      <Input
+        id={id}
+        type={type}
+        value={draft}
+        placeholder={placeholder}
+        autoComplete={autoComplete}
+        maxLength={200}
+        onChange={(e) => setDraft(e.target.value)}
+        onBlur={handleBlur}
+        className={styles['text-input']}
+      />
+    </div>
+  );
+}
+
 // Superuser-only: whether new accounts can sign up. When REGISTRATION_DISABLED
 // pins it off on the server there's nothing to change here, so the card hides.
 function AdministrationCard() {
@@ -145,6 +196,7 @@ export function GeneralSettingsTab({
   settings,
   revealedFields,
   onPersistSecret,
+  onPersistGitIdentity,
   onToggleVisibility,
   onDeleteAllChats,
   onNotificationsEnabledChange,
@@ -168,6 +220,26 @@ export function GeneralSettingsTab({
               onToggleVisibility={onToggleVisibility}
             />
           ))}
+          <TextField
+            field="git_author_name"
+            label="Commit Name"
+            description="Name Claude and other agents commit under. Leave empty to keep the box's git config."
+            placeholder="Ada Lovelace"
+            type="text"
+            autoComplete="name"
+            savedValue={settings.git_author_name ?? ''}
+            onPersist={onPersistGitIdentity}
+          />
+          <TextField
+            field="git_author_email"
+            label="Commit Email"
+            description="Email Claude and other agents commit under. Leave empty to keep the box's git config."
+            placeholder="ada@example.com"
+            type="email"
+            autoComplete="email"
+            savedValue={settings.git_author_email ?? ''}
+            onPersist={onPersistGitIdentity}
+          />
         </div>
       </SectionCard>
 
