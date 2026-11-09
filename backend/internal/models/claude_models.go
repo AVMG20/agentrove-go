@@ -23,7 +23,7 @@ func claudeModel(id, name string, legacy bool) ModelInfo {
 // ClaudeModels is the single model registry, ordered as in the model picker.
 var ClaudeModels = []ModelInfo{
 	claudeModel("claude-opus-5-5", "Opus 5.5", false),
-	claudeModel("claude-fable-5-1", "Fable 5.1", false),
+	claudeModel("claude-fable-5-2", "Fable 5.2", false),
 	claudeModel("claude-sonnet-5-5", "Sonnet 5.5", false),
 	claudeModel("claude-haiku-5-5", "Haiku 5.5", false),
 	claudeModel("opus", "Opus (latest)", false),
@@ -31,6 +31,7 @@ var ClaudeModels = []ModelInfo{
 	claudeModel("haiku", "Haiku (latest)", false),
 	claudeModel("fable", "Fable (latest)", false),
 	claudeModel("claude-opus-5", "Opus 5", true),
+	claudeModel("claude-fable-5-1", "Fable 5.1", true),
 	claudeModel("claude-fable-5", "Fable 5", true),
 }
 
