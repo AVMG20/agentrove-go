@@ -46,11 +46,13 @@ const (
 )
 
 // Window is one rate-limit window: how much of it is used, when it resets
-// and how long it is (18000 for the 5-hour window).
+// and how long it is (18000 for the 5-hour window). Name sets apart a
+// window that limits one model rather than the whole plan ("fable").
 type Window struct {
 	UsedPercent   float64     `json:"used_percent"`
 	ResetsAt      db.NullTime `json:"resets_at"`
 	WindowSeconds int         `json:"window_seconds"`
+	Name          string      `json:"name,omitempty"`
 }
 
 // Device is one device sharing a proxied plan, as the bitsec proxy reports
@@ -251,7 +253,13 @@ func ParseBody(provider string, body any) Response {
 	if session == nil && weekly == nil {
 		return errorResponse(provider, "Usage response had no 5-hour or weekly window")
 	}
-	res := okResponse(p, session, weekly)
+	// Fable's own weekly limit, which Claude Code calls
+	// seven_day_overage_included ("Fable limit").
+	fable := parseWindow(m["seven_day_overage_included"], weekSeconds)
+	if fable != nil {
+		fable.Name = "fable"
+	}
+	res := okResponse(p, session, weekly, fable)
 	res.Devices = parseDevices(m["devices"])
 	return res
 }

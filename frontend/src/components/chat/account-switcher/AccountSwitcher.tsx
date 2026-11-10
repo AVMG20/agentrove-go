@@ -19,7 +19,7 @@ import {
   noUsageReason,
   profileStatusLabel,
 } from '@/utils/profiles';
-import { formatResetInShort, summarizeWindow, windowLabels } from '@/utils/planUsage';
+import { formatResetInShort, summarizeWindow, windowKey, windowLabels } from '@/utils/planUsage';
 import type { Profile, ProviderKind } from '@/types/profile.types';
 import type { AccountUsage, UsageWindow } from '@/types/usage.types';
 import { UsageBar } from './UsageBar';
@@ -112,7 +112,13 @@ export function AccountSwitcher({
   const provider = selected?.provider ?? fallbackProvider;
   const showUsage = !!selected && hasWindows(usage);
   const first = showUsage ? summarizeWindow(usage.windows[0], now) : null;
-  const usageText = showUsage ? usage.windows.map((w) => windowText(w, now)).join(' · ') : '';
+  // The composer keeps to the plan's windows; a model's own limit is in the card.
+  const usageText = showUsage
+    ? usage.windows
+        .filter((w) => !w.name)
+        .map((w) => windowText(w, now))
+        .join(' · ')
+    : '';
   // Phones have room for the first window only, its reset to the hour: "5% 4h".
   const compactUsage = first
     ? [`${Math.round(first.used)}%`, first.resetIn != null && formatResetInShort(first.resetIn)]
@@ -175,9 +181,9 @@ export function AccountSwitcher({
         <div className={styles.windows}>
           {usage.windows.map((w) => {
             const { used, resetLabel, tone } = summarizeWindow(w, now);
-            const { long } = windowLabels(w.window_seconds);
+            const { long } = windowLabels(w.window_seconds, w.name);
             return (
-              <div key={w.window_seconds} className={styles.window}>
+              <div key={windowKey(w)} className={styles.window}>
                 <div className={styles['window-row']}>
                   <span className={styles['window-name']}>{long}</span>
                   <span className={styles['window-used']}>{Math.round(used)}% used</span>
@@ -379,9 +385,9 @@ function AccountRow({
         {hasWindows(usage) &&
           usage.windows.map((w) => {
             const { used, resetLabel, tone } = summarizeWindow(w, now);
-            const { short, long } = windowLabels(w.window_seconds);
+            const { short, long } = windowLabels(w.window_seconds, w.name);
             return (
-              <span key={w.window_seconds} className={styles['row-window']} title={long}>
+              <span key={windowKey(w)} className={styles['row-window']} title={long}>
                 <span className={styles['row-window-text']}>
                   <span>{[short, resetLabel].filter(Boolean).join(' · ')}</span>
                   <span className={styles['row-window-used']}>{Math.round(used)}%</span>

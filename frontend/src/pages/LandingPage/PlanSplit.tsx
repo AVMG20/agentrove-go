@@ -55,7 +55,9 @@ export function PlanSplit({ profileId }: { profileId: string }) {
   const now = useNow(30_000);
   if (usage?.status !== 'ok' || people.length === 0) return null;
 
-  const weekly = usage.windows.find((w) => windowLabels(w.window_seconds).short === 'wk');
+  const weekly = usage.windows.find(
+    (w) => !w.name && windowLabels(w.window_seconds).short === 'wk',
+  );
   const total = people.reduce((sum, person) => sum + person.used, 0);
   const left = Math.max(0, 100 - Math.max(total, weekly ? clampPercent(weekly.used_percent) : 0));
   const resetLabel = weekly ? summarizeWindow(weekly, now).resetLabel : null;

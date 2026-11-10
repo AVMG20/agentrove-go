@@ -3,6 +3,8 @@ export interface UsageWindow {
   used_percent: number;
   resets_at: string | null;
   window_seconds: number;
+  // Set on a window that limits one model rather than the plan ("fable").
+  name?: string;
 }
 
 // One device sharing a proxied plan: its share of this week's plan usage and

@@ -66,5 +66,6 @@ describe('planUsage', () => {
     expect(windowLabels(2 * 24 * HOUR)).toEqual({ short: '2d', long: '2-day limit' });
     expect(windowLabels(HOUR)).toEqual({ short: '1h', long: '1-hour limit' });
     expect(windowLabels(60)).toEqual({ short: 'Limit', long: 'Usage limit' });
+    expect(windowLabels(604800, 'fable')).toEqual({ short: 'Fable', long: 'Fable weekly limit' });
   });
 });

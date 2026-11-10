@@ -15,8 +15,10 @@ export function usagePollInterval(working: boolean): number {
 }
 
 // The window's names by its length: short for the composer and account
-// rows ("5h", "wk"), long for the usage card ("5-hour limit").
-export function windowLabels(seconds: number): { short: string; long: string } {
+// rows ("5h", "wk"), long for the usage card ("5-hour limit"). A model's own
+// window is named after the model.
+export function windowLabels(seconds: number, name?: string): { short: string; long: string } {
+  if (name === 'fable') return { short: 'Fable', long: 'Fable weekly limit' };
   const hours = Math.round(seconds / 3600);
   if (hours === 5) return { short: '5h', long: '5-hour limit' };
   if (hours === 24 * 7) return { short: 'wk', long: 'Weekly limit' };
@@ -80,6 +82,11 @@ export function describeUsageWindow(
     minute: '2-digit',
   });
   return `${label}: ${used} · resets in ${formatResetIn(resetAt - now)} (${when})`;
+}
+
+// Tells apart windows of the same length (the plan's week and Fable's).
+export function windowKey(window: UsageWindow): string {
+  return `${window.name ?? 'plan'}-${window.window_seconds}`;
 }
 
 // Earliest reset still ahead, so the meter can refetch once it rolls over.

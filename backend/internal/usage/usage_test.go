@@ -121,6 +121,18 @@ func TestPublicOnlyControl(t *testing.T) {
 	}
 }
 
+// Fable's weekly limit is its own named window, after the plan's.
+func TestParseBodyFableWindow(t *testing.T) {
+	var body any
+	_ = json.Unmarshal([]byte(`{"five_hour":{"utilization":1},"seven_day":{"utilization":55},
+		"seven_day_overage_included":{"utilization":20,"resets_at":"2026-11-12T17:00:00Z"}}`), &body)
+	r := ParseBody("p", body)
+	if len(r.Windows) != 3 || r.Windows[1].Name != "" || r.Windows[2].Name != "fable" ||
+		r.Windows[2].UsedPercent != 20 || r.Windows[2].WindowSeconds != 604800 || !r.Windows[2].ResetsAt.Valid {
+		t.Fatalf("windows = %+v", r.Windows)
+	}
+}
+
 func TestParseBody(t *testing.T) {
 	var body any
 	_ = json.Unmarshal([]byte(`{"five_hour":{"utilization":42.5,"resets_at":"2026-01-02T03:04:05Z"},
