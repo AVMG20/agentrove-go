@@ -186,3 +186,11 @@ func TestInterruptCancelQueuedReportsDropped(t *testing.T) {
 		t.Fatalf("control request = %v, want interrupt with cancel_queued", last)
 	}
 }
+
+// A new managed CLI release respawns the session.
+func TestFingerprintCoversBinaryVersion(t *testing.T) {
+	a, b := Config{Binary: "/b/claude", BinaryVersion: "2.1.1"}, Config{Binary: "/b/claude", BinaryVersion: "2.1.2"}
+	if a.fingerprint() == b.fingerprint() {
+		t.Fatal("fingerprint ignores the CLI release")
+	}
+}

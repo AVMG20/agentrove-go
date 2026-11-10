@@ -59,6 +59,9 @@ type Config struct {
 	// Setup runs in the box shell before the CLI (a profile's dirs).
 	Setup  string
 	Binary string
+	// BinaryVersion is the release a managed Binary holds; an update changes
+	// it, so the next turn respawns the session on the new release.
+	BinaryVersion string
 }
 
 // fingerprint covers the launch-only fields (model and permission mode are
@@ -72,7 +75,8 @@ func (c Config) fingerprint() string {
 		Env                 map[string]string
 		Unset, UnsetGlobal  []string
 		Setup               string
-	}{c.Cwd, c.SystemPrompt, c.Effort, c.FullReplace, c.MCPServers, c.Settings, c.Env, c.Unset, c.UnsetGlobal, c.Setup})
+		Binary, Version     string
+	}{c.Cwd, c.SystemPrompt, c.Effort, c.FullReplace, c.MCPServers, c.Settings, c.Env, c.Unset, c.UnsetGlobal, c.Setup, c.Binary, c.BinaryVersion})
 	return string(b)
 }
 
@@ -178,10 +182,12 @@ func Start(ctx context.Context, sb *sandbox.Sandbox, chatID string, cfg Config) 
 	}
 	cmd := append([]string{bin}, cfg.args()...)
 	if sb.Kind == sandbox.KindDocker {
-		// Login shell so ~/.bashrc PATH (npm/nvm/native install) resolves claude.
-		script := `exec "$@"`
+		// Login shell so ~/.bashrc PATH (npm/nvm/native install) resolves
+		// claude. A managed binary a box doesn't mount yet (one created
+		// before the mount, until it restarts) falls back to that claude.
+		script := `b=$1; shift; [ -x "$b" ] || b=claude; exec "$b" "$@"`
 		if cfg.Setup != "" {
-			script = cfg.Setup + ` && exec "$@"`
+			script = cfg.Setup + ` || exit 1; ` + script
 		}
 		cmd = []string{"bash", "-lc", script, "claude"}
 		cmd = append(cmd, append([]string{bin}, cfg.args()...)...)
@@ -252,6 +258,7 @@ func start(ctx context.Context, proc sandbox.Process, release func(), sandboxID,
 	s.mu.Lock()
 	s.initInfo = resp
 	s.mu.Unlock()
+	RecordModels(resp)
 	return s, nil
 }
 

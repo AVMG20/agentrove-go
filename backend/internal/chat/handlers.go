@@ -61,7 +61,7 @@ func user(r *http.Request) *models.User { return auth.UserFrom(r.Context()) }
 func (m *Module) listModels(w http.ResponseWriter, r *http.Request) error {
 	switch k := r.URL.Query().Get("agent_kind"); k {
 	case "", models.ProviderClaude:
-		return httpx.OK(w, models.ClaudeModels)
+		return httpx.OK(w, models.Claude())
 	case "all":
 		return httpx.OK(w, models.AllModels())
 	default:

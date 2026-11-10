@@ -33,12 +33,14 @@ const (
 	// Claude's config dir inside HOME.
 	ContainerClaudeDir = ContainerHome + "/claude"
 	ContainerAskpass   = "/usr/local/bin/git-askpass"
-	ContainerUser      = "user"
-	ContainerUID       = 1000
-	TerminalType       = "xterm-256color"
-	ContainerPrefix    = "agentrove-sandbox-"
-	ManagedLabel       = "agentrove.managed"
-	BoxLabel           = "agentrove.box"
+	// The server-managed Claude CLI releases (read-only mount).
+	ContainerClaudeCLIDir = "/opt/agentrove/claude-cli"
+	ContainerUser         = "user"
+	ContainerUID          = 1000
+	TerminalType          = "xterm-256color"
+	ContainerPrefix       = "agentrove-sandbox-"
+	ManagedLabel          = "agentrove.managed"
+	BoxLabel              = "agentrove.box"
 	// InstanceLabel scopes containers to the API instance (by storage path),
 	// so two instances sharing a Docker daemon never reap each other's boxes.
 	InstanceLabel = "agentrove.instance"

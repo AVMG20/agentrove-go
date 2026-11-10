@@ -55,14 +55,14 @@ func ModelsFor(provider string) []ModelInfo {
 	case ProviderAntigravity:
 		return AntigravityModels
 	case ProviderClaude:
-		return ClaudeModels
+		return Claude()
 	}
 	return nil
 }
 
 // AllModels is every provider's models, Claude first.
 func AllModels() []ModelInfo {
-	out := make([]ModelInfo, 0, len(ClaudeModels)+len(CodexModels)+len(AntigravityModels))
+	out := make([]ModelInfo, 0, len(Claude())+len(CodexModels)+len(AntigravityModels))
 	for _, p := range Providers {
 		out = append(out, ModelsFor(p)...)
 	}

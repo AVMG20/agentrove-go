@@ -5,6 +5,7 @@ import (
 	"context"
 
 	"agentrove/internal/auth"
+	"agentrove/internal/claudecli"
 	"agentrove/internal/config"
 	"agentrove/internal/db"
 	"agentrove/internal/events"
@@ -23,6 +24,8 @@ type App struct {
 	Store     *store.Store
 	// Profiles are the provider accounts chats run on.
 	Profiles *profiles.Service
+	// ClaudeCLI is the server-managed Claude CLI (nil: the image's).
+	ClaudeCLI *claudecli.Updater
 
 	// Late-bound hooks so modules can call each other without import cycles.
 	// Set by main after all modules are constructed.

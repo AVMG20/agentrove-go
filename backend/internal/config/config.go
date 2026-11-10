@@ -90,7 +90,11 @@ type Config struct {
 	BrowserIdleTTL time.Duration
 
 	ClaudeBinary string
-	LogLevel     string
+	// ClaudeAutoUpdate keeps a server-managed copy of the newest Claude CLI
+	// (see internal/claudecli), checked every ClaudeUpdateInterval.
+	ClaudeAutoUpdate     bool
+	ClaudeUpdateInterval time.Duration
+	LogLevel             string
 }
 
 func Load() (*Config, error) {
@@ -140,6 +144,8 @@ func Load() (*Config, error) {
 		BrowserEnabled:         envBool("SANDBOX_BROWSER_ENABLED", true),
 		BrowserIdleTTL:         time.Duration(envInt("SANDBOX_BROWSER_IDLE_SECONDS", 600)) * time.Second,
 		ClaudeBinary:           env("CLAUDE_BINARY", "claude"),
+		ClaudeAutoUpdate:       envBool("CLAUDE_AUTO_UPDATE", true),
+		ClaudeUpdateInterval:   time.Duration(max(envInt("CLAUDE_UPDATE_INTERVAL_SECONDS", 3600), 60)) * time.Second,
 		LogLevel:               env("LOG_LEVEL", "INFO"),
 	}
 
@@ -182,6 +188,12 @@ func Load() (*Config, error) {
 // logins, toolchains (rustup, sdkman, nvm), caches and git config survive.
 func (c *Config) AgentHomeDir(userID string) string {
 	return filepath.Join(c.StoragePath, "agent-homes", userID)
+}
+
+// ClaudeCLIDir holds the server-managed Claude CLI releases, mounted
+// read-only into every box.
+func (c *Config) ClaudeCLIDir() string {
+	return filepath.Join(c.StoragePath, "claude-cli")
 }
 
 // UserWorkspacesDir holds the user's storage-managed projects (cloned or

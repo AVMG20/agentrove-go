@@ -545,7 +545,7 @@ func (m *Module) sessionConfig(sb *sandbox.Sandbox, req *turnRequest) claude.Con
 		ResumeID:       db.Deref(req.chat.SessionID),
 		Settings:       map[string]any{"outputStyle": "Concise"},
 		Env:            m.sessionEnv(req),
-		Binary:         m.a.Cfg.ClaudeBinary,
+		Binary:         m.a.ClaudeCLI.HostBinary(),
 	}
 	if p := req.profile; p != nil {
 		launch := p.Launch()
@@ -569,6 +569,9 @@ func (m *Module) sessionConfig(sb *sandbox.Sandbox, req *turnRequest) claude.Con
 	}
 	if sb.Kind == sandbox.KindDocker {
 		cfg.Binary = "claude"
+		if bin := m.a.ClaudeCLI.BoxBinary(); bin != "" {
+			cfg.Binary, cfg.BinaryVersion = bin, m.a.ClaudeCLI.Version()
+		}
 		m.installArtifactSkill(sb, req.userID)
 		if !req.fullReplace {
 			cfg.SystemPrompt += boxPrompt
@@ -1159,7 +1162,7 @@ func (m *Module) generateText(ctx context.Context, userID, modelID, systemPrompt
 		return "", errNoClaude
 	}
 	home := m.a.Cfg.AgentHomeDir(userID)
-	run := claude.OneShot{Binary: m.a.Cfg.ClaudeBinary, Env: p.ApplyEnv(m.a.Cfg.AgentGlobalEnv(), m.a.Store.UserEnv(ctx, userID)),
+	run := claude.OneShot{Binary: m.a.ClaudeCLI.HostBinary(), Env: p.ApplyEnv(m.a.Cfg.AgentGlobalEnv(), m.a.Store.UserEnv(ctx, userID)),
 		ConfigDir: p.HostConfigDir(home), AgentHome: home, AsUID: sandbox.ContainerUID}
 	return run.Run(ctx, modelID, systemPrompt, prompt)
 }

@@ -11,6 +11,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -124,6 +125,12 @@ func (d *DockerProvider) Create(ctx context.Context, opts CreateOptions) error {
 	if err != nil {
 		return fmt.Errorf("prepare box dirs: %w", err)
 	}
+	// The managed Claude CLI (internal/claudecli); empty until a release is
+	// downloaded, so the image's CLI is used meanwhile.
+	cli := d.cfg.ClaudeCLIDir()
+	if err := os.MkdirAll(cli, 0o755); err != nil {
+		return fmt.Errorf("prepare claude cli dir: %w", err)
+	}
 	hc := &container.HostConfig{
 		NetworkMode: container.NetworkMode(netName),
 		// no-new-privileges stays off on purpose: the box is a dev environment
@@ -143,6 +150,7 @@ func (d *DockerProvider) Create(ctx context.Context, opts CreateOptions) error {
 		Binds: []string{
 			d.hostPath(home) + ":" + ContainerHome,
 			d.hostPath(projects) + ":" + ContainerProjects,
+			d.hostPath(cli) + ":" + ContainerClaudeCLIDir + ":ro",
 		},
 	}
 	if d.cfg.DockerMemLimit != "" {
@@ -249,6 +257,11 @@ func (d *DockerProvider) EnsureRunning(ctx context.Context, sandboxID string, op
 	// (e.g. a newer Claude CLI) roll out; home and projects are on the host.
 	if img, err := d.cli.ImageInspect(ctx, d.cfg.DockerImage); err == nil && img.ID != info.Image {
 		slog.Info("recreating sandbox on the current image", "sandbox", sandboxID)
+		return d.Create(ctx, opts)
+	}
+	// Boxes created before the managed Claude CLI lack its mount.
+	if !slices.ContainsFunc(info.Mounts, func(m container.MountPoint) bool { return m.Destination == ContainerClaudeCLIDir }) {
+		slog.Info("recreating sandbox to mount the managed Claude CLI", "sandbox", sandboxID)
 		return d.Create(ctx, opts)
 	}
 	if err := d.moveBox(ctx, info, target); err != nil {

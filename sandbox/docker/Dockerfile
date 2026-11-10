@@ -104,6 +104,11 @@ COPY --from=browser-mcp /out/agentrove-browser-mcp /usr/local/bin/agentrove-brow
 # initialize + tools/list answers, so sessions don't start playwright-mcp
 # until a tool is used.
 RUN agentrove-browser-mcp -write-cache /usr/local/share/agentrove-browser/mcp-cache.json
+# The API mounts its newest Claude Code release read-only at
+# /opt/agentrove/claude-cli (backend/internal/claudecli); login shells put it
+# ahead of the image's copy. A user's own ~/.local/bin install still wins.
+RUN printf '%s\n' '[ -x /opt/agentrove/claude-cli/current/claude ] && PATH="/opt/agentrove/claude-cli/current:$PATH"' \
+        > /etc/profile.d/agentrove-claude.sh
 
 USER user
 WORKDIR /home/user/projects

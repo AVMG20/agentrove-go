@@ -388,7 +388,7 @@ func errorMessage(err error) string {
 // resolveModel defaults to the first Claude model and rejects unknown ids.
 func resolveModel(id *string) (string, error) {
 	if id == nil || *id == "" {
-		return models.ClaudeModels[0].ID, nil
+		return models.DefaultModel(models.ProviderClaude), nil
 	}
 	if models.ProviderOf(*id) == "" {
 		return "", errorf("Unknown model_id: %s", *id)

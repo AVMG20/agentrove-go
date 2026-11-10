@@ -14,6 +14,7 @@ import (
 
 	"agentrove/internal/app"
 	"agentrove/internal/auth"
+	"agentrove/internal/claudecli"
 	"agentrove/internal/config"
 	"agentrove/internal/db"
 	"agentrove/internal/events"
@@ -73,6 +74,8 @@ func run() error {
 	// Threads from before accounts move onto the box's Claude login.
 	a.Profiles.MigrateServerLogin(ctx)
 
+	a.ClaudeCLI = claudecli.New(cfg)
+	go a.ClaudeCLI.Run(ctx)
 	handler, shutdown, err := server.Build(ctx, a)
 	if err != nil {
 		return err
