@@ -253,9 +253,12 @@ func ParseBody(provider string, body any) Response {
 	if session == nil && weekly == nil {
 		return errorResponse(provider, "Usage response had no 5-hour or weekly window")
 	}
-	// Fable's own weekly limit, which Claude Code calls
-	// seven_day_overage_included ("Fable limit").
-	fable := parseWindow(m["seven_day_overage_included"], weekSeconds)
+	// Fable's own weekly limit: seven_day_fable (as the bitsec proxy sends
+	// it), or seven_day_overage_included, Claude Code's name for it.
+	fable := parseWindow(m["seven_day_fable"], weekSeconds)
+	if fable == nil {
+		fable = parseWindow(m["seven_day_overage_included"], weekSeconds)
+	}
 	if fable != nil {
 		fable.Name = "fable"
 	}

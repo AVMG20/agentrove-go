@@ -133,6 +133,20 @@ func TestParseBodyFableWindow(t *testing.T) {
 	}
 }
 
+// The bitsec proxy sends Fable's weekly limit as seven_day_fable.
+func TestParseBodyFableWindowProxy(t *testing.T) {
+	var body any
+	_ = json.Unmarshal([]byte(`{"five_hour":{"utilization":7,"resets_at":"2026-11-11T12:30:00.000Z"},
+		"seven_day":{"utilization":86,"resets_at":"2026-11-12T17:00:00.000Z"},
+		"seven_day_fable":{"utilization":31,"resets_at":"2026-11-12T17:00:00.000Z"},
+		"devices":[{"name":"Laptop","color":1,"usedPercentOfPlan":48.9,"blocked":false}]}`), &body)
+	r := ParseBody("claude.bitsec.dev", body)
+	if r.Status != "ok" || len(r.Windows) != 3 || r.Windows[2].Name != "fable" || r.Windows[2].UsedPercent != 31 ||
+		r.Windows[2].WindowSeconds != 604800 || !r.Windows[2].ResetsAt.Valid || len(r.Devices) != 1 {
+		t.Fatalf("response = %+v", r)
+	}
+}
+
 func TestParseBody(t *testing.T) {
 	var body any
 	_ = json.Unmarshal([]byte(`{"five_hour":{"utilization":42.5,"resets_at":"2026-01-02T03:04:05Z"},
