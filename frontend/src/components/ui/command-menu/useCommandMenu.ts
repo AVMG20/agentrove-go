@@ -1,22 +1,19 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import toast from 'react-hot-toast';
 import { useNavigate } from 'react-router-dom';
-import { useQueryClient } from '@tanstack/react-query';
 import { useUIStore } from '@/store/uiStore';
 import { type ThemeMeta } from '@/utils/theme';
 import { IS_MAC_PLATFORM } from '@/utils/platform';
-import type { ViewType, SplitDirection, Theme } from '@/types/ui.types';
+import type { Theme } from '@/types/ui.types';
+import { settingsPath } from '@/components/settings/settingsSections';
 import { useCommandMenuData } from './useCommandMenuData';
-import { isMainMode, isPanelMode } from './commandMenuModes';
+import { isMainMode } from './commandMenuModes';
 import {
-  COMMAND_TO_MODE,
   MAIN_FILTERS,
-  executeCommand,
-  type CommandItem,
-  type FlatFileItem,
   type MainFilter,
   type MenuListItem,
   type MenuMode,
+  type SettingRowItem,
 } from './commandRegistry';
 
 export function useCommandMenu() {
@@ -24,8 +21,6 @@ export function useCommandMenu() {
   const [activeIndex, setActiveIndex] = useState(0);
   const [mode, setMode] = useState<MenuMode>('all');
   const inputRef = useRef<HTMLInputElement>(null);
-  const searchInputRef = useRef<HTMLInputElement>(null);
-  const chatSearchInputRef = useRef<HTMLInputElement>(null);
   const previousFocusRef = useRef<Element | null>(null);
   const activeItemRef = useRef<HTMLDivElement>(null);
   const stateRef = useRef({ activeIndex: 0, mode: 'all' as MenuMode });
@@ -38,16 +33,12 @@ export function useCommandMenu() {
   const lastMouseRef = useRef<{ x: number; y: number } | null>(null);
   const listId = 'command-menu-list';
 
-  const queryClient = useQueryClient();
   const navigate = useNavigate();
 
   const {
     isOpen,
     isMobile,
     theme,
-    leafTileIds,
-    activeSlot,
-    chatId,
     sandboxId,
     worktreeCwd,
     branchesData,
@@ -67,13 +58,9 @@ export function useCommandMenu() {
     setActiveIndex(index);
   };
 
-  // The panels own their inputs; focus the right one after React flushes the mode change.
-  const focusModeInput = useCallback((next: MenuMode) => {
-    requestAnimationFrame(() => {
-      if (next === 'grep') searchInputRef.current?.focus();
-      else if (next === 'messages') chatSearchInputRef.current?.focus();
-      else inputRef.current?.focus();
-    });
+  // Refocus the field after React flushes the mode change.
+  const focusModeInput = useCallback(() => {
+    requestAnimationFrame(() => inputRef.current?.focus());
   }, []);
 
   const switchMode = useCallback(
@@ -83,19 +70,18 @@ export function useCommandMenu() {
       setMode(next);
       setQuery('');
       setActiveIndex(0);
-      focusModeInput(next);
+      focusModeInput();
     },
     [focusModeInput],
   );
 
   // Tab clicks and ⌘[/⌘] keep the typed query — filters narrow the current search.
-  // Crossing to/from a panel tab remounts the focused input, so refocus explicitly.
   const switchFilter = useCallback(
     (next: MainFilter) => {
       lastMouseRef.current = null;
       setMode(next);
       setActiveIndex(0);
-      focusModeInput(next);
+      focusModeInput();
     },
     [focusModeInput],
   );
@@ -116,47 +102,24 @@ export function useCommandMenu() {
     useUIStore.getState().setCommandMenuOpen(false);
   }, []);
 
-  const handleSelectItem = useCallback(
-    (cmd: CommandItem) => {
-      executeCommand(cmd, queryClient, navigate, false, { sandboxId, worktreeCwd });
-      close();
-    },
-    [close, queryClient, navigate, sandboxId, worktreeCwd],
-  );
-
-  const runCommand = useCallback(
-    (cmd: CommandItem) => {
-      const nextMode = COMMAND_TO_MODE[cmd.id];
-      if (nextMode) switchMode(nextMode);
-      else handleSelectItem(cmd);
-    },
-    [switchMode, handleSelectItem],
-  );
-
-  const handleSelectFile = useCallback(
-    (file: FlatFileItem) => {
-      // Jumps target the active chat's editor, or the chat-less landing editor
-      // (undefined chatId) when browsing workspace files before a chat exists.
-      useUIStore.getState().openFileInEditor(file.path, chatId);
-      close();
-    },
-    [close, chatId],
-  );
-
-  const handleOpenSearchResult = useCallback(
-    (path: string, lineNumber: number) => {
-      useUIStore.getState().openFileInEditor(path, chatId, lineNumber);
-      close();
-    },
-    [close, chatId],
-  );
-
   const handleOpenChatResult = useCallback(
     (chatId: string) => {
       navigate(`/chat/${chatId}`);
       close();
     },
     [close, navigate],
+  );
+
+  const handleSelectSetting = useCallback(
+    (setting: SettingRowItem) => {
+      if (setting.section) {
+        navigate(settingsPath(setting.section));
+        close();
+      } else {
+        switchMode('themes');
+      }
+    },
+    [close, navigate, switchMode],
   );
 
   const handleSelectBranch = useCallback(
@@ -197,14 +160,6 @@ export function useCommandMenu() {
     [close],
   );
 
-  const handleSplit = useCallback(
-    (viewId: ViewType, direction: SplitDirection) => {
-      useUIStore.getState().addViewToSplit(viewId, direction);
-      close();
-    },
-    [close],
-  );
-
   stateRef.current.activeIndex = activeIndex;
   stateRef.current.mode = mode;
   listItemsRef.current = listItems;
@@ -231,17 +186,6 @@ export function useCommandMenu() {
         const step = e.key === ']' ? 1 : -1;
         const current = MAIN_FILTERS.indexOf(m);
         switchFilter(MAIN_FILTERS[(current + step + MAIN_FILTERS.length) % MAIN_FILTERS.length]);
-        return;
-      }
-
-      if (isPanelMode(m)) {
-        // The embedded panel handles its own typing + click-to-open; don't
-        // hijack Enter/arrows here. Only wire Escape to close the menu.
-        if (e.key === 'Escape') {
-          e.preventDefault();
-          e.stopImmediatePropagation();
-          close();
-        }
         return;
       }
 
@@ -274,13 +218,8 @@ export function useCommandMenu() {
           } else {
             const item = listItemsRef.current[idx];
             if (!item) break;
-            if (item.kind === 'chat') {
-              handleOpenChatResult(item.chat.id);
-            } else if (item.kind === 'file') {
-              handleSelectFile(item.file);
-            } else {
-              runCommand(item.command);
-            }
+            if (item.kind === 'chat') handleOpenChatResult(item.chat.id);
+            else handleSelectSetting(item.setting);
           }
           break;
       }
@@ -290,8 +229,7 @@ export function useCommandMenu() {
     return () => window.removeEventListener('keydown', handleKeyDown, { capture: true });
   }, [
     isOpen,
-    runCommand,
-    handleSelectFile,
+    handleSelectSetting,
     handleOpenChatResult,
     handleSelectBranch,
     handleSelectTheme,
@@ -325,8 +263,6 @@ export function useCommandMenu() {
     setActiveIndex,
     activeIndex,
     inputRef,
-    searchInputRef,
-    chatSearchInputRef,
     activeItemRef,
     listId,
     activeDescendant,
@@ -334,12 +270,8 @@ export function useCommandMenu() {
     trimmedQuery,
     isMobile,
     listItems,
-    leafTileIds,
-    activeSlot,
     handleOpenChatResult,
-    handleSelectFile,
-    runCommand,
-    handleSplit,
+    handleSelectSetting,
     filteredBranches,
     branchesData,
     sandboxId,
@@ -349,7 +281,6 @@ export function useCommandMenu() {
     filteredThemes,
     theme,
     handleSelectTheme,
-    handleOpenSearchResult,
     modKey,
   };
 }

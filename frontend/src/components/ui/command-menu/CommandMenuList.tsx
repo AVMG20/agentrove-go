@@ -1,20 +1,11 @@
-import { Fragment, type Ref, type MouseEvent as ReactMouseEvent } from 'react';
-import { GitBranch, File, MessageSquare, PanelRight, PanelBottom } from 'lucide-react';
-import { Button } from '../primitives/Button/Button';
-import { FloatingTooltip } from '../FloatingTooltip/FloatingTooltip';
+import { Fragment, type ReactNode, type Ref, type MouseEvent as ReactMouseEvent } from 'react';
+import { GitBranch, MessageSquare } from 'lucide-react';
 import { HighlightMatch } from '../shared/HighlightMatch/HighlightMatch';
-import { viewTypeToTileId } from '@/utils/tileHelpers';
 import type { ThemeMeta } from '@/utils/theme';
-import type { ViewType, SplitDirection, SplitSlot, Theme } from '@/types/ui.types';
+import type { Theme } from '@/types/ui.types';
 import type { GitBranchesData } from '@/types/sandbox.types';
 import { MenuRow } from './MenuRow';
-import {
-  formatShortcut,
-  type FlatFileItem,
-  type CommandItem,
-  type MenuListItem,
-  type MenuMode,
-} from './commandRegistry';
+import type { MenuListItem, MenuMode, SettingRowItem } from './commandRegistry';
 import styles from './CommandMenuList.module.scss';
 
 interface CommandMenuListProps {
@@ -25,14 +16,9 @@ interface CommandMenuListProps {
   onActivate: (index: number, e: ReactMouseEvent) => void;
   query: string;
   trimmedQuery: string;
-  isMobile: boolean;
   listItems: MenuListItem[];
-  leafTileIds: Set<string>;
-  activeSlot: SplitSlot | null;
   onOpenChat: (id: string) => void;
-  onSelectFile: (file: FlatFileItem) => void;
-  onRunCommand: (cmd: CommandItem) => void;
-  onSplit: (viewId: ViewType, direction: SplitDirection) => void;
+  onSelectSetting: (setting: SettingRowItem) => void;
   filteredBranches: string[];
   branchesData: GitBranchesData | undefined;
   sandboxId: string | undefined;
@@ -41,6 +27,8 @@ interface CommandMenuListProps {
   filteredThemes: ThemeMeta[];
   theme: Theme;
   onSelectTheme: (value: Theme) => void;
+  // Message-content matches rendered after the list ("All").
+  messageResults?: ReactNode;
 }
 
 export function CommandMenuList({
@@ -51,14 +39,9 @@ export function CommandMenuList({
   onActivate,
   query,
   trimmedQuery,
-  isMobile,
   listItems,
-  leafTileIds,
-  activeSlot,
   onOpenChat,
-  onSelectFile,
-  onRunCommand,
-  onSplit,
+  onSelectSetting,
   filteredBranches,
   branchesData,
   sandboxId,
@@ -67,6 +50,7 @@ export function CommandMenuList({
   filteredThemes,
   theme,
   onSelectTheme,
+  messageResults,
 }: CommandMenuListProps) {
   const renderMainRow = (item: MenuListItem, index: number) => {
     const rowProps = {
@@ -100,81 +84,18 @@ export function CommandMenuList({
       );
     }
 
-    if (item.kind === 'file') {
-      const { file } = item;
-      return (
-        <Fragment key={`file-${file.path}`}>
-          {showHeader && <p className={styles['section-header']}>Files</p>}
-          <MenuRow {...rowProps} onSelect={() => onSelectFile(file)}>
-            <File className={styles['row-icon']} />
-            <span className={styles['file-line']}>
-              <HighlightMatch
-                text={file.name}
-                searchQuery={query}
-                className={styles['file-name']}
-              />
-              <span className={styles['file-path']}>{file.path}</span>
-            </span>
-          </MenuRow>
-        </Fragment>
-      );
-    }
-
-    const cmd = item.command;
-    const Icon = cmd.icon;
-    // Active/split state is scoped to the pane the user is in: the view counts as
-    // active only if the active pane's target tile (e.g. editor:split-2) is
-    // already on screen, so the split buttons stay available to surface it beside
-    // the other panes.
-    const isViewActive =
-      cmd.type === 'view' && leafTileIds.has(viewTypeToTileId(cmd.id, activeSlot));
+    const { setting } = item;
+    const Icon = setting.icon;
     return (
-      <Fragment key={`command-${cmd.id}`}>
-        {showHeader && <p className={styles['section-header']}>Actions</p>}
-        <MenuRow
-          {...rowProps}
-          onSelect={() => onRunCommand(cmd)}
-          trailing={
-            <>
-              {!isMobile && cmd.shortcut && (
-                <kbd className={styles.kbd}>{formatShortcut(cmd.shortcut)}</kbd>
-              )}
-              {cmd.type === 'view' && !isMobile && !isViewActive && (
-                <div className={styles['split-group']}>
-                  <FloatingTooltip content="Split right" className={styles['tooltip-wrap']}>
-                    <Button
-                      variant="unstyled"
-                      onMouseDown={(e) => e.preventDefault()}
-                      onClick={() => onSplit(cmd.id, 'row')}
-                      className={styles['split-button']}
-                      aria-label="Split right"
-                    >
-                      <PanelRight className={styles['split-icon']} />
-                    </Button>
-                  </FloatingTooltip>
-                  <FloatingTooltip content="Split down" className={styles['tooltip-wrap']}>
-                    <Button
-                      variant="unstyled"
-                      onMouseDown={(e) => e.preventDefault()}
-                      onClick={() => onSplit(cmd.id, 'column')}
-                      className={styles['split-button']}
-                      aria-label="Split down"
-                    >
-                      <PanelBottom className={styles['split-icon']} />
-                    </Button>
-                  </FloatingTooltip>
-                </div>
-              )}
-            </>
-          }
-        >
+      <Fragment key={`setting-${setting.id}`}>
+        {showHeader && <p className={styles['section-header']}>Settings</p>}
+        <MenuRow {...rowProps} onSelect={() => onSelectSetting(setting)}>
           <Icon className={styles['row-icon']} />
           <HighlightMatch
-            text={cmd.label}
+            text={setting.label}
             searchQuery={query}
             className={styles['command-label']}
           />
-          {isViewActive && <span className={styles['active-dot']} />}
         </MenuRow>
       </Fragment>
     );
@@ -247,17 +168,16 @@ export function CommandMenuList({
       ) : (
         <>
           {listItems.map(renderMainRow)}
-          {listItems.length === 0 && (
+          {listItems.length === 0 && !messageResults && (
             <p className={styles.empty}>
               {mode === 'chats'
                 ? 'No matching chats'
-                : mode === 'files'
-                  ? 'No matching files'
-                  : mode === 'actions'
-                    ? 'No matching actions'
-                    : 'No results'}
+                : mode === 'settings'
+                  ? 'No matching settings'
+                  : 'No results'}
             </p>
           )}
+          {messageResults}
         </>
       )}
     </div>

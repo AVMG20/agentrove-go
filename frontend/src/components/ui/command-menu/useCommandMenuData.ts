@@ -5,15 +5,13 @@ import { useIsMobile } from '@/hooks/useIsMobile';
 import { activeSplitSlot } from '@/utils/tileHelpers';
 import { useChatContext } from '@/hooks/useChatContext';
 import { useActiveChat } from '@/hooks/useActiveChat';
-import { useSandboxFiles } from '@/hooks/useSandboxFiles';
 import { useGitBranchesQuery, useCheckoutBranchMutation } from '@/hooks/queries/useSandboxQueries';
 import { useWorkspacesList } from '@/hooks/queries/useWorkspaceQueries';
 import { useSidebarChatLists } from '@/hooks/queries/useSidebarChatLists';
 import { fuzzySearch } from '@/utils/fuzzySearch';
 import { THEMES } from '@/utils/theme';
 import {
-  ALL_COMMANDS,
-  flattenFiles,
+  SETTING_ROWS,
   type ChatRowItem,
   type MenuListItem,
   type MenuMode,
@@ -24,33 +22,22 @@ export function useCommandMenuData(mode: MenuMode, query: string) {
   const theme = useUIStore((state) => state.theme);
   const isMobile = useIsMobile();
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
-  // On-screen tile ids (not deduped view kinds) so the active-state/split
-  // affordances can distinguish a view's primary tile from its split variants.
-  // Keyed on visibility, not open membership — views have no tabs, so an
-  // open-but-hidden background tile must stay surfaceable/splittable. Gated on
-  // open — layout churn is irrelevant while the always-mounted menu is closed.
-  const visibleLayout = useUIStore((s) => (s.commandMenuOpen ? s.visibleLayout : null));
-  const leafTileIds = useMemo(() => new Set(visibleLayout?.flat() ?? []), [visibleLayout]);
   const primaryCtx = useChatContext();
 
-  // File/search/branch actions target the pane the user last interacted with — in
-  // split view each split pane has its own files/cwd/tiles.
+  // Branch switching targets the pane the user last interacted with — in
+  // split view each split pane has its own repo/cwd.
   const activeAgentTile = useUIStore((s) =>
     s.commandMenuOpen ? s.activeAgentTile : 'agent:primary',
   );
   const splitChatIds = useUIStore((s) => s.splitChatIds);
   const activeSlot = activeSplitSlot(activeAgentTile, splitChatIds);
-  const splitChatId = activeSlot ? splitChatIds[activeSlot - 1] : undefined;
   // Resolve the active pane's chat through the canonical hook, gated on the menu
   // being open so the always-mounted menu doesn't re-render on pane/split churn
   // while closed. Only used for a split pane — the primary reuses the
-  // chat context directly below (its files/chatId are available there immediately).
+  // chat context directly below.
   const activeChat = useActiveChat(isOpen);
   const splitChat = activeSlot ? activeChat : undefined;
-  const { fileStructure: splitFiles } = useSandboxFiles(splitChat ?? undefined, splitChatId);
 
-  const chatId = activeSlot ? splitChatId : primaryCtx.chatId;
-  const fileStructure = activeSlot ? splitFiles : primaryCtx.fileStructure;
   const sandboxId = activeSlot ? (splitChat?.sandbox_id ?? undefined) : primaryCtx.sandboxId;
   const worktreeCwd = activeSlot ? (splitChat?.worktree_cwd ?? undefined) : primaryCtx.worktreeCwd;
 
@@ -59,8 +46,6 @@ export function useCommandMenuData(mode: MenuMode, query: string) {
   // usually warm from BranchSelector so this rarely triggers a real fetch.
   const { data: branchesData } = useGitBranchesQuery(sandboxId, isOpen && !!sandboxId, worktreeCwd);
   const checkoutBranch = useCheckoutBranchMutation();
-
-  const canSwitchBranch = !!branchesData?.is_git_repo && branchesData.branches.length > 0;
 
   // Chat rows reuse the sidebar's queries (cache-warm on every page the menu mounts on),
   // gated on open + auth so the always-mounted menu doesn't fetch while closed or logged out.
@@ -77,8 +62,6 @@ export function useCommandMenuData(mode: MenuMode, query: string) {
       (a, b) => Date.parse(b.updated_at) - Date.parse(a.updated_at),
     );
   }, [isOpen, pinnedChats, recentChats]);
-
-  const flatFiles = useMemo(() => flattenFiles(fileStructure), [fileStructure]);
 
   const filteredChats = useMemo(
     () =>
@@ -100,44 +83,21 @@ export function useCommandMenuData(mode: MenuMode, query: string) {
     [filteredChats, workspaceBadgeById],
   );
 
-  const filteredFiles = useMemo(
+  // Settings join "All" only once something is typed; recent chats lead otherwise.
+  const filteredSettings = useMemo(
     () =>
-      mode !== 'all' && mode !== 'files'
-        ? []
-        : fuzzySearch(query, flatFiles, {
-            keys: ['name', 'path'],
-            limit: mode === 'files' ? 30 : 5,
-          }),
-    [query, flatFiles, mode],
-  );
-
-  const visibleCommands = useMemo(
-    () =>
-      ALL_COMMANDS.filter((cmd) => {
-        if (isMobile && cmd.hideOnMobile) return false;
-        if (cmd.requiresChat && !chatId) return false;
-        if (cmd.requiresSandbox && !sandboxId) return false;
-        if (cmd.id === 'switch-branch' && !canSwitchBranch) return false;
-        return true;
-      }),
-    [isMobile, canSwitchBranch, chatId, sandboxId],
-  );
-
-  const filteredCommands = useMemo(
-    () =>
-      mode !== 'all' && mode !== 'actions'
-        ? []
-        : fuzzySearch(query, visibleCommands, { keys: ['label'], limit: 20 }),
-    [query, visibleCommands, mode],
+      mode === 'settings' || (mode === 'all' && query.trim())
+        ? fuzzySearch(query, SETTING_ROWS, { keys: ['label'], limit: 20 })
+        : [],
+    [query, mode],
   );
 
   const listItems = useMemo<MenuListItem[]>(
     () => [
-      ...filteredCommands.map((command) => ({ kind: 'command' as const, command })),
       ...chatRows.map((chat) => ({ kind: 'chat' as const, chat })),
-      ...filteredFiles.map((file) => ({ kind: 'file' as const, file })),
+      ...filteredSettings.map((setting) => ({ kind: 'setting' as const, setting })),
     ],
-    [chatRows, filteredFiles, filteredCommands],
+    [chatRows, filteredSettings],
   );
 
   const orderedBranches = useMemo(() => {
@@ -168,9 +128,6 @@ export function useCommandMenuData(mode: MenuMode, query: string) {
     isOpen,
     isMobile,
     theme,
-    leafTileIds,
-    activeSlot,
-    chatId,
     sandboxId,
     worktreeCwd,
     branchesData,

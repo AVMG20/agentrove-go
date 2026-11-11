@@ -22,10 +22,10 @@ export function useCommandMenu() {
 
   useMountEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (!(e.ctrlKey || e.metaKey) || !e.shiftKey) return;
+      if (!(e.ctrlKey || e.metaKey)) return;
 
-      // Skip Monaco/xterm — they own their own command palette.
-      if (e.code === COMMAND_MENU_SHORTCUT_CODE) {
+      // Ctrl/⌘+K (no Shift) toggles the menu. Skip Monaco/xterm — they bind it themselves.
+      if (e.code === COMMAND_MENU_SHORTCUT_CODE && !e.shiftKey && !e.altKey) {
         if (isEmbeddedEditor(e.target)) return;
         e.preventDefault();
         const { commandMenuOpen, setCommandMenuOpen } = useUIStore.getState();
@@ -33,7 +33,7 @@ export function useCommandMenu() {
         return;
       }
 
-      if (isEmbeddedEditor(e.target)) return;
+      if (!e.shiftKey || isEmbeddedEditor(e.target)) return;
       if (useUIStore.getState().commandMenuOpen) return;
 
       const cmd = SHORTCUT_MAP.get(e.code);

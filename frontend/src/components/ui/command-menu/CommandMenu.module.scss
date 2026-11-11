@@ -34,6 +34,11 @@
   }
 }
 
+.section-header {
+  @include type.type-section-header;
+  padding: var(--space-2) var(--space-1) var(--space-1);
+}
+
 .panel {
   height: 28rem;
 }

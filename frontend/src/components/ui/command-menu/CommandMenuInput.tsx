@@ -20,9 +20,9 @@ interface CommandMenuInputProps {
 const PLACEHOLDERS: Partial<Record<MenuMode, string>> = {
   branches: 'Search branches...',
   themes: 'Search themes...',
-  chats: 'Search chats...',
-  files: 'Search files...',
-  actions: 'Search actions...',
+  chats: 'Search chat titles...',
+  messages: 'Search messages...',
+  settings: 'Search settings...',
 };
 
 export function CommandMenuInput({
@@ -53,7 +53,7 @@ export function CommandMenuInput({
         variant="unstyled"
         value={query}
         onChange={(e) => onQueryChange(e.target.value)}
-        placeholder={PLACEHOLDERS[mode] ?? 'Search chats, files, actions...'}
+        placeholder={PLACEHOLDERS[mode] ?? 'Search chats, messages, settings...'}
         className={styles['input-field']}
         role="combobox"
         aria-expanded="true"

@@ -1,18 +1,21 @@
-import { memo, useCallback, useMemo, useRef, useState } from 'react';
-import { Loader2, Search, X } from 'lucide-react';
-import { Button } from '@/components/ui/primitives/Button/Button';
-import { FloatingTooltip } from '@/components/ui/FloatingTooltip/FloatingTooltip';
-import { Input } from '@/components/ui/primitives/Input/Input';
-import { useMountEffect } from '@/hooks/useMountEffect';
+import { memo, useMemo, type ReactNode } from 'react';
+import { Loader2 } from 'lucide-react';
+import clsx from 'clsx';
 import { useDebouncedValue } from '@/hooks/useDebouncedValue';
 import { useSearchChatsQuery } from '@/hooks/queries/useChatQueries';
 import type { ChatSearchResult } from '@/types/chat.types';
 import { ChatSearchResultGroup } from './ChatSearchResultGroup';
 import styles from './ChatSearchPanel.module.scss';
 
+// Message-content search results for a query typed elsewhere (the command menu's field).
 export interface ChatSearchPanelProps {
+  query: string;
   onOpenChat: (chatId: string) => void;
-  inputRef?: React.RefObject<HTMLInputElement | null>;
+  // A section of "All": no typing hint, and no empty notice while other sections matched.
+  inline?: boolean;
+  hideEmpty?: boolean;
+  // Section title shown above the results once there are any.
+  heading?: ReactNode;
 }
 
 interface WorkspaceGroup {
@@ -39,36 +42,17 @@ function groupByWorkspace(results: ChatSearchResult[]): WorkspaceGroup[] {
 }
 
 export const ChatSearchPanel = memo(function ChatSearchPanel({
+  query,
   onOpenChat,
-  inputRef,
+  inline = false,
+  hideEmpty = false,
+  heading,
 }: ChatSearchPanelProps) {
-  const [query, setQuery] = useState('');
   const debouncedQuery = useDebouncedValue(query, 250);
-  const localInputRef = useRef<HTMLInputElement>(null);
-  const activeInputRef = inputRef ?? localInputRef;
-
-  useMountEffect(() => {
-    activeInputRef.current?.focus();
-  });
 
   const { data, isFetching, error } = useSearchChatsQuery(debouncedQuery);
   const hasLoaded = !!data;
   const truncated = !!data?.truncated;
-
-  const handleClear = useCallback(() => {
-    setQuery('');
-    activeInputRef.current?.focus();
-  }, [activeInputRef]);
-
-  const handleKeyDown = useCallback(
-    (e: React.KeyboardEvent<HTMLInputElement>) => {
-      if (e.key === 'Escape' && query) {
-        e.preventDefault();
-        handleClear();
-      }
-    },
-    [query, handleClear],
-  );
 
   const { grouped, totalMatches, resultCount } = useMemo(() => {
     const results = data?.results ?? [];
@@ -83,39 +67,11 @@ export const ChatSearchPanel = memo(function ChatSearchPanel({
   const hasResults = resultCount > 0;
 
   return (
-    <div className={styles['chat-search-panel']}>
-      <div className={styles.header}>
-        <div role="search" className={styles['search-box']}>
-          <Search className={styles['search-icon']} />
-          <Input
-            ref={activeInputRef}
-            variant="unstyled"
-            type="text"
-            role="searchbox"
-            aria-label="Search in chats"
-            placeholder="Search chats"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            onKeyDown={handleKeyDown}
-            className={styles['search-input']}
-          />
-          {query && (
-            <FloatingTooltip content="Clear search" className={styles['tooltip-trigger']}>
-              <Button
-                onClick={handleClear}
-                variant="unstyled"
-                aria-label="Clear search"
-                className={styles['search-clear']}
-              >
-                <X className={styles['clear-icon']} />
-              </Button>
-            </FloatingTooltip>
-          )}
-        </div>
-      </div>
-
+    <div
+      className={clsx(styles['chat-search-panel'], inline && styles['chat-search-panel--inline'])}
+    >
       <div className={styles.results}>
-        {!hasQuery && (
+        {!hasQuery && !inline && (
           <p className={styles['empty-message']}>Type at least 2 characters to search.</p>
         )}
 
@@ -140,12 +96,13 @@ export const ChatSearchPanel = memo(function ChatSearchPanel({
           <p className={styles['error-message']}>Search failed — results may be incomplete.</p>
         )}
 
-        {hasQuery && hasLoaded && !hasResults && !isFetching && (
+        {hasQuery && hasLoaded && !hasResults && !isFetching && !hideEmpty && (
           <p className={styles['empty-message']}>No results for &ldquo;{debouncedQuery}&rdquo;</p>
         )}
 
         {hasQuery && hasResults && (
           <>
+            {heading}
             <p className={styles.summary}>
               {isFetching && <Loader2 className={styles['spin-icon']} />}
               <span>

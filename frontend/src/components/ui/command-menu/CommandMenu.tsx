@@ -1,12 +1,11 @@
 import clsx from 'clsx';
 import { createPortal } from 'react-dom';
 import { Button } from '../primitives/Button/Button';
-import { SearchPanel } from '@/components/editor/file-search/SearchPanel';
 import { ChatSearchPanel } from '@/components/chat/chat-search/ChatSearchPanel';
 import { CommandMenuInput } from './CommandMenuInput';
 import { CommandMenuList } from './CommandMenuList';
 import { useCommandMenu } from './useCommandMenu';
-import { FILTER_LABELS, isMainMode, isPanelMode } from './commandMenuModes';
+import { FILTER_LABELS, isMainMode } from './commandMenuModes';
 import { MAIN_FILTERS } from './commandRegistry';
 import styles from './CommandMenu.module.scss';
 
@@ -22,8 +21,6 @@ export function CommandMenu() {
     setActiveIndex,
     activeIndex,
     inputRef,
-    searchInputRef,
-    chatSearchInputRef,
     activeItemRef,
     listId,
     activeDescendant,
@@ -31,30 +28,23 @@ export function CommandMenu() {
     trimmedQuery,
     isMobile,
     listItems,
-    leafTileIds,
-    activeSlot,
     handleOpenChatResult,
-    handleSelectFile,
-    runCommand,
-    handleSplit,
+    handleSelectSetting,
     filteredBranches,
     branchesData,
     sandboxId,
-    worktreeCwd,
     checkoutBranch,
     handleSelectBranch,
     filteredThemes,
     theme,
     handleSelectTheme,
-    handleOpenSearchResult,
     modKey,
   } = useCommandMenu();
 
   if (!isOpen) return null;
 
   // Phones have no Escape key and the overlay around the dialog is a thin strip,
-  // so the dialog carries its own way out: Cancel beside the search field, or at
-  // the end of the tab row when a panel owns the field.
+  // so the dialog carries its own way out: Cancel beside the search field.
   const cancelButton = isMobile && (
     <Button
       variant="unstyled"
@@ -79,23 +69,19 @@ export function CommandMenu() {
         onClick={(e) => e.stopPropagation()}
         onKeyDown={(e) => e.stopPropagation()}
       >
-        {/* Panel tabs (Messages/Grep) embed panels that own their inputs, so the
-            shared query input is hidden there and the tab row leads the dialog. */}
-        {!isPanelMode(mode) && (
-          <CommandMenuInput
-            mode={mode}
-            query={query}
-            onQueryChange={(value) => {
-              setQuery(value);
-              setActiveIndex(0);
-            }}
-            inputRef={inputRef}
-            onBack={() => switchMode('all')}
-            listId={listId}
-            activeDescendant={activeDescendant}
-            trailing={cancelButton}
-          />
-        )}
+        <CommandMenuInput
+          mode={mode}
+          query={query}
+          onQueryChange={(value) => {
+            setQuery(value);
+            setActiveIndex(0);
+          }}
+          inputRef={inputRef}
+          onBack={() => switchMode('all')}
+          listId={listId}
+          activeDescendant={activeDescendant}
+          trailing={cancelButton}
+        />
 
         {isMainMode(mode) && (
           <div className={styles['filters-row']}>
@@ -112,22 +98,12 @@ export function CommandMenu() {
                 </Button>
               ))}
             </div>
-            {isPanelMode(mode) && cancelButton}
           </div>
         )}
 
-        {mode === 'grep' ? (
+        {mode === 'messages' ? (
           <div className={styles.panel}>
-            <SearchPanel
-              sandboxId={sandboxId ?? undefined}
-              cwd={worktreeCwd}
-              onOpenResult={handleOpenSearchResult}
-              inputRef={searchInputRef}
-            />
-          </div>
-        ) : mode === 'messages' ? (
-          <div className={styles.panel}>
-            <ChatSearchPanel onOpenChat={handleOpenChatResult} inputRef={chatSearchInputRef} />
+            <ChatSearchPanel query={query} onOpenChat={handleOpenChatResult} />
           </div>
         ) : (
           <CommandMenuList
@@ -138,14 +114,9 @@ export function CommandMenu() {
             onActivate={activateFromMouse}
             query={query}
             trimmedQuery={trimmedQuery}
-            isMobile={isMobile}
             listItems={listItems}
-            leafTileIds={leafTileIds}
-            activeSlot={activeSlot}
             onOpenChat={handleOpenChatResult}
-            onSelectFile={handleSelectFile}
-            onRunCommand={runCommand}
-            onSplit={handleSplit}
+            onSelectSetting={handleSelectSetting}
             filteredBranches={filteredBranches}
             branchesData={branchesData}
             sandboxId={sandboxId}
@@ -154,6 +125,18 @@ export function CommandMenu() {
             filteredThemes={filteredThemes}
             theme={theme}
             onSelectTheme={handleSelectTheme}
+            // "All" also searches message content, below the title and settings matches.
+            messageResults={
+              mode === 'all' && trimmedQuery.length >= 2 ? (
+                <ChatSearchPanel
+                  query={query}
+                  onOpenChat={handleOpenChatResult}
+                  inline
+                  hideEmpty={listItems.length > 0}
+                  heading={<p className={styles['section-header']}>Messages</p>}
+                />
+              ) : null
+            }
           />
         )}
 
@@ -164,7 +147,7 @@ export function CommandMenu() {
                 ? '↵ Switch branch · Esc to close'
                 : mode === 'themes'
                   ? '↵ Set theme · Esc to close'
-                  : isPanelMode(mode)
+                  : mode === 'messages'
                     ? `${modKey}[ or ${modKey}] change filter · Esc to close`
                     : `↑↓ Select · ↵ Open · ${modKey}[ or ${modKey}] change filter · Esc to close`}
             </span>

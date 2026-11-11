@@ -2,9 +2,8 @@ import { Search, SquarePen } from 'lucide-react';
 import clsx from 'clsx';
 import { Button } from '@/components/ui/primitives/Button/Button';
 import {
-  COMMAND_MENU_SHORTCUT,
+  COMMAND_MENU_SHORTCUT_LABEL,
   commandShortcutLabel,
-  formatShortcut,
 } from '@/components/ui/command-menu/commandRegistry';
 import styles from './SidebarActions.module.scss';
 
@@ -14,7 +13,6 @@ interface SidebarActionsProps {
 }
 
 const NEW_THREAD_SHORTCUT = commandShortcutLabel('new-thread');
-const SEARCH_SHORTCUT = formatShortcut(COMMAND_MENU_SHORTCUT);
 
 export function SidebarActions({ onNewChat, onOpenSearch }: SidebarActionsProps) {
   return (
@@ -31,7 +29,7 @@ export function SidebarActions({ onNewChat, onOpenSearch }: SidebarActionsProps)
       <Button onClick={onOpenSearch} variant="unstyled" className={styles.action}>
         <Search className={styles['action-icon']} />
         <span className={styles['action-label']}>Search</span>
-        <kbd className={styles.kbd}>{SEARCH_SHORTCUT}</kbd>
+        <kbd className={styles.kbd}>{COMMAND_MENU_SHORTCUT_LABEL}</kbd>
       </Button>
     </nav>
   );

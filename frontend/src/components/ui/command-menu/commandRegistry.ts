@@ -20,18 +20,20 @@ import {
   AppWindow,
 } from 'lucide-react';
 import { useUIStore } from '@/store/uiStore';
-import { settingsPath } from '@/components/settings/settingsSections';
+import {
+  SETTINGS_SECTIONS,
+  settingsPath,
+  type SettingsSectionId,
+} from '@/components/settings/settingsSections';
 import { useChatStore } from '@/store/chatStore';
 import { sandboxService } from '@/services/sandboxService';
 import { queryKeys } from '@/hooks/queries/queryKeys';
 import { invalidateGitState } from '@/hooks/queries/useSandboxQueries';
 import { activeSplitSlot } from '@/utils/tileHelpers';
-import { traverseFileStructure, getFileName } from '@/utils/file';
 import { IS_MAC_PLATFORM } from '@/utils/platform';
 import type { ViewType } from '@/types/ui.types';
 import type { Chat } from '@/types/chat.types';
 import type { Artifact } from '@/types/artifact.types';
-import type { FileStructure } from '@/types/file-system.types';
 import type { GitBranchesData } from '@/types/sandbox.types';
 
 export interface ViewCommandItem {
@@ -60,17 +62,12 @@ export interface ActionCommandItem {
 
 export type CommandItem = ViewCommandItem | ActionCommandItem;
 
-// Main-mode filter tabs (⌘[/⌘] cycle). Messages/Grep are content search, not Chats/Files.
-export type MainFilter = 'all' | 'chats' | 'messages' | 'files' | 'grep' | 'actions';
-export const MAIN_FILTERS: MainFilter[] = ['all', 'chats', 'messages', 'files', 'grep', 'actions'];
+// Main-mode filter tabs (⌘[/⌘] cycle). Chats match titles, Messages search content.
+export type MainFilter = 'all' | 'chats' | 'messages' | 'settings';
+export const MAIN_FILTERS: MainFilter[] = ['all', 'chats', 'messages', 'settings'];
 
 // Sub-modes replace the whole surface; main filters narrow the list or swap a panel.
 export type MenuMode = MainFilter | 'branches' | 'themes';
-
-export interface FlatFileItem {
-  path: string;
-  name: string;
-}
 
 // Title fuzzy-match rows; message-content search is the Messages tab.
 export interface ChatRowItem {
@@ -79,11 +76,23 @@ export interface ChatRowItem {
   workspaceName?: string;
 }
 
+// A settings page, or the theme picker sub-mode.
+export interface SettingRowItem {
+  id: string;
+  label: string;
+  icon: React.ComponentType<{ className?: string }>;
+  section?: SettingsSectionId;
+}
+
+export const SETTING_ROWS: SettingRowItem[] = [
+  ...SETTINGS_SECTIONS.map(({ id, label, icon }) => ({ id, label, icon, section: id })),
+  { id: 'theme', label: 'Theme', icon: Palette },
+];
+
 // One list for keyboard nav and sectioned rendering so order can't diverge.
 export type MenuListItem =
   | { kind: 'chat'; chat: ChatRowItem }
-  | { kind: 'file'; file: FlatFileItem }
-  | { kind: 'command'; command: CommandItem };
+  | { kind: 'setting'; setting: SettingRowItem };
 
 // Every global chord is Mod+Shift+<key> (⌘⇧ on macOS, Ctrl+Shift elsewhere). A page
 // can't intercept some of these and others open browser tools, so keys in
@@ -121,8 +130,10 @@ export const RESERVED_SHORTCUT_KEYS = new Set([
   ']',
 ]);
 
-// Opens/closes the command menu (sidebar "Search").
-export const COMMAND_MENU_SHORTCUT = 's';
+// Mod+K (no Shift) opens/closes the command menu (sidebar "Search"), the
+// usual search chord; pages get it before the browser's own search box.
+export const COMMAND_MENU_SHORTCUT_CODE = 'KeyK';
+export const COMMAND_MENU_SHORTCUT_LABEL = IS_MAC_PLATFORM ? '⌘K' : 'Ctrl+K';
 
 const VIEW_COMMANDS: ViewCommandItem[] = [
   { type: 'view', id: 'agent', label: 'Agent', icon: MessagesSquare, shortcut: 'a' },
@@ -223,8 +234,6 @@ const PUNCTUATION_CODES: Record<string, string> = { '.': 'Period', ',': 'Comma' 
 
 const shortcutToCode = (key: string) => PUNCTUATION_CODES[key] ?? `Key${key.toUpperCase()}`;
 
-export const COMMAND_MENU_SHORTCUT_CODE = shortcutToCode(COMMAND_MENU_SHORTCUT);
-
 export const SHORTCUT_MAP = new Map<string, CommandItem>(
   ALL_COMMANDS.flatMap((cmd) => (cmd.shortcut ? [[shortcutToCode(cmd.shortcut), cmd]] : [])),
 );
@@ -240,11 +249,6 @@ export const COMMAND_TO_MODE: Partial<Record<string, MenuMode>> = {
   'switch-branch': 'branches',
   'set-theme': 'themes',
 };
-
-export const flattenFiles = (files: FileStructure[]): FlatFileItem[] =>
-  traverseFileStructure(files, (item) =>
-    item.type === 'file' ? { path: item.path, name: getFileName(item.path) } : null,
-  );
 
 export function formatShortcut(key: string): string {
   const mod = IS_MAC_PLATFORM ? '⌘' : 'Ctrl';

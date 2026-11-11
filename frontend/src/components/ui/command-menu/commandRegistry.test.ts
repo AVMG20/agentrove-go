@@ -3,7 +3,6 @@ import { describe, it, expect, vi } from 'vitest';
 import { QueryClient } from '@tanstack/react-query';
 import {
   ALL_COMMANDS,
-  COMMAND_MENU_SHORTCUT,
   RESERVED_SHORTCUT_KEYS,
   SESSION_PANEL_SHORTCUT,
   SHORTCUT_MAP,
@@ -17,10 +16,7 @@ vi.mock('@/services/sandboxService', () => ({
   sandboxService: { gitPull: vi.fn(async () => ({ success: true, output: '' })) },
 }));
 
-const boundKeys = [
-  COMMAND_MENU_SHORTCUT,
-  ...ALL_COMMANDS.flatMap((cmd) => (cmd.shortcut ? [cmd.shortcut] : [])),
-];
+const boundKeys = ALL_COMMANDS.flatMap((cmd) => (cmd.shortcut ? [cmd.shortcut] : []));
 
 describe('global shortcuts', () => {
   it('never binds a browser-reserved Mod+Shift chord', () => {
@@ -35,7 +31,7 @@ describe('global shortcuts', () => {
     }
   });
 
-  it('binds each key once, the command menu included', () => {
+  it('binds each key once', () => {
     expect(new Set(boundKeys).size).toBe(boundKeys.length);
     // Every command chord resolves back to its own command.
     for (const cmd of ALL_COMMANDS) {
