@@ -51,8 +51,14 @@
   }
 }
 
-// A turn is running: a muted tick marks it at a glance (the open thread's
-// accent tick takes over when active).
+@keyframes working-tick {
+  50% {
+    opacity: 0.35;
+  }
+}
+
+// A turn is running: a pulsing accent tick marks it at a glance (the open
+// thread's steady tick takes over when active).
 .row--working:not(:global(.#{state.$state-active}))::before {
   content: '';
   position: absolute;
@@ -61,7 +67,12 @@
   bottom: var(--space-1-5);
   width: 2px;
   border-radius: var(--radius-full);
-  background-color: var(--theme-text-tertiary);
+  background-color: var(--theme-accent);
+  animation: working-tick 1.6s var(--easing-in-out) infinite;
+
+  @media (prefers-reduced-motion: reduce) {
+    animation: none;
+  }
 }
 
 .row--clickable {

@@ -1,5 +1,6 @@
 import { memo, useEffect, useRef, type MouseEvent } from 'react';
 import { Archive, Zap } from 'lucide-react';
+import { AsciiSpinner } from '@/components/ui/AsciiSpinner/AsciiSpinner';
 import { ChatStatusDot } from '@/components/ui/ChatStatusDot/ChatStatusDot';
 import { chatStatusTone, CHAT_STATUS_LABEL } from '@/utils/message';
 import { FloatingTooltip } from '@/components/ui/FloatingTooltip/FloatingTooltip';
@@ -62,7 +63,8 @@ export const SidebarChatItem = memo(function SidebarChatItem({
     <ProviderIcon provider={agentKind} className={styles['provider-icon']} />
   ) : null;
   // Persistent status on the leading icon (visible even on hover), mirroring the
-  // sidebar precedence. Every status is a dot; running's is a muted grey one.
+  // sidebar precedence. Running swaps the icon for the accent spinner so live
+  // threads stand out; every other status is a dot on the icon.
   const status = chatStatusTone({
     blocked: isChatBlocked,
     streaming: isChatStreaming,
@@ -73,7 +75,11 @@ export const SidebarChatItem = memo(function SidebarChatItem({
   const statusLabel = status ? CHAT_STATUS_LABEL[status] : null;
   // Mirrors the leading-slot render below — the workspace line indents to stay flush with the title
   const hasLeadingSlot = anchorIcon != null || status != null;
-  const statusSlot = hasLeadingSlot ? (
+  const statusSlot = isRunning ? (
+    <span className={styles['status-slot']}>
+      <AsciiSpinner className={styles['running-spinner']} />
+    </span>
+  ) : hasLeadingSlot ? (
     // The status dot sits on the icon corner (or centers when there's no
     // provider icon to anchor it).
     <span className={styles['status-slot']}>

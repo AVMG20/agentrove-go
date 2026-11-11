@@ -29,6 +29,11 @@
   color: var(--theme-text-tertiary);
 }
 
+.running-spinner {
+  font-size: var(--space-3-5);
+  line-height: 1;
+}
+
 .automation-icon {
   color: var(--theme-warning);
 }
