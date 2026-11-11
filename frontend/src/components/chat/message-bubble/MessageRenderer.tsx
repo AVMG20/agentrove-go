@@ -2,6 +2,7 @@ import React, { memo } from 'react';
 import { SegmentView } from './SegmentView';
 import { TraceLoadState, WorkedRollup } from './WorkedRollup';
 import { StepGroup } from './StepGroup';
+import { StepAction } from './StepAction';
 import { groupSteps, stepsLabel } from './stepGroups';
 import { useMessageRenderQuery } from '@/hooks/queries/useChatQueries';
 import { buildSegments, segmentsEqual, type MessageSegment } from './segmentBuilder';
@@ -123,8 +124,8 @@ export const MessageRenderer = memo(function MessageRenderer({
   // Without the rollup (live turns, steered turns), each run of tool calls and
   // thoughts folds behind its own header instead.
   const items = React.useMemo(
-    () => (rollUpTrace || awaitingFullRender ? null : groupSteps(segments)),
-    [rollUpTrace, awaitingFullRender, segments],
+    () => (rollUpTrace || awaitingFullRender ? null : groupSteps(segments, isStreaming)),
+    [rollUpTrace, awaitingFullRender, segments, isStreaming],
   );
   // Per-segment booleans instead of the active ids: when the active segment
   // changes, only the segments whose flag flipped lose their memo bailout.
@@ -152,20 +153,29 @@ export const MessageRenderer = memo(function MessageRenderer({
           <TraceLoadState failed={fullRender.isError} onRetry={() => void fullRender.refetch()} />
         )}
         {items ? (
-          items.map((item, index) =>
-            item.kind === 'segment' ? (
-              renderSegment(item.segment)
-            ) : (
+          items.map((item, index) => {
+            if (item.kind === 'segment') return renderSegment(item.segment);
+            const isLive = isStreaming && index === items.length - 1;
+            const latest = item.segments[item.segments.length - 1];
+            return (
               <StepGroup
                 key={item.id}
                 label={stepsLabel(item.segments)}
-                isLive={isStreaming && index === items.length - 1}
-                latest={renderSegment(item.segments[item.segments.length - 1])}
+                isLive={isLive}
+                action={
+                  isLive && (
+                    <StepAction
+                      segment={latest}
+                      isActiveThinking={latest.id === activeThinkingId}
+                      chatId={chatId}
+                    />
+                  )
+                }
               >
                 {item.segments.map(renderSegment)}
               </StepGroup>
-            ),
-          )
+            );
+          })
         ) : (
           <>
             {rollUpTrace ? (

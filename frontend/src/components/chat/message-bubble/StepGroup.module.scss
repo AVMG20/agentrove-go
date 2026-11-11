@@ -12,8 +12,11 @@
   display: flex;
   align-items: center;
   gap: var(--space-1);
+  max-width: 100%;
+  min-width: 0;
   padding: var(--space-0-5) 0;
   color: var(--theme-text-tertiary);
+  white-space: nowrap;
 
   // A full-row, finger-sized target on touch.
   @include responsive.media('touch') {
@@ -39,6 +42,25 @@
   margin-right: var(--space-0-5);
 }
 
+.step-label,
+.step-chevron {
+  flex-shrink: 0;
+}
+
+// The newest step of a live run, on the header's line: it truncates rather
+// than wraps so the header keeps one height whatever the step says.
+.step-action {
+  @include type.type-default;
+  @include type.type-overflow;
+  min-width: 0;
+  color: var(--theme-text-quaternary);
+
+  &::before {
+    content: '·';
+    margin-right: var(--space-1);
+  }
+}
+
 .step-chevron {
   height: var(--space-3-5);
   width: var(--space-3-5);
@@ -49,8 +71,7 @@
   }
 }
 
-.step-content,
-.step-latest {
+.step-content {
   @include anim.fade-in;
   margin-top: var(--space-1);
 }

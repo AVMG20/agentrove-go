@@ -20,12 +20,17 @@ const isStep = (segment: MessageSegment) =>
 // Folds each run of two or more consecutive tool calls and thoughts into one
 // group; text, steering, plans and standalone tools break a run. A group is
 // keyed by its first segment so its open state survives as the run grows.
-export function groupSteps(segments: MessageSegment[]): SegmentItem[] {
+// `liveTail` folds a trailing run from its first step, so a live run is a group
+// from the start instead of turning from a card into one at its second step.
+export function groupSteps(segments: MessageSegment[], liveTail = false): SegmentItem[] {
   const items: SegmentItem[] = [];
   let run: MessageSegment[] = [];
-  const flush = () => {
-    if (run.length > 1) items.push({ kind: 'steps', id: `steps-${run[0].id}`, segments: run });
-    else if (run.length === 1) items.push({ kind: 'segment', segment: run[0] });
+  const flush = (minSteps = 2) => {
+    if (run.length >= minSteps) {
+      items.push({ kind: 'steps', id: `steps-${run[0].id}`, segments: run });
+    } else if (run.length === 1) {
+      items.push({ kind: 'segment', segment: run[0] });
+    }
     run = [];
   };
   for (const segment of segments) {
@@ -36,7 +41,7 @@ export function groupSteps(segments: MessageSegment[]): SegmentItem[] {
     flush();
     items.push({ kind: 'segment', segment });
   }
-  flush();
+  flush(liveTail ? 1 : 2);
   return items;
 }
 

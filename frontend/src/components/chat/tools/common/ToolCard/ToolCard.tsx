@@ -1,4 +1,4 @@
-import React, { memo, useState } from 'react';
+import React, { memo, use, useState } from 'react';
 import clsx from 'clsx';
 import { Button } from '@/components/ui/primitives/Button/Button';
 import { FloatingTooltip } from '@/components/ui/FloatingTooltip/FloatingTooltip';
@@ -7,6 +7,7 @@ import type { ToolEventStatus } from '@/types/tools.types';
 import { statusIndicator } from '../statusIndicator';
 import toolText from '../toolText.module.scss';
 import styles from './ToolCard.module.scss';
+import { ToolCardCompactContext } from './ToolCardCompactContext';
 
 type ToolCardTitle = string | ((status: ToolEventStatus) => string);
 
@@ -38,7 +39,9 @@ export const ToolCard = memo(function ToolCard({
   defaultExpanded = false,
 }: ToolCardProps) {
   const [expanded, setExpanded] = useState(defaultExpanded);
+  const compact = use(ToolCardCompactContext);
   const resolvedTitle = typeof title === 'function' ? title(status) : title;
+  if (compact) return <>{resolvedTitle}</>;
 
   const hasDetailsError = status === 'failed' && error;
   const hasExpandableContent = Boolean(children) || Boolean(hasDetailsError);

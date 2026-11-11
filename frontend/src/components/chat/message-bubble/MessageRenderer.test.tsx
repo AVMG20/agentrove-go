@@ -34,6 +34,13 @@ vi.mock('./SegmentView', () => ({
   ),
 }));
 
+// A folded live group names its newest step through StepAction; expose which.
+vi.mock('./StepAction', () => ({
+  StepAction: ({ segment }: { segment: { id: string } }) => (
+    <span data-testid="step-action">{segment.id}</span>
+  ),
+}));
+
 // The completed-turn work trace collapses into WorkedRollup; expose it as a
 // boundary so the trace/tail split is assertable.
 vi.mock('./WorkedRollup', async (importOriginal) => ({
@@ -105,6 +112,8 @@ describe('MessageRenderer streaming wiring', () => {
       />,
       { wrapper },
     );
+    // A live run folds from its first step; open it to reach the segment.
+    fireEvent.click(screen.getByRole('button', { name: /^1 thought/ }));
     const segment = screen.getByTestId('segment');
     expect(segment.getAttribute('data-kind')).toBe('thinking');
     expect(segment.getAttribute('data-active-thinking')).toBe('true');
@@ -175,7 +184,7 @@ describe('MessageRenderer streaming wiring', () => {
     expect(renderedOrder()).toEqual(['thinking-0', 'tool-t1', 'text-0']);
   });
 
-  it('keeps the newest step of a live run in view while folded', () => {
+  it('names the newest step of a live run on its folded header', () => {
     const events: AssistantStreamEvent[] = [
       { type: 'assistant_text', text: 'looking' },
       { type: 'tool_started', tool: tool({ id: 't1', status: 'completed' }) },
@@ -183,8 +192,23 @@ describe('MessageRenderer streaming wiring', () => {
       { type: 'tool_started', tool: tool({ id: 't2' }) },
     ];
     render(<MessageRenderer events={events} isStreaming />, { wrapper });
-    expect(screen.getByRole('button', { name: '2 tool calls, 1 thought' })).toBeTruthy();
-    expect(renderedOrder()).toEqual(['text-0', 'tool-t2']);
+    const header = screen.getByRole('button', { name: /^2 tool calls, 1 thought/ });
+    expect(within(header).getByTestId('step-action').textContent).toBe('tool-t2');
+    expect(renderedOrder()).toEqual(['text-0']);
+    // Opened, the run lists every step and the header drops the live action.
+    fireEvent.click(header);
+    expect(screen.queryByTestId('step-action')).toBeNull();
+    expect(renderedOrder()).toEqual(['text-0', 'tool-t1', 'thinking-0', 'tool-t2']);
+  });
+
+  it('folds a live run from its first step', () => {
+    const events: AssistantStreamEvent[] = [
+      { type: 'assistant_text', text: 'looking' },
+      { type: 'tool_started', tool: tool({ id: 't1' }) },
+    ];
+    render(<MessageRenderer events={events} isStreaming />, { wrapper });
+    expect(screen.getByRole('button', { name: /^1 tool call/ })).toBeTruthy();
+    expect(renderedOrder()).toEqual(['text-0']);
   });
 
   it('leaves a lone step between texts unfolded', () => {
