@@ -40,10 +40,13 @@ export function StatusIndicator({ text, caretBlinking, trailing }: StatusIndicat
 
 interface StatusTypewriterProps {
   streamStartTime?: number;
+  // The turn is waiting for the stopped box to start, not for the model.
+  boxStarting?: boolean;
 }
 
 export const StatusTypewriter = memo(function StatusTypewriter({
   streamStartTime,
+  boxStarting = false,
 }: StatusTypewriterProps) {
   // Seed from the active stream's start so the timer survives chat switches —
   // the indicator sits inside the chat-keyed scroller and remounts on switch.
@@ -106,8 +109,8 @@ export const StatusTypewriter = memo(function StatusTypewriter({
 
   return (
     <StatusIndicator
-      text={text}
-      caretBlinking={holding}
+      text={boxStarting ? 'Starting your box' : text}
+      caretBlinking={boxStarting || holding}
       trailing={
         <span className={styles['status-elapsed']}>· {formatDuration(elapsed * 1000)}</span>
       }

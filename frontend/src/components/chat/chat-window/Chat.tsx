@@ -129,6 +129,7 @@ export const Chat = memo(function Chat() {
   const streamStartTime = useStreamStore((s) =>
     chatId ? s.activeStreamMetadata.find((m) => m.chatId === chatId)?.startTime : undefined,
   );
+  const boxStarting = useStreamStore((s) => !!chatId && s.boxStartingChatIds.has(chatId));
 
   const pendingMessages = useMessageQueueStore((storeState) =>
     chatId ? (storeState.queues.get(chatId) ?? EMPTY_QUEUE) : EMPTY_QUEUE,
@@ -403,7 +404,9 @@ export const Chat = memo(function Chat() {
 
     return (
       <ConversationColumn>
-        {showThinking && <StatusTypewriter streamStartTime={streamStartTime} />}
+        {showThinking && (
+          <StatusTypewriter streamStartTime={streamStartTime} boxStarting={boxStarting} />
+        )}
         {showWorking && (
           <StreamWorkingStatus streamStartTime={turnStartTime} activityKey={activityKey} />
         )}
@@ -422,6 +425,7 @@ export const Chat = memo(function Chat() {
     );
   }, [
     activityKey,
+    boxStarting,
     chatId,
     handleContinueTurn,
     handleRetryTurn,

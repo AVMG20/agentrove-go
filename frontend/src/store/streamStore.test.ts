@@ -20,6 +20,7 @@ beforeEach(() => {
     activeStreamMetadata: [],
     lastToolTitleByChatId: new Map(),
     completedChatIds: new Set(),
+    boxStartingChatIds: new Set(),
   });
 });
 
@@ -225,5 +226,21 @@ describe('addStreamMetadata / addStreamMetadataIfAbsent', () => {
       .getState()
       .addStreamMetadataIfAbsent({ chatId: 'c1', messageId: 'm1', startTime: 1 });
     expect(useStreamStore.getState().activeStreamMetadata).toHaveLength(1);
+  });
+});
+
+describe('setBoxStarting', () => {
+  it('tracks the chat until the box is ready', () => {
+    useStreamStore.getState().setBoxStarting('c1', true);
+    expect(useStreamStore.getState().boxStartingChatIds.has('c1')).toBe(true);
+    useStreamStore.getState().setBoxStarting('c1', false);
+    expect(useStreamStore.getState().boxStartingChatIds.has('c1')).toBe(false);
+  });
+
+  it('clears when the stream ends', () => {
+    useStreamStore.getState().addStream(makeStream('s1', 'c1', 'm1'));
+    useStreamStore.getState().setBoxStarting('c1', true);
+    useStreamStore.getState().removeStream('s1');
+    expect(useStreamStore.getState().boxStartingChatIds.has('c1')).toBe(false);
   });
 });

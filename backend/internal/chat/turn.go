@@ -368,6 +368,19 @@ func (t *turn) execute() (*claude.Result, error) {
 	}
 	release := sb.Acquire()
 	defer release()
+	// Waking a stopped box takes a while; say so instead of looking like the
+	// model is slow to answer.
+	if !sb.IsRunning(t.ctx) {
+		t.emit("box", map[string]any{"state": "starting"})
+		err := sb.Wake(t.ctx)
+		t.emit("box", map[string]any{"state": "ready"})
+		if err != nil {
+			if t.cancelled.Load() {
+				return nil, nil
+			}
+			return nil, fmt.Errorf("start your box: %w", err)
+		}
+	}
 	if reqProvider(t.req) != models.ProviderClaude {
 		return t.executeCLI(sb)
 	}

@@ -222,6 +222,9 @@ func (s *Sandbox) ensure(ctx context.Context) error {
 	return s.mgr.ensureRunning(ctx, s)
 }
 
+// Wake starts the sandbox if it is stopped.
+func (s *Sandbox) Wake(ctx context.Context) error { return s.ensure(ctx) }
+
 // Exec runs a command to completion inside the sandbox, waking it if needed.
 func (s *Sandbox) Exec(ctx context.Context, req ExecRequest) (ExecResult, error) {
 	if err := s.ensure(ctx); err != nil {

@@ -7,6 +7,9 @@ interface StreamState {
   activeStreamMetadata: StreamMetadata[];
   lastToolTitleByChatId: Map<string, string>;
   completedChatIds: Set<string>;
+  // Chats whose turn is waiting for the stopped box to start.
+  boxStartingChatIds: Set<string>;
+  setBoxStarting: (chatId: string, starting: boolean) => void;
   markCompleted: (chatId: string) => void;
   clearCompleted: (chatId: string) => void;
   addStream: (stream: ActiveStream) => void;
@@ -48,6 +51,14 @@ const upsertStreamMetadata = (
 const removeStreamMetadataEntry = (metadata: StreamMetadata[], chatId: string): StreamMetadata[] =>
   metadata.filter((item) => item.chatId !== chatId);
 
+const withChat = (ids: Set<string>, chatId: string, on: boolean): Set<string> => {
+  if (ids.has(chatId) === on) return ids;
+  const next = new Set(ids);
+  if (on) next.add(chatId);
+  else next.delete(chatId);
+  return next;
+};
+
 const shutdownStream = (stream: ActiveStream) => {
   // Multiplexed connection reconciles from the store — no per-stream socket.
   stream.isActive = false;
@@ -61,6 +72,14 @@ export const useStreamStore = create<StreamState>((set, get) => ({
   lastToolTitleByChatId: new Map<string, string>(),
   // Successful finishes since last view — sidebar "Done" badge until opened.
   completedChatIds: new Set<string>(),
+  boxStartingChatIds: new Set<string>(),
+
+  setBoxStarting: (chatId: string, starting: boolean) => {
+    set((state) => {
+      const next = withChat(state.boxStartingChatIds, chatId, starting);
+      return next === state.boxStartingChatIds ? state : { boxStartingChatIds: next };
+    });
+  },
 
   markCompleted: (chatId: string) => {
     set((state) => {
@@ -124,6 +143,9 @@ export const useStreamStore = create<StreamState>((set, get) => ({
         activeStreams: nextStreams,
         streamIdByChatMessage: nextIndex,
         lastToolTitleByChatId: nextLastToolTitles,
+        boxStartingChatIds: hasOtherStreamsForChat
+          ? state.boxStartingChatIds
+          : withChat(state.boxStartingChatIds, stream.chatId, false),
         activeStreamMetadata: hasOtherStreamsForChat
           ? state.activeStreamMetadata
           : removeStreamMetadataEntry(state.activeStreamMetadata, stream.chatId),
@@ -185,6 +207,7 @@ export const useStreamStore = create<StreamState>((set, get) => ({
         activeStreams: nextStreams,
         streamIdByChatMessage: nextIndex,
         lastToolTitleByChatId: nextLastToolTitles,
+        boxStartingChatIds: withChat(state.boxStartingChatIds, chatId, false),
         activeStreamMetadata: upsertStreamMetadata(state.activeStreamMetadata, {
           chatId: stream.chatId,
           messageId: newMessageId,
@@ -226,6 +249,7 @@ export const useStreamStore = create<StreamState>((set, get) => ({
         activeStreams: nextStreams,
         streamIdByChatMessage: nextIndex,
         lastToolTitleByChatId: nextLastToolTitles,
+        boxStartingChatIds: withChat(state.boxStartingChatIds, chatId, false),
         activeStreamMetadata: removeStreamMetadataEntry(state.activeStreamMetadata, chatId),
       };
     });

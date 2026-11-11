@@ -206,6 +206,11 @@ class StreamService {
       return;
     }
 
+    if (parsed.kind === 'box') {
+      useStreamStore.getState().setBoxStarting(chatId, parsed.payload.state === 'starting');
+      return;
+    }
+
     // Landing "last tool" title — after active-message guard so stale turns don't overwrite.
     if (
       parsed.kind === 'tool_started' &&

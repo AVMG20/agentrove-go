@@ -19,7 +19,8 @@ export type StreamKind =
   | 'complete'
   | 'error'
   | 'cancelled'
-  | 'queue_processing';
+  | 'queue_processing'
+  | 'box';
 
 export interface StreamEnvelope {
   chatId: string;

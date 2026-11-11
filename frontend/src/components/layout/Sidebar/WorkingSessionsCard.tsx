@@ -135,6 +135,7 @@ function SessionEntry({
   const chat = listedChat ?? fetchedChat;
   const agentKind = useChatAgentKind(chatId, chat?.session_agent_kind, chat?.provider);
   const lastToolTitle = useStreamStore((state) => state.lastToolTitleByChatId.get(chatId));
+  const boxStarting = useStreamStore((state) => state.boxStartingChatIds.has(chatId));
   const backgroundTitle = useBackgroundTasksStore((state) => state.tasksByChat[chatId]?.[0]?.title);
   const isDone = endedAt !== null;
   const workspaceName = chat ? workspaceBadgeById.get(chat.workspace_id)?.name : undefined;
@@ -168,7 +169,7 @@ function SessionEntry({
           <span className={styles.activity}>
             <AsciiSpinner className={styles.spinner} />
             <span className={styles['activity-text']}>
-              {lastToolTitle ?? backgroundTitle ?? 'Thinking'}
+              {boxStarting ? 'Starting box' : (lastToolTitle ?? backgroundTitle ?? 'Thinking')}
             </span>
           </span>
         )}
