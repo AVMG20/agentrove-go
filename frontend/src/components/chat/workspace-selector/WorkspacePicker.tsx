@@ -139,7 +139,6 @@ export function WorkspacePicker({
                       key={ws.id}
                       ws={ws}
                       isSelected={ws.id === selectedWorkspaceId}
-                      isPickerOpen={isOpen}
                       onSelect={selectWorkspace}
                     />
                   ))}
