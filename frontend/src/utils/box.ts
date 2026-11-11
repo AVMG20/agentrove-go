@@ -60,19 +60,6 @@ export function summarizeBox(box: BoxInfo, elapsedSeconds = 0): BoxSummary {
   };
 }
 
-// "System 32.1 MB · Home 2.0 GB · Projects 1.1 GB", leaving out unknown parts.
-export function boxSizeBreakdown(box: BoxInfo): string {
-  const parts: [string, number | null][] = [
-    ['System', box.disk_bytes],
-    ['Home', box.home_bytes],
-    ['Projects', box.projects_bytes],
-  ];
-  return parts
-    .filter((part): part is [string, number] => part[1] != null)
-    .map(([label, bytes]) => `${label} ${formatBytes(bytes)}`)
-    .join(' · ');
-}
-
 export function pruneSummary(result: PruneBoxResult): string {
   const lines = [
     result.freed_bytes != null ? `Freed ${formatBytes(result.freed_bytes)}.` : 'Box pruned.',

@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/fs"
 	"log/slog"
 	"maps"
 	"mime"
@@ -890,6 +891,15 @@ func (m *Module) startTurn(ctx context.Context, in startInput) (app.ChatTurnResu
 		return res, err
 	}
 
+	// A worktree thread whose project was pruned and cloned again gets its
+	// checkout back.
+	if wt := db.Deref(chat.WorktreeCwd); wt != "" {
+		if _, err := os.Stat(filepath.Join(ws.WorkspacePath, wt)); errors.Is(err, fs.ErrNotExist) {
+			if err := gitops.RestoreWorktree(ctx, sb, wt); err != nil {
+				return res, httpx.Errorf(503, "Couldn't restore this thread's worktree: %v", err)
+			}
+		}
+	}
 	// A chat bound to a worktree (incl. one created in another chat's) always
 	// runs there; otherwise create one only when this turn asks.
 	if chat.WorktreeCwd == nil && in.worktree {

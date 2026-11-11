@@ -1,4 +1,4 @@
-import { useId } from 'react';
+import { useId, type ReactNode } from 'react';
 import { AlertTriangle } from 'lucide-react';
 import { BaseModal } from '@/components/ui/shared/BaseModal/BaseModal';
 import { Button } from '@/components/ui/primitives/Button/Button';
@@ -9,7 +9,7 @@ interface ConfirmDialogProps {
   onClose: () => void;
   onConfirm: () => void;
   title: string;
-  message: string;
+  message: ReactNode;
   confirmLabel?: string;
   cancelLabel?: string;
 }
@@ -43,7 +43,7 @@ export function ConfirmDialog({
             <h2 id={titleId} className={styles.title}>
               {title}
             </h2>
-            <p className={styles.message}>{message}</p>
+            <div className={styles.message}>{message}</div>
           </div>
         </div>
       </div>

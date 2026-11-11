@@ -79,6 +79,24 @@ func CreateWorktree(ctx context.Context, sb *sandbox.Sandbox, chatID, baseRef st
 	return "", fmt.Errorf("%s", msg)
 }
 
+// RestoreWorktree recreates a worktree thread's checkout after its project
+// was cloned again (a box prune): on its branch from origin when that was
+// pushed, else fresh from HEAD.
+func RestoreWorktree(ctx context.Context, sb *sandbox.Sandbox, worktreeCwd string) error {
+	branch := "worktree-" + path.Base(worktreeCwd)
+	var res sandbox.ExecResult
+	for _, base := range []string{"origin/" + branch, ""} {
+		var err error
+		if res, err = sb.Shell(ctx, "", worktreeAddScript(worktreeCwd, branch, base), time.Minute); err != nil {
+			return err
+		}
+		if res.ExitCode == 0 {
+			return nil
+		}
+	}
+	return fmt.Errorf("%s", strings.TrimSpace(res.Output()))
+}
+
 // RemoveWorktree is best-effort: without --force git refuses dirty worktrees
 // and unmerged branches, so no work is ever destroyed.
 func RemoveWorktree(ctx context.Context, sb *sandbox.Sandbox, worktreeCwd string) {

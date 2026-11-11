@@ -1,13 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { BoxInfo, Workspace } from '@/types/workspace.types';
-import {
-  boxSizeBreakdown,
-  formatIdleDuration,
-  projectPath,
-  pruneSummary,
-  summarizeBox,
-  tildePath,
-} from './box';
+import { formatIdleDuration, projectPath, pruneSummary, summarizeBox, tildePath } from './box';
 
 const box = (over: Partial<BoxInfo> = {}): BoxInfo => ({
   available: true,
@@ -88,15 +81,6 @@ describe('tildePath', () => {
   it('leaves other paths alone', () => {
     expect(tildePath('/home/username/x')).toBe('/home/username/x');
     expect(tildePath('/opt/x')).toBe('/opt/x');
-  });
-});
-
-describe('boxSizeBreakdown', () => {
-  it('lists the known parts', () => {
-    expect(boxSizeBreakdown(box({ disk_bytes: 1024 * 1024, projects_bytes: 2 * 1024 ** 3 }))).toBe(
-      'System 1.0 MB · Projects 2.0 GB',
-    );
-    expect(boxSizeBreakdown(box())).toBe('');
   });
 });
 

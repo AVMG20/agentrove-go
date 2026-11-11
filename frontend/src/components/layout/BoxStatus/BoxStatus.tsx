@@ -6,13 +6,18 @@ import { ConfirmDialog } from '@/components/ui/ConfirmDialog/ConfirmDialog';
 import { useBoxQuery, useStopBoxMutation } from '@/hooks/queries/useWorkspaceQueries';
 import { useDropdown } from '@/hooks/useDropdown';
 import { useNow } from '@/hooks/useNow';
-import { BOX_HOME, boxSizeBreakdown, formatIdleDuration, summarizeBox } from '@/utils/box';
-import { formatBytes } from '@/utils/format';
+import { formatIdleDuration, summarizeBox } from '@/utils/box';
+import { BoxChanges } from './BoxChanges';
+import { BoxStorage } from './BoxStorage';
 import styles from './BoxStatus.module.scss';
 
-const RESET_MESSAGE =
-  `Stops the box and removes system packages installed with apt, so it starts fresh from the latest image. ` +
-  `Kept: your home folder (${BOX_HOME}) with its toolchains, settings and Claude login, and all projects.`;
+const RESET_MESSAGE = (
+  <BoxChanges
+    intro="Stops the box. It starts fresh from the latest image next time."
+    removes={['System packages installed with apt']}
+    keeps={['Your home folder (~): toolchains, settings and logins', 'All projects and threads']}
+  />
+);
 
 // "● Box running" in the sidebar footer; click for the idle countdown and stop/reset.
 export function BoxStatus() {
@@ -45,6 +50,13 @@ export function BoxStatus() {
   // The countdown ticks; it lives in the panel so the footer stays still.
   const counting = isRunning && !box.busy && box.idle_ttl_seconds > 0;
 
+  const state = isRunning ? `Running · ${detail}` : 'Stopped';
+  const note = box.busy
+    ? 'Claude is working in it. You can stop it once the turn ends.'
+    : isRunning
+      ? 'Stopping ends open terminals and background servers.'
+      : null;
+
   const stop = async (reset: boolean) => {
     try {
       await stopBox.mutateAsync({ reset });
@@ -75,51 +87,39 @@ export function BoxStatus() {
           <div className={styles.heading}>
             <span className={clsx(styles.dot, styles[`dot--${tone}`])} aria-hidden="true" />
             Your box
-            <span className={styles.state}>{isRunning ? 'Running' : 'Stopped'}</span>
+            <span className={styles.state}>{state}</span>
           </div>
           <p className={styles.description}>
-            One Linux box holds all your projects. It starts when you chat
+            One Linux box runs all your projects. It starts when you chat
             {box.idle_ttl_seconds > 0 &&
-              ` and stops after ${formatIdleDuration(box.idle_ttl_seconds)} without activity`}
-            . Everything in <code>{BOX_HOME}</code> stays.
+              ` and stops after ${formatIdleDuration(box.idle_ttl_seconds)} idle`}
+            .
           </p>
-          {counting && (
-            <p className={styles.meta}>{detail.charAt(0).toUpperCase() + detail.slice(1)}</p>
-          )}
-          {box.total_bytes != null && (
-            <p className={styles.meta}>
-              Size: {formatBytes(box.total_bytes)} ({boxSizeBreakdown(box)})
-            </p>
-          )}
-          {box.busy && (
-            <p className={styles.meta}>
-              Claude is working in it. You can stop it once the turn ends.
-            </p>
-          )}
-          {!box.busy && isRunning && (
-            <p className={styles.meta}>Stopping ends open terminals and background servers.</p>
-          )}
+          <BoxStorage box={box} className={styles.storage} />
           <div className={styles.actions}>
-            <Button
-              type="button"
-              size="sm"
-              variant="outline"
-              disabled={!isRunning || box.busy}
-              isLoading={stopBox.isPending && !stopBox.variables?.reset}
-              onClick={() => void stop(false)}
-            >
-              Stop now
-            </Button>
-            <Button
-              type="button"
-              size="sm"
-              variant="ghost"
-              disabled={box.busy || box.state === 'none'}
-              isLoading={stopBox.isPending && !!stopBox.variables?.reset}
-              onClick={() => setConfirmReset(true)}
-            >
-              Reset system…
-            </Button>
+            {note && <p className={styles.meta}>{note}</p>}
+            <div className={styles.buttons}>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                disabled={!isRunning || box.busy}
+                isLoading={stopBox.isPending && !stopBox.variables?.reset}
+                onClick={() => void stop(false)}
+              >
+                Stop now
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                disabled={box.busy || box.state === 'none'}
+                isLoading={stopBox.isPending && !!stopBox.variables?.reset}
+                onClick={() => setConfirmReset(true)}
+              >
+                Reset system…
+              </Button>
+            </div>
           </div>
         </div>
       )}

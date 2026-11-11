@@ -3,18 +3,28 @@ import toast from 'react-hot-toast';
 import { Button } from '@/components/ui/primitives/Button/Button';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog/ConfirmDialog';
 import { useBoxQuery, usePruneBoxMutation } from '@/hooks/queries/useWorkspaceQueries';
-import { BOX_HOME, boxSizeBreakdown, pruneSummary } from '@/utils/box';
-import { formatBytes } from '@/utils/format';
+import { BoxChanges } from '@/components/layout/BoxStatus/BoxChanges';
+import { BoxStorage } from '@/components/layout/BoxStatus/BoxStorage';
+import { pruneSummary } from '@/utils/box';
 import styles from './GeneralSettingsTab.module.scss';
 
-const PRUNE_MESSAGE =
-  `Frees disk space in your box. Removed: system packages installed with apt, toolchains and caches in ` +
-  `${BOX_HOME} (Rust, Go, npm, pip…), and the files of projects cloned from git. ` +
-  `Kept: your threads, projects, Claude and other logins, git and SSH settings, and any project with ` +
-  `uncommitted, unpushed or stashed work. A pruned project is cloned again the next time you use it; ` +
-  `reinstall toolchains when you need them.`;
+const PRUNE_MESSAGE = (
+  <BoxChanges
+    intro="Resets your box to nearly clean to free disk space. Projects are cloned again when you next use them; reinstall toolchains when you need them."
+    removes={[
+      'System packages installed with apt',
+      'Toolchains, caches and global installs in ~ (Rust, Go, npm, pip…)',
+      'The files of every project cloned from git, including uncommitted, unpushed and stashed work',
+    ]}
+    keeps={[
+      'Configs and logins: Claude, git, SSH and your shell',
+      'Your threads and projects',
+      'Projects not cloned from git',
+    ]}
+  />
+);
 
-// Data management row: the box's size and a button to prune it.
+// Data management row: the box's storage and a button to prune it.
 export function PruneBoxRow() {
   const { data: box } = useBoxQuery();
   const prune = usePruneBoxMutation();
@@ -32,18 +42,15 @@ export function PruneBoxRow() {
     }
   };
 
-  const breakdown = boxSizeBreakdown(box);
   return (
     <div className={styles['data-row']}>
       <div className={styles['pref-text']}>
-        <h3 className={styles['setting-title']}>
-          Prune Box{box.total_bytes != null && ` · ${formatBytes(box.total_bytes)}`}
-        </h3>
+        <h3 className={styles['setting-title']}>Prune Box</h3>
         <p className={styles['field-desc']}>
-          Remove installed packages, toolchains and project files to free space. Threads and
-          projects stay; projects are cloned again when you use them.
-          {breakdown && ` ${breakdown}.`}
+          Reset your box to nearly clean: installed packages, toolchains and project files go;
+          configs, logins and threads stay.
         </p>
+        <BoxStorage box={box} className={styles['box-storage']} />
       </div>
       <Button
         type="button"

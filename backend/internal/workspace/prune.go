@@ -12,7 +12,6 @@ import (
 
 	"agentrove/internal/auth"
 	"agentrove/internal/db"
-	"agentrove/internal/gitops"
 	"agentrove/internal/httpx"
 	"agentrove/internal/models"
 	"agentrove/internal/sandbox"
@@ -30,10 +29,12 @@ type pruneResult struct {
 	Box        sandbox.BoxInfo `json:"box"`
 }
 
-// pruneBox frees the user's box: the system packages, the home's toolchains
-// and caches, and the files of every git project that holds no unsaved
-// work. Threads and projects stay; a pruned project is cloned again the
-// next time it is used (restoreFiles).
+// pruneBox resets the user's box to nearly clean: the system packages, the
+// home's toolchains, caches and global installs, and the files of every git
+// project, unsaved work included. Configs and logins in home, threads and
+// projects stay; a pruned project is cloned again the next time it is used
+// (restoreFiles), and a worktree thread gets a fresh worktree on its next
+// turn.
 func (m *Module) pruneBox(w http.ResponseWriter, r *http.Request) error {
 	u := auth.UserFrom(r.Context())
 	// Pruning shouldn't stop halfway when the client disconnects.
@@ -59,7 +60,7 @@ func (m *Module) pruneBox(w http.ResponseWriter, r *http.Request) error {
 		if _, err := os.Stat(ws.WorkspacePath); err != nil {
 			continue // already pruned
 		}
-		if reason := m.keepReason(ctx, ws); reason != "" {
+		if reason := keepReason(ws); reason != "" {
 			res.Kept = append(res.Kept, keptProject{Name: ws.Name, Reason: reason})
 			continue
 		}
@@ -99,44 +100,11 @@ func (m *Module) pruneBox(w http.ResponseWriter, r *http.Request) error {
 }
 
 // keepReason says why a project's files can't be pruned, or "" when they
-// can be cloned again without losing anything.
-func (m *Module) keepReason(ctx context.Context, ws *models.Workspace) string {
+// can be cloned again. Unsaved work in a git project goes with its files:
+// a prune is a reset, and the confirmation says so.
+func keepReason(ws *models.Workspace) string {
 	if db.Deref(ws.SourceType) != "git" || db.Deref(ws.SourceURL) == "" {
 		return "not cloned from git, so its files exist only here"
-	}
-	sb, err := m.a.Sandboxes.For(ws)
-	if err != nil {
-		return "could not check it for unsaved work"
-	}
-	repo, err := gitops.OpenHost(sb, "")
-	if err != nil {
-		return "could not check it for unsaved work"
-	}
-	checks := []struct {
-		args   []string
-		reason string
-		lines  int // more output lines than this means unsaved work
-	}{
-		{[]string{"status", "--porcelain"}, "has uncommitted changes", 0},
-		{[]string{"log", "--branches", "--not", "--remotes", "--oneline", "-1"}, "has commits that aren't pushed", 0},
-		{[]string{"stash", "list"}, "has stashed changes", 0},
-		// Worktree threads keep their own checkouts inside the project.
-		{[]string{"worktree", "list", "--porcelain"}, "has worktree threads", 1},
-	}
-	for _, c := range checks {
-		out, err := repo.Run(ctx, c.args...)
-		if err != nil || out.Exit != 0 {
-			return "could not check it for unsaved work"
-		}
-		n := 0
-		for _, l := range strings.Split(out.Stdout, "\n") {
-			if strings.HasPrefix(l, "worktree ") || (c.lines == 0 && strings.TrimSpace(l) != "") {
-				n++
-			}
-		}
-		if n > c.lines {
-			return c.reason
-		}
 	}
 	return ""
 }

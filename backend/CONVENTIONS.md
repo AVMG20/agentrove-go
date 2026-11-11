@@ -24,7 +24,7 @@ Scope changes vs Python:
   `Sandbox.HostPath(...)` so they work while the container is stopped.
   Mutations (writes via git commands, commit, push, checkout, …) and agent
   processes go through `Sandbox.Exec`/`Start`, which wake the container.
-- **Idle containers stop** after `SANDBOX_IDLE_TTL_SECONDS` (default 900).
+- **Idle containers stop** after `SANDBOX_IDLE_TTL_SECONDS` (default 1800).
   Anything holding a container busy for a long time (terminal, agent turn)
   must hold `sandbox.Acquire()` / the release func from `Start`/`StartPTY`.
 
