@@ -17,6 +17,13 @@ export function projectPath(workspace: Workspace, worktreeCwd?: string | null): 
   return worktreeCwd ? `${root}/${worktreeCwd}` : root;
 }
 
+// A box path as ~/… for display, where space is short.
+export function tildePath(path: string): string {
+  return path === BOX_HOME || path.startsWith(`${BOX_HOME}/`)
+    ? `~${path.slice(BOX_HOME.length)}`
+    : path;
+}
+
 export function formatIdleDuration(seconds: number): string {
   const minutes = Math.ceil(Math.max(0, seconds) / 60);
   if (minutes < 60) return `${minutes}m`;

@@ -27,7 +27,7 @@ import type { Workspace } from '@/types/workspace.types';
 import { getRelativeTime } from '@/utils/date';
 import { getContextUsageDisplay } from '@/utils/contextUsage';
 import { openExternalUrl } from '@/utils/openExternal';
-import { projectPath } from '@/utils/box';
+import { projectPath, tildePath } from '@/utils/box';
 import styles from './SessionPanel.module.scss';
 
 // Dialogs and view toggles act on the focused pane; the panel describes the
@@ -113,7 +113,7 @@ function EnvironmentCard({
       {workspace && (
         <Row icon={<Folder className={styles.glyph} />} hint={path}>
           {workspace.name}
-          {path && <span className={styles.secondary}>{` · ${path}`}</span>}
+          {path && <span className={styles.secondary}>{` · ${tildePath(path)}`}</span>}
         </Row>
       )}
       {branch && (

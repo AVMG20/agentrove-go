@@ -11,7 +11,7 @@ import {
   useWorkspacesQuery,
 } from '@/hooks/queries/useWorkspaceQueries';
 import type { Workspace } from '@/types/workspace.types';
-import { projectPath } from '@/utils/box';
+import { projectPath, tildePath } from '@/utils/box';
 import { formatRelativeTime } from '@/utils/date';
 import { formatBytes } from '@/utils/format';
 import styles from './WorkspacesSettingsTab.module.scss';
@@ -20,7 +20,7 @@ const SOURCE_ICONS = { git: FolderGit2, empty: Box } as const;
 
 function describeSource(workspace: Workspace): string {
   if (workspace.source_type === 'git') return workspace.source_url ?? 'Git repository';
-  return projectPath(workspace);
+  return tildePath(projectPath(workspace));
 }
 
 export function WorkspacesSettingsTab() {

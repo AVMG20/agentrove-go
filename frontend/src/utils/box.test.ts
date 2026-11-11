@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { BoxInfo, Workspace } from '@/types/workspace.types';
-import { formatIdleDuration, projectPath, summarizeBox } from './box';
+import { formatIdleDuration, projectPath, summarizeBox, tildePath } from './box';
 
 const box = (over: Partial<BoxInfo> = {}): BoxInfo => ({
   available: true,
@@ -66,5 +66,17 @@ describe('projectPath', () => {
     expect(projectPath(workspace(), '.worktrees/ab')).toBe(
       '/home/user/projects/app-1a2b3c4d/.worktrees/ab',
     );
+  });
+});
+
+describe('tildePath', () => {
+  it('shortens paths in the box home', () => {
+    expect(tildePath('/home/user/projects/app')).toBe('~/projects/app');
+    expect(tildePath('/home/user')).toBe('~');
+  });
+
+  it('leaves other paths alone', () => {
+    expect(tildePath('/home/username/x')).toBe('/home/username/x');
+    expect(tildePath('/opt/x')).toBe('/opt/x');
   });
 });
