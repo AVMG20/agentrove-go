@@ -1,6 +1,7 @@
 package chat
 
 import (
+	"errors"
 	"net/http"
 	"strconv"
 	"strings"
@@ -43,6 +44,9 @@ func (m *Module) generateTitleHandler(w http.ResponseWriter, r *http.Request) er
 		return err
 	}
 	title, err := m.generateText(r.Context(), u.ID, st.TitleModelID, prompts.GenerateTitleSystemPrompt, "Generate a title for this message:\n<message>\n"+prompt+"\n</message>")
+	if errors.Is(err, errNoClaude) {
+		return httpx.BadRequest("Generating a title needs a Claude account (Settings → Providers)")
+	}
 	title = clipTitle(strings.Trim(strings.TrimSpace(title), `"'`))
 	if err != nil || title == "" {
 		return httpx.Errorf(503, "Title generation failed")

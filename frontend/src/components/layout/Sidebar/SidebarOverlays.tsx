@@ -47,6 +47,7 @@ export function SidebarOverlays({
           chat={chat.dropdown.chat}
           position={chat.dropdown.position}
           onRename={chat.handleRenameClick}
+          onRegenerateTitle={chat.handleRegenerateTitle}
           onDelete={chat.handleDeleteChat}
           onTogglePin={chat.handleTogglePin}
           onArchive={chat.handleArchiveChat}

@@ -1,5 +1,5 @@
 import { memo, type Ref } from 'react';
-import { Archive, Edit2, Trash2, Pin, PinOff, SplitSquareHorizontal } from 'lucide-react';
+import { Archive, Edit2, Trash2, Pin, PinOff, Sparkles, SplitSquareHorizontal } from 'lucide-react';
 import { FloatingTooltip } from '@/components/ui/FloatingTooltip/FloatingTooltip';
 import type { Chat } from '@/types/chat.types';
 import { stripMarkdownTitle } from '@/utils/format';
@@ -12,6 +12,7 @@ interface ChatDropdownProps {
   chat: Chat;
   position: { top: number; left: number };
   onRename: (chat: Chat) => void;
+  onRegenerateTitle: (chat: Chat) => void;
   onDelete: (chatId: string) => void;
   onTogglePin: (chat: Chat) => void;
   onArchive: (chat: Chat) => void;
@@ -25,6 +26,7 @@ export const ChatDropdown = memo(function ChatDropdown({
   chat,
   position,
   onRename,
+  onRegenerateTitle,
   onDelete,
   onTogglePin,
   onArchive,
@@ -61,6 +63,9 @@ export const ChatDropdown = memo(function ChatDropdown({
       )}
       <SidebarMenuItem icon={Edit2} onClick={() => onRename(chat)}>
         Rename
+      </SidebarMenuItem>
+      <SidebarMenuItem icon={Sparkles} onClick={() => onRegenerateTitle(chat)}>
+        Regenerate title
       </SidebarMenuItem>
       <SidebarMenuItem icon={Archive} onClick={() => onArchive(chat)}>
         Archive

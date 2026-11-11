@@ -201,6 +201,24 @@ export function useSidebarChatActions({
     }
   }, [chatToRename, generateChatTitle]);
 
+  // One click: the title model writes a new title and it's saved right away.
+  const handleRegenerateTitle = useCallback(
+    async (chat: Chat) => {
+      setDropdown(null);
+      const toastId = toast.loading('Generating a title…');
+      try {
+        const title = await generateChatTitle.mutateAsync(chat.id);
+        await updateChat.mutateAsync({ chatId: chat.id, updateData: { title } });
+        toast.success('Title updated', { id: toastId });
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : 'Failed to generate title', {
+          id: toastId,
+        });
+      }
+    },
+    [generateChatTitle, updateChat],
+  );
+
   const handleTogglePin = useCallback(
     async (chat: Chat) => {
       setDropdown(null);
@@ -273,6 +291,7 @@ export function useSidebarChatActions({
     handleRenameClick,
     handleSaveRename,
     handleGenerateChatTitle,
+    handleRegenerateTitle,
     handleTogglePin,
     handleArchiveChat,
   };
