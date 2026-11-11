@@ -169,7 +169,32 @@ describe('MessageRenderer streaming wiring', () => {
     ];
     render(<MessageRenderer events={events} isStreaming />, { wrapper });
     expect(screen.queryByTestId('rollup')).toBeNull();
+    // The finished run of steps folds behind its header; the answer stays out.
+    expect(renderedOrder()).toEqual(['text-0']);
+    fireEvent.click(screen.getByRole('button', { name: '1 tool call, 1 thought' }));
     expect(renderedOrder()).toEqual(['thinking-0', 'tool-t1', 'text-0']);
+  });
+
+  it('keeps the newest step of a live run in view while folded', () => {
+    const events: AssistantStreamEvent[] = [
+      { type: 'assistant_text', text: 'looking' },
+      { type: 'tool_started', tool: tool({ id: 't1', status: 'completed' }) },
+      { type: 'assistant_thinking', thinking: 'hmm' },
+      { type: 'tool_started', tool: tool({ id: 't2' }) },
+    ];
+    render(<MessageRenderer events={events} isStreaming />, { wrapper });
+    expect(screen.getByRole('button', { name: '2 tool calls, 1 thought' })).toBeTruthy();
+    expect(renderedOrder()).toEqual(['text-0', 'tool-t2']);
+  });
+
+  it('leaves a lone step between texts unfolded', () => {
+    const events: AssistantStreamEvent[] = [
+      { type: 'assistant_text', text: 'a' },
+      { type: 'tool_started', tool: tool({ id: 't1' }) },
+      { type: 'assistant_text', text: 'b' },
+    ];
+    render(<MessageRenderer events={events} isStreaming />, { wrapper });
+    expect(renderedOrder()).toEqual(['text-0', 'tool-t1', 'text-1']);
   });
 
   it('loads omitted tool results on expand and recovers from a failed load via Retry', async () => {

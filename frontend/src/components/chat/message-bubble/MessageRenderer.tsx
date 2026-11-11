@@ -1,6 +1,8 @@
 import React, { memo } from 'react';
 import { SegmentView } from './SegmentView';
 import { TraceLoadState, WorkedRollup } from './WorkedRollup';
+import { StepGroup } from './StepGroup';
+import { groupSteps, stepsLabel } from './stepGroups';
 import { useMessageRenderQuery } from '@/hooks/queries/useChatQueries';
 import { buildSegments, segmentsEqual, type MessageSegment } from './segmentBuilder';
 import { AgentToolsContext } from '@/contexts/AgentToolsContext';
@@ -118,34 +120,30 @@ export const MessageRenderer = memo(function MessageRenderer({
       artifactSegments: latestArtifactSegments(traceSegments.filter(isArtifact)),
     };
   }, [traceSegments, rollUpTrace]);
-  const segmentViewProps = {
-    chatId,
-    highlightMentions,
-  };
+  // Without the rollup (live turns, steered turns), each run of tool calls and
+  // thoughts folds behind its own header instead.
+  const items = React.useMemo(
+    () => (rollUpTrace || awaitingFullRender ? null : groupSteps(segments)),
+    [rollUpTrace, awaitingFullRender, segments],
+  );
   // Per-segment booleans instead of the active ids: when the active segment
   // changes, only the segments whose flag flipped lose their memo bailout.
-  const traceNodes = awaitingFullRender ? (
-    <TraceLoadState failed={fullRender.isError} onRetry={() => void fullRender.refetch()} />
-  ) : (
-    rolledSegments.map((segment) => (
-      <SegmentView
-        key={segment.id}
-        segment={segment}
-        isActiveThinking={segment.id === activeThinkingId}
-        isActiveText={segment.id === activeTextId}
-        {...segmentViewProps}
-      />
-    ))
-  );
-  const tailNodes = [...artifactSegments, ...tailSegments].map((segment) => (
+  const renderSegment = (segment: MessageSegment) => (
     <SegmentView
       key={segment.id}
       segment={segment}
       isActiveThinking={segment.id === activeThinkingId}
       isActiveText={segment.id === activeTextId}
-      {...segmentViewProps}
+      chatId={chatId}
+      highlightMentions={highlightMentions}
     />
-  ));
+  );
+  const traceNodes = awaitingFullRender ? (
+    <TraceLoadState failed={fullRender.isError} onRetry={() => void fullRender.refetch()} />
+  ) : (
+    rolledSegments.map(renderSegment)
+  );
+  const tailNodes = [...artifactSegments, ...tailSegments].map(renderSegment);
 
   return (
     <AgentToolsContext value={agentTools}>
@@ -153,14 +151,33 @@ export const MessageRenderer = memo(function MessageRenderer({
         {hasSteering && awaitingFullRender && (
           <TraceLoadState failed={fullRender.isError} onRetry={() => void fullRender.refetch()} />
         )}
-        {rollUpTrace ? (
-          <WorkedRollup durationMs={durationMs} onExpand={requestFullRender}>
-            {traceNodes}
-          </WorkedRollup>
+        {items ? (
+          items.map((item, index) =>
+            item.kind === 'segment' ? (
+              renderSegment(item.segment)
+            ) : (
+              <StepGroup
+                key={item.id}
+                label={stepsLabel(item.segments)}
+                isLive={isStreaming && index === items.length - 1}
+                latest={renderSegment(item.segments[item.segments.length - 1])}
+              >
+                {item.segments.map(renderSegment)}
+              </StepGroup>
+            ),
+          )
         ) : (
-          traceNodes
+          <>
+            {rollUpTrace ? (
+              <WorkedRollup durationMs={durationMs} onExpand={requestFullRender}>
+                {traceNodes}
+              </WorkedRollup>
+            ) : (
+              traceNodes
+            )}
+            {tailNodes}
+          </>
         )}
-        {tailNodes}
       </div>
     </AgentToolsContext>
   );

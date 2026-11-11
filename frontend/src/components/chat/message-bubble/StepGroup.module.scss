@@ -1,0 +1,56 @@
+@use '@/styles/globals/typography' as type;
+@use '@/styles/globals/animations' as anim;
+@use '@/styles/globals/responsive' as responsive;
+
+.step-group {
+  margin-block: var(--space-1);
+}
+
+.step-button {
+  @include type.type-default(500);
+  @include anim.transition-colors;
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-0-5) 0;
+  color: var(--theme-text-tertiary);
+
+  // A full-row, finger-sized target on touch.
+  @include responsive.media('touch') {
+    min-height: var(--space-11);
+    width: 100%;
+    margin-block: calc(-1 * var(--space-2));
+  }
+
+  :global([data-theme='dark']) & {
+    color: var(--theme-text-quaternary);
+  }
+
+  @include responsive.hover {
+    color: var(--theme-text-primary);
+
+    :global([data-theme='dark']) & {
+      color: var(--theme-text-secondary);
+    }
+  }
+}
+
+.step-spinner {
+  margin-right: var(--space-0-5);
+}
+
+.step-chevron {
+  height: var(--space-3-5);
+  width: var(--space-3-5);
+  transition: transform var(--duration-slow) var(--easing-out);
+
+  &--expanded {
+    transform: rotate(90deg);
+  }
+}
+
+.step-content,
+.step-latest {
+  @include anim.fade-in;
+  margin-top: var(--space-1);
+}
