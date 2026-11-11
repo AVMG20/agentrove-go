@@ -115,12 +115,12 @@
     font-weight: 500;
   }
 
-  // Running threads: a neutral glimmer that sweeps often, brighter than the
-  // idle rows' resting text without pulling the eye like a color would.
+  // Running threads rest dimmer than idle rows (the spinner and tick carry the
+  // signal), with a soft glimmer sweeping through.
   &--working {
     @include anim.text-shimmer(
-      $base: var(--theme-text-secondary),
-      $highlight: var(--theme-text-primary),
+      $base: var(--theme-text-quaternary),
+      $highlight: var(--theme-text-secondary),
       $duration: 1.4s,
       $sweep: 80%
     );
