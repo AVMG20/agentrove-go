@@ -301,3 +301,19 @@ func TestStopWhileStartingInterruptsTurn(t *testing.T) {
 		t.Fatal("stop flag left behind")
 	}
 }
+
+func TestSnapshotEventsCarryWhenTheyStarted(t *testing.T) {
+	tr := &turn{}
+	tr.applySnapshot("assistant_thinking", map[string]any{"thinking": "a", "ts": int64(100)})
+	tr.applySnapshot("assistant_thinking", map[string]any{"thinking": "b", "ts": int64(200)})
+	tr.applySnapshot("tool_started", map[string]any{"tool": map[string]any{"id": "t1"}, "ts": int64(300)})
+	if len(tr.render) != 2 {
+		t.Fatalf("render = %v, want a merged thought and a tool", tr.render)
+	}
+	if got := tr.render[0]; got["thinking"] != "ab" || got["ts"] != int64(100) {
+		t.Fatalf("merged thought = %v, want text ab at ts 100", got)
+	}
+	if got := tr.render[1]["ts"]; got != int64(300) {
+		t.Fatalf("tool ts = %v, want 300", got)
+	}
+}

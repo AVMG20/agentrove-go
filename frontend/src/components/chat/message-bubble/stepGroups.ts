@@ -1,9 +1,12 @@
 import { ARTIFACT_TOOL_NAMES } from '@/components/chat/tools/registry';
+import { formatDuration } from '@/utils/date';
 import type { MessageSegment } from './segmentBuilder';
 
 export type SegmentItem =
   | { kind: 'segment'; segment: MessageSegment }
-  | { kind: 'steps'; id: string; segments: MessageSegment[] };
+  // durationMs: from the run's first step to whatever came next, when both
+  // carry a timestamp. A trailing run has none: it is live or ended the turn.
+  | { kind: 'steps'; id: string; segments: MessageSegment[]; durationMs?: number };
 
 // Tools whose card is the point of the call (published artifacts, generated UI,
 // the plan to approve) stay in the flow instead of folding into a step group.
@@ -25,9 +28,12 @@ const isStep = (segment: MessageSegment) =>
 export function groupSteps(segments: MessageSegment[], liveTail = false): SegmentItem[] {
   const items: SegmentItem[] = [];
   let run: MessageSegment[] = [];
-  const flush = (minSteps = 2) => {
+  const flush = (minSteps = 2, next?: MessageSegment) => {
     if (run.length >= minSteps) {
-      items.push({ kind: 'steps', id: `steps-${run[0].id}`, segments: run });
+      const start = run[0].startedAt;
+      const end = next?.startedAt;
+      const durationMs = start != null && end != null && end >= start ? end - start : undefined;
+      items.push({ kind: 'steps', id: `steps-${run[0].id}`, segments: run, durationMs });
     } else if (run.length === 1) {
       items.push({ kind: 'segment', segment: run[0] });
     }
@@ -38,7 +44,7 @@ export function groupSteps(segments: MessageSegment[], liveTail = false): Segmen
       run.push(segment);
       continue;
     }
-    flush();
+    flush(2, segment);
     items.push({ kind: 'segment', segment });
   }
   flush(liveTail ? 1 : 2);
@@ -57,3 +63,8 @@ export function stepsLabel(segments: MessageSegment[]): string {
     .filter(Boolean)
     .join(', ');
 }
+
+// Older messages persisted before duration tracking have no duration, and a
+// sub-second one would read "0s".
+export const workedLabel = (durationMs: number | null | undefined): string =>
+  durationMs != null && durationMs >= 500 ? `Worked for ${formatDuration(durationMs)}` : 'Worked';

@@ -12,6 +12,12 @@ export function extractPayloadData(
 
 // Content-bearing kinds only; system/permission_request are handled in onEnvelope.
 export function envelopeToRenderEvent(envelope: StreamEnvelope): AssistantStreamEvent | null {
+  const event = toRenderEvent(envelope);
+  const ts = (envelope.payload as Record<string, unknown>).ts;
+  return event && typeof ts === 'number' ? { ...event, ts } : event;
+}
+
+function toRenderEvent(envelope: StreamEnvelope): AssistantStreamEvent | null {
   const payload = envelope.payload as Record<string, unknown>;
 
   switch (envelope.kind) {

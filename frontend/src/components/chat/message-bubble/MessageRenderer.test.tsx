@@ -180,8 +180,22 @@ describe('MessageRenderer streaming wiring', () => {
     expect(screen.queryByTestId('rollup')).toBeNull();
     // The finished run of steps folds behind its header; the answer stays out.
     expect(renderedOrder()).toEqual(['text-0']);
-    fireEvent.click(screen.getByRole('button', { name: '1 tool call, 1 thought' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Worked' }));
     expect(renderedOrder()).toEqual(['thinking-0', 'tool-t1', 'text-0']);
+  });
+
+  it('times a finished run from its first step to the text after it', () => {
+    const events: AssistantStreamEvent[] = [
+      { type: 'assistant_thinking', thinking: 'plan', ts: 1_000 },
+      { type: 'tool_started', tool: tool({ id: 't1' }), ts: 2_000 },
+      { type: 'tool_completed', tool: tool({ id: 't1', status: 'completed' }), ts: 9_000 },
+      { type: 'assistant_text', text: 'found it', ts: 15_000 },
+      { type: 'tool_started', tool: tool({ id: 't2' }), ts: 16_000 },
+    ];
+    render(<MessageRenderer events={events} isStreaming />, { wrapper });
+    expect(screen.getByRole('button', { name: 'Worked for 14s' })).toBeTruthy();
+    // The run still going counts its steps instead.
+    expect(screen.getByRole('button', { name: /^1 tool call/ })).toBeTruthy();
   });
 
   it('names the newest step of a live run on its folded header', () => {

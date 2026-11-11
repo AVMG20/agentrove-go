@@ -3,7 +3,7 @@ import { SegmentView } from './SegmentView';
 import { TraceLoadState, WorkedRollup } from './WorkedRollup';
 import { StepGroup } from './StepGroup';
 import { StepAction } from './StepAction';
-import { groupSteps, stepsLabel } from './stepGroups';
+import { groupSteps, stepsLabel, workedLabel } from './stepGroups';
 import { useMessageRenderQuery } from '@/hooks/queries/useChatQueries';
 import { buildSegments, segmentsEqual, type MessageSegment } from './segmentBuilder';
 import { AgentToolsContext } from '@/contexts/AgentToolsContext';
@@ -122,7 +122,9 @@ export const MessageRenderer = memo(function MessageRenderer({
     };
   }, [traceSegments, rollUpTrace]);
   // Without the rollup (live turns, steered turns), each run of tool calls and
-  // thoughts folds behind its own header instead.
+  // thoughts folds behind its own header instead: the live run counts its steps
+  // and names the current one; a finished run reads "Worked for 14s" like the
+  // rollup a completed turn gets.
   const items = React.useMemo(
     () => (rollUpTrace || awaitingFullRender ? null : groupSteps(segments, isStreaming)),
     [rollUpTrace, awaitingFullRender, segments, isStreaming],
@@ -160,7 +162,7 @@ export const MessageRenderer = memo(function MessageRenderer({
             return (
               <StepGroup
                 key={item.id}
-                label={stepsLabel(item.segments)}
+                label={isLive ? stepsLabel(item.segments) : workedLabel(item.durationMs)}
                 isLive={isLive}
                 action={
                   isLive && (

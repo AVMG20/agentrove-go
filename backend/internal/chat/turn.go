@@ -159,6 +159,14 @@ func (t *turn) emit(kind string, payload map[string]any) int64 {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	defer t.scheduleFlushLocked()
+	if snapshotKinds[kind] {
+		// When it happened, so the UI can time each run of tool calls and
+		// thoughts ("Worked for 14s") from the event log alone.
+		if payload = maps.Clone(payload); payload == nil {
+			payload = map[string]any{}
+		}
+		payload["ts"] = time.Now().UnixMilli()
+	}
 	t.buf = append(t.buf, bufferedEvent{kind, payload})
 	if snapshotKinds[kind] {
 		t.applySnapshot(kind, payload)
@@ -214,7 +222,12 @@ func (t *turn) applySnapshot(kind string, payload map[string]any) {
 		last := t.render[len(t.render)-1]
 		prev, _ := last[key].(string)
 		add, _ := payload[key].(string)
-		t.render[len(t.render)-1] = map[string]any{"type": kind, key: prev + add}
+		merged := map[string]any{"type": kind, key: prev + add}
+		// A merged block keeps the time of its first delta: when it started.
+		if ts, ok := last["ts"]; ok {
+			merged["ts"] = ts
+		}
+		t.render[len(t.render)-1] = merged
 		return
 	}
 	ev := map[string]any{"type": kind}

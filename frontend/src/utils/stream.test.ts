@@ -157,6 +157,13 @@ describe('StreamContentBuffer', () => {
     ]);
   });
 
+  it("keeps the first delta's ts on a merged block", () => {
+    const buf = new StreamContentBuffer();
+    buf.push({ type: 'assistant_text', text: 'a', ts: 100 });
+    buf.push({ type: 'assistant_text', text: 'b', ts: 200 });
+    expect(buf.getEvents()).toEqual([{ type: 'assistant_text', text: 'ab', ts: 100 }]);
+  });
+
   it('records non-text events without changing the joined text', () => {
     const buf = new StreamContentBuffer();
     buf.push({ type: 'assistant_thinking', thinking: 'hmm' });

@@ -41,7 +41,9 @@ export interface PlanEntry {
   priority?: string;
 }
 
-export type AssistantStreamEvent =
+// `ts` (unix ms) is when the backend emitted the event; absent on messages
+// stored before it was recorded.
+export type AssistantStreamEvent = (
   | { type: 'assistant_text'; text: string }
   | { type: 'assistant_thinking'; thinking: string }
   | { type: 'tool_started'; tool: ToolEventPayload }
@@ -78,7 +80,8 @@ export type AssistantStreamEvent =
         requested_schema: ElicitationSchema;
       };
     }
-  | { type: 'elicitation_dismissed'; request_id: string };
+  | { type: 'elicitation_dismissed'; request_id: string }
+) & { ts?: number };
 
 export interface Chat {
   id: string;

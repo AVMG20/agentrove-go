@@ -4,15 +4,18 @@ import { PROMPT_SUGGESTIONS_RE } from '@/utils/stream';
 
 const PARTIAL_PROMPT_SUGGESTIONS_RE = /<prompt_suggestions>[\s\S]*$/;
 
+// startedAt: when the segment's first event was emitted (unix ms), if known.
 export interface TextSegment {
   kind: 'text';
   id: string;
+  startedAt?: number;
   text: string;
 }
 
 export interface SteeringSegment {
   kind: 'steering';
   id: string;
+  startedAt?: number;
   text: string;
   attachments: MessageAttachment[];
 }
@@ -20,18 +23,21 @@ export interface SteeringSegment {
 export interface ThinkingSegment {
   kind: 'thinking';
   id: string;
+  startedAt?: number;
   text: string;
 }
 
 export interface ToolSegment {
   kind: 'tool';
   id: string;
+  startedAt?: number;
   tool: ToolAggregate;
 }
 
 export interface PlanSegment {
   kind: 'plan';
   id: string;
+  startedAt?: number;
   entries: PlanEntry[];
 }
 
@@ -260,6 +266,7 @@ const processNewTool = (
   toolStatus: ToolEventStatus,
   parentId: string | null,
   context: ProcessToolEventContext,
+  startedAt: number | undefined,
 ): void => {
   const { toolMap, segments, segmentIndexByToolId } = context;
 
@@ -270,7 +277,7 @@ const processNewTool = (
   if (parentId) {
     addChildToParent(newAggregate, parentId, context);
   } else {
-    segments.push({ kind: 'tool', id: `tool-${newAggregate.id}`, tool: newAggregate });
+    segments.push({ kind: 'tool', id: `tool-${newAggregate.id}`, tool: newAggregate, startedAt });
     segmentIndexByToolId.set(newAggregate.id, segments.length - 1);
   }
 };
@@ -328,7 +335,7 @@ const processToolEvent = (
   const existingAggregate = toolMap.get(payload.id);
 
   if (!existingAggregate) {
-    processNewTool(payload, toolStatus, parentId, context);
+    processNewTool(payload, toolStatus, parentId, context, event.ts);
   } else {
     processExistingTool(payload, existingAggregate, toolStatus, context);
   }
@@ -342,6 +349,8 @@ export const buildSegments = (events: AssistantStreamEvent[]): MessageSegment[] 
   const pendingChildren = new Map<string, ToolAggregate[]>();
   let pendingText = '';
   let pendingThinking = '';
+  let pendingTextTs: number | undefined;
+  let pendingThinkingTs: number | undefined;
   let textSegmentCount = 0;
   let thinkingSegmentCount = 0;
   let planSegmentCount = 0;
@@ -361,10 +370,12 @@ export const buildSegments = (events: AssistantStreamEvent[]): MessageSegment[] 
         kind: 'text',
         id: `text-${textSegmentCount}`,
         text: cleaned,
+        startedAt: pendingTextTs,
       });
       textSegmentCount++;
     }
     pendingText = '';
+    pendingTextTs = undefined;
   };
 
   const flushThinking = () => {
@@ -373,9 +384,11 @@ export const buildSegments = (events: AssistantStreamEvent[]): MessageSegment[] 
       kind: 'thinking',
       id: `thinking-${thinkingSegmentCount}`,
       text: pendingThinking,
+      startedAt: pendingThinkingTs,
     });
     thinkingSegmentCount++;
     pendingThinking = '';
+    pendingThinkingTs = undefined;
   };
 
   const context: ProcessToolEventContext = {
@@ -395,14 +408,17 @@ export const buildSegments = (events: AssistantStreamEvent[]): MessageSegment[] 
           id: `steering-${event.queued_message_id}`,
           text: event.text,
           attachments: event.attachments,
+          startedAt: event.ts,
         });
         break;
       case 'assistant_text':
         flushThinking();
+        if (!pendingText) pendingTextTs = event.ts;
         pendingText += event.text;
         break;
       case 'assistant_thinking':
         flushText();
+        if (!pendingThinking) pendingThinkingTs = event.ts;
         pendingThinking += event.thinking;
         break;
       case 'tool_started':
@@ -420,17 +436,23 @@ export const buildSegments = (events: AssistantStreamEvent[]): MessageSegment[] 
         // back-to-back snapshots into one card instead of stacking duplicates.
         const last = segments[segments.length - 1];
         if (last?.kind === 'plan' && !pendingText && !pendingThinking) {
-          segments[segments.length - 1] = { kind: 'plan', id: last.id, entries };
+          segments[segments.length - 1] = { ...last, entries };
         } else {
           flushText();
           flushThinking();
-          segments.push({ kind: 'plan', id: `plan-${planSegmentCount}`, entries });
+          segments.push({
+            kind: 'plan',
+            id: `plan-${planSegmentCount}`,
+            entries,
+            startedAt: event.ts,
+          });
           planSegmentCount++;
         }
         break;
       }
       case 'user_text':
         flushThinking();
+        if (!pendingText) pendingTextTs = event.ts;
         pendingText += event.text;
         break;
       default:

@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import clsx from 'clsx';
 import { ChevronRight } from 'lucide-react';
 import { Button } from '@/components/ui/primitives/Button/Button';
-import { formatDuration } from '@/utils/date';
+import { workedLabel } from './stepGroups';
 import styles from './WorkedRollup.module.scss';
 
 interface WorkedRollupProps {
@@ -14,9 +14,7 @@ interface WorkedRollupProps {
 // Completed-turn tool/thinking trace behind one header so the final answer leads.
 export function WorkedRollup({ durationMs, onExpand, children }: WorkedRollupProps) {
   const [isExpanded, setIsExpanded] = useState(false);
-  // Older messages persisted before duration tracking have no duration_ms.
-  const label =
-    durationMs != null && durationMs > 0 ? `Worked for ${formatDuration(durationMs)}` : 'Worked';
+  const label = workedLabel(durationMs);
 
   return (
     <div className={styles['worked-rollup']}>

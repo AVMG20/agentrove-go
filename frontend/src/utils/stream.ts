@@ -109,16 +109,14 @@ export class StreamContentBuffer {
       this.textParts.push(event.text);
     }
     // Merge token deltas into the tail so the event list grows per segment, not
-    // per token. Replace rather than mutate — earlier snapshots share the object.
+    // per token, keeping the first delta's ts (when the block started). Replace
+    // rather than mutate — earlier snapshots share the object.
     const lastIndex = this.events.length - 1;
     const last = this.events[lastIndex];
     if (last?.type === 'assistant_text' && event.type === 'assistant_text') {
-      this.events[lastIndex] = { type: 'assistant_text', text: last.text + event.text };
+      this.events[lastIndex] = { ...last, text: last.text + event.text };
     } else if (last?.type === 'assistant_thinking' && event.type === 'assistant_thinking') {
-      this.events[lastIndex] = {
-        type: 'assistant_thinking',
-        thinking: last.thinking + event.thinking,
-      };
+      this.events[lastIndex] = { ...last, thinking: last.thinking + event.thinking };
     } else {
       this.events.push(event);
     }
