@@ -571,6 +571,10 @@ func (m *Module) terminalWS(w http.ResponseWriter, r *http.Request) {
 	if terminalID == "" {
 		terminalID = defaultTerminalID
 	}
+	if err := m.a.Sandboxes.EnsureFiles(ctx, ws); err != nil {
+		_ = c.Close(websocket.StatusInternalError, "Could not restore the project files")
+		return
+	}
 	session, err := m.terms.getOrCreate(user.ID, ws, terminalID, cwd)
 	if err != nil {
 		_ = c.Close(websocket.StatusInternalError, "Sandbox unavailable")

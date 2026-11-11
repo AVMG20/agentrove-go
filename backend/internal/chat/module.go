@@ -880,7 +880,8 @@ func (m *Module) startTurn(ctx context.Context, in startInput) (app.ChatTurnResu
 	if err != nil {
 		return res, err
 	}
-	sb, err := m.a.Sandboxes.For(ws)
+	// A pruned project is cloned again before anything touches its files.
+	sb, err := m.a.Sandboxes.Open(ctx, ws)
 	if err != nil {
 		return res, httpx.Errorf(503, "%v", err)
 	}

@@ -2,6 +2,7 @@ import { apiClient } from '@/lib/api';
 import { ensureResponse, serviceCall, buildQueryString } from '@/services/base/BaseService';
 import type {
   BoxInfo,
+  PruneBoxResult,
   Workspace,
   WorkspaceDiskUsage,
   WorkspaceResources,
@@ -69,9 +70,12 @@ async function getScratchWorkspace(): Promise<Workspace> {
   });
 }
 
-async function getBox(): Promise<BoxInfo> {
+// refresh re-measures the home and projects sizes (cached for minutes).
+async function getBox(refresh = false): Promise<BoxInfo> {
   return serviceCall(async () => {
-    const response = await apiClient.get<BoxInfo>('/workspaces/box');
+    const response = await apiClient.get<BoxInfo>(
+      `/workspaces/box${refresh ? '?refresh=true' : ''}`,
+    );
     return ensureResponse(response, 'Failed to fetch box status');
   });
 }
@@ -87,9 +91,19 @@ async function stopBox(reset = false): Promise<BoxInfo> {
   });
 }
 
+// Frees the box's disk: system packages, toolchains and caches in home, and
+// the files of git projects without unsaved work (cloned again on next use).
+async function pruneBox(): Promise<PruneBoxResult> {
+  return serviceCall(async () => {
+    const response = await apiClient.post<PruneBoxResult>('/workspaces/box/prune');
+    return ensureResponse(response, 'Failed to prune the box');
+  });
+}
+
 export const workspaceService = {
   getBox,
   stopBox,
+  pruneBox,
   getDiskUsage,
   listWorkspaces,
   getScratchWorkspace,

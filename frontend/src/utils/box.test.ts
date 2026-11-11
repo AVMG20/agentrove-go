@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import type { BoxInfo, Workspace } from '@/types/workspace.types';
-import { formatIdleDuration, projectPath, summarizeBox, tildePath } from './box';
+import {
+  boxSizeBreakdown,
+  formatIdleDuration,
+  projectPath,
+  pruneSummary,
+  summarizeBox,
+  tildePath,
+} from './box';
 
 const box = (over: Partial<BoxInfo> = {}): BoxInfo => ({
   available: true,
@@ -9,6 +16,9 @@ const box = (over: Partial<BoxInfo> = {}): BoxInfo => ({
   idle_for_seconds: 0,
   idle_ttl_seconds: 1800,
   disk_bytes: null,
+  home_bytes: null,
+  projects_bytes: null,
+  total_bytes: null,
   ...over,
 });
 
@@ -78,5 +88,29 @@ describe('tildePath', () => {
   it('leaves other paths alone', () => {
     expect(tildePath('/home/username/x')).toBe('/home/username/x');
     expect(tildePath('/opt/x')).toBe('/opt/x');
+  });
+});
+
+describe('boxSizeBreakdown', () => {
+  it('lists the known parts', () => {
+    expect(boxSizeBreakdown(box({ disk_bytes: 1024 * 1024, projects_bytes: 2 * 1024 ** 3 }))).toBe(
+      'System 1.0 MB · Projects 2.0 GB',
+    );
+    expect(boxSizeBreakdown(box())).toBe('');
+  });
+});
+
+describe('pruneSummary', () => {
+  it('says what was freed, removed and kept', () => {
+    expect(
+      pruneSummary({
+        freed_bytes: 3 * 1024 ** 3,
+        removed: ['api', 'web'],
+        kept: [{ name: 'notes', reason: 'has uncommitted changes' }],
+        box: box(),
+      }),
+    ).toBe(
+      'Freed 3.0 GB.\n2 projects are cloned again when you next use them.\nKept notes: has uncommitted changes.',
+    );
   });
 });

@@ -13,7 +13,10 @@ type BoxInfo struct {
 	Busy           bool   `json:"busy"`      // an agent or terminal holds it awake
 	IdleForSeconds int64  `json:"idle_for_seconds"`
 	IdleTTLSeconds int64  `json:"idle_ttl_seconds"`
-	DiskBytes      *int64 `json:"disk_bytes"`
+	DiskBytes      *int64 `json:"disk_bytes"`     // system: the container's own layer (apt packages)
+	HomeBytes      *int64 `json:"home_bytes"`     // home: toolchains, caches, logins
+	ProjectsBytes  *int64 `json:"projects_bytes"` // project files
+	TotalBytes     *int64 `json:"total_bytes"`
 }
 
 var ErrBoxBusy = errors.New("Claude is working in the box: stop the running chats first")
@@ -27,7 +30,25 @@ func (m *Manager) docker() (*DockerProvider, bool) {
 	return d, ok
 }
 
-func (m *Manager) Box(ctx context.Context, userID string) BoxInfo {
+// Box describes the user's box; refresh re-measures the home and projects
+// sizes instead of using the ones cached for a few minutes.
+func (m *Manager) Box(ctx context.Context, userID string, refresh bool) BoxInfo {
+	info := m.box(ctx, userID)
+	if info.Available {
+		sz := m.userSizes(ctx, userID, refresh)
+		info.HomeBytes, info.ProjectsBytes = sz.home, sz.projects
+		var total int64
+		for _, p := range []*int64{info.DiskBytes, info.HomeBytes, info.ProjectsBytes} {
+			if p != nil {
+				total += *p
+				info.TotalBytes = &total
+			}
+		}
+	}
+	return info
+}
+
+func (m *Manager) box(ctx context.Context, userID string) BoxInfo {
 	info := BoxInfo{State: "none", IdleTTLSeconds: int64(m.cfg.SandboxIdleTTL / time.Second)}
 	d, ok := m.docker()
 	if !ok {
@@ -60,6 +81,23 @@ func (m *Manager) Box(ctx context.Context, userID string) BoxInfo {
 // With reset it is removed too, so the next start gets a fresh system from
 // the current image; home and projects are kept.
 func (m *Manager) StopBox(ctx context.Context, userID string, reset bool) error {
+	return m.stopBox(ctx, userID, reset, nil)
+}
+
+// PruneBox frees the box's disk: it removes the container (system packages),
+// the home except logins and settings (see homeKeep, plus keepHome), and
+// then runs prune (deleting project files) before the box can start again.
+func (m *Manager) PruneBox(ctx context.Context, userID string, keepHome []string, prune func() error) error {
+	defer m.sizes.forget(userID)
+	return m.stopBox(ctx, userID, true, func() error {
+		err := pruneHome(m.cfg.AgentHomeDir(userID), keepHome)
+		return errors.Join(err, prune())
+	})
+}
+
+// stopBox stops (or with reset removes) the box; then runs under the box's
+// start lock, so nothing wakes the box while it works.
+func (m *Manager) stopBox(ctx context.Context, userID string, reset bool, then func() error) error {
 	d, ok := m.docker()
 	if !ok {
 		return errors.New("docker is not available")
@@ -74,8 +112,14 @@ func (m *Manager) StopBox(ctx context.Context, userID string, reset bool) error 
 	if m.OnStop != nil {
 		m.OnStop(id)
 	}
-	if reset {
-		return d.Delete(ctx, id)
+	if !reset {
+		return d.Stop(ctx, id)
 	}
-	return d.Stop(ctx, id)
+	if err := d.Delete(ctx, id); err != nil {
+		return err
+	}
+	if then != nil {
+		return then()
+	}
+	return nil
 }

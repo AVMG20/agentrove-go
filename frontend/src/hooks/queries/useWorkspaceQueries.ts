@@ -4,6 +4,7 @@ import type { QueryClient, UseQueryOptions } from '@tanstack/react-query';
 import { workspaceService } from '@/services/workspaceService';
 import type {
   BoxInfo,
+  PruneBoxResult,
   Workspace,
   WorkspaceResources,
   CreateWorkspaceRequest,
@@ -96,6 +97,14 @@ export const useStopBoxMutation = createMutation<BoxInfo, Error, { reset?: boole
   ({ reset }) => workspaceService.stopBox(reset),
   (queryClient, box) => {
     queryClient.setQueryData(queryKeys.box, box);
+  },
+);
+
+export const usePruneBoxMutation = createMutation<PruneBoxResult, Error, void>(
+  () => workspaceService.pruneBox(),
+  (queryClient, result) => {
+    queryClient.setQueryData(queryKeys.box, result.box);
+    void queryClient.invalidateQueries({ queryKey: queryKeys.workspaceDiskUsage });
   },
 );
 

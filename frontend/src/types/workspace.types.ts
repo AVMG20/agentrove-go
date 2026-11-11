@@ -55,6 +55,19 @@ export interface BoxInfo {
   idle_ttl_seconds: number;
   // What the box wrote outside home and projects (apt packages).
   disk_bytes: number | null;
+  // The home folder: toolchains, caches, logins.
+  home_bytes: number | null;
+  projects_bytes: number | null;
+  total_bytes: number | null;
+}
+
+export interface PruneBoxResult {
+  freed_bytes: number | null;
+  // Projects whose files were removed; they're cloned again on next use.
+  removed: string[];
+  // Projects left as they were, with why (e.g. uncommitted changes).
+  kept: { name: string; reason: string }[];
+  box: BoxInfo;
 }
 
 export interface WorkspaceResources {

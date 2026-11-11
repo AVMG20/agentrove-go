@@ -2,9 +2,6 @@ package workspace
 
 import (
 	"context"
-	"os/exec"
-	"strconv"
-	"strings"
 	"sync"
 	"time"
 
@@ -16,7 +13,6 @@ const (
 	// Walking a repo with node_modules takes seconds and sizes barely move
 	// minute to minute.
 	usageCacheTTL   = 5 * time.Minute
-	duTimeout       = time.Minute
 	maxConcurrentDu = 3
 )
 
@@ -60,7 +56,7 @@ func (d *diskUsage) get(ctx context.Context, mgr *sandbox.Manager, ws *models.Wo
 	case <-ctx.Done():
 		return usageEntry{WorkspaceID: ws.ID}
 	}
-	entry := usageEntry{WorkspaceID: ws.ID, FilesBytes: directoryBytes(ctx, ws.WorkspacePath)}
+	entry := usageEntry{WorkspaceID: ws.ID, FilesBytes: sandbox.DirBytes(ctx, ws.WorkspacePath)}
 	if ws.SandboxProvider == sandbox.KindDocker {
 		if sb, err := mgr.For(ws); err == nil {
 			if n, ok := sb.DiskUsage(ctx); ok {
@@ -89,25 +85,4 @@ func sumBytes(parts ...*int64) *int64 {
 		return nil
 	}
 	return &total
-}
-
-// directoryBytes runs `du -sk`; du still prints a total when some entries
-// were unreadable, so its exit status is ignored.
-func directoryBytes(ctx context.Context, path string) *int64 {
-	ctx, cancel := context.WithTimeout(ctx, duTimeout)
-	defer cancel()
-	out, _ := exec.CommandContext(ctx, "du", "-sk", path).Output()
-	if ctx.Err() != nil {
-		return nil
-	}
-	fields := strings.Fields(string(out))
-	if len(fields) == 0 {
-		return nil
-	}
-	kb, err := strconv.ParseInt(fields[0], 10, 64)
-	if err != nil {
-		return nil
-	}
-	n := kb * 1024
-	return &n
 }

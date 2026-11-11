@@ -84,7 +84,7 @@ func (m *Module) sandboxFor(r *http.Request) (*models.Workspace, *sandbox.Sandbo
 	if err != nil {
 		return nil, nil, err
 	}
-	sb, err := m.a.Sandboxes.For(ws)
+	sb, err := m.a.Sandboxes.Open(r.Context(), ws)
 	if err != nil {
 		return nil, nil, httpx.BadRequest(err.Error())
 	}

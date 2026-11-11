@@ -86,7 +86,7 @@ func (m *Module) restoreCheckpoint(w http.ResponseWriter, r *http.Request) error
 	if err != nil {
 		return err
 	}
-	sb, err := m.a.Sandboxes.For(ws)
+	sb, err := m.a.Sandboxes.Open(r.Context(), ws)
 	if err != nil {
 		return err
 	}

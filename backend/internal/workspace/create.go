@@ -92,16 +92,24 @@ func RepoName(gitURL string) string {
 }
 
 // cloneRepo shallow-clones (all branches visible) into parent/<repo>-<hex>.
-// A GitHub token is supplied through a throwaway GIT_ASKPASS script so it
-// never appears in argv or the remote URL.
 func cloneRepo(ctx context.Context, parent, gitURL, token string) (string, error) {
 	dir := filepath.Join(parent, RepoName(gitURL)+"-"+shortHex())
+	if err := cloneInto(ctx, dir, gitURL, token); err != nil {
+		return "", err
+	}
+	return dir, nil
+}
+
+// cloneInto shallow-clones into dir, which must be missing or empty. A
+// GitHub token is supplied through a throwaway GIT_ASKPASS script so it
+// never appears in argv or the remote URL.
+func cloneInto(ctx context.Context, dir, gitURL, token string) error {
 	env := append(os.Environ(), "GIT_TERMINAL_PROMPT=0")
 	if token != "" && strings.HasPrefix(gitURL, "https://") {
 		if u, err := url.Parse(gitURL); err == nil && (u.Hostname() == "github.com" || u.Hostname() == "www.github.com") {
 			f, err := os.CreateTemp("", "git-askpass-*.sh")
 			if err != nil {
-				return "", err
+				return err
 			}
 			script := "#!/bin/sh\ncase \"$1\" in\n*Username*) echo \"x-access-token\" ;;\n*Password*) echo \"$GIT_PASSWORD\" ;;\nesac\n"
 			_, _ = f.WriteString(script)
@@ -122,7 +130,7 @@ func cloneRepo(ctx context.Context, parent, gitURL, token string) (string, error
 	err := cmd.Run()
 	if cctx.Err() != nil {
 		_ = os.RemoveAll(dir)
-		return "", httpx.BadRequest("Git clone timed out")
+		return httpx.BadRequest("Git clone timed out")
 	}
 	if err != nil {
 		_ = os.RemoveAll(dir)
@@ -136,7 +144,7 @@ func cloneRepo(ctx context.Context, parent, gitURL, token string) (string, error
 		if token != "" {
 			msg = strings.ReplaceAll(msg, token, "***")
 		}
-		return "", httpx.BadRequest(msg)
+		return httpx.BadRequest(msg)
 	}
-	return dir, nil
+	return nil
 }

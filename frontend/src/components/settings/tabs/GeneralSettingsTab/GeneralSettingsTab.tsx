@@ -17,6 +17,7 @@ import { Input } from '@/components/ui/primitives/Input/Input';
 import { SecretInput } from '@/components/settings/inputs/SecretInput/SecretInput';
 import { ModelSelector } from '@/components/chat/model-selector/ModelSelector';
 import { THEMES } from '@/utils/theme';
+import { PruneBoxRow } from './PruneBoxRow';
 import styles from './GeneralSettingsTab.module.scss';
 
 type GitIdentityField = 'git_author_name' | 'git_author_email';
@@ -351,6 +352,7 @@ export function GeneralSettingsTab({
             Delete All
           </Button>
         </div>
+        <PruneBoxRow />
       </SectionCard>
     </div>
   );

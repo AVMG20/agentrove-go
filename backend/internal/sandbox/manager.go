@@ -34,6 +34,11 @@ type Manager struct {
 	// Working reports an agent turn running in the sandbox. Idle agent
 	// processes and terminals hold leases too, but don't make it "busy".
 	Working func(sandboxID string) bool
+	// Restore brings back the files of a project whose dir is missing (after
+	// a prune): a fresh clone of its repo, or an empty dir.
+	Restore func(ctx context.Context, ws *models.Workspace) error
+
+	sizes sizeCache
 }
 
 // NewManager sets up the providers; boxSubnets is filled with the box
@@ -94,6 +99,43 @@ func (m *Manager) For(ws *models.Workspace) (*Sandbox, error) {
 	s := &Sandbox{ID: BoxID(ws.UserID), Kind: KindDocker, UserID: ws.UserID, WorkspacePath: ws.WorkspacePath, provider: p, mgr: m,
 		Root: path.Join(ContainerProjects, filepath.Base(ws.WorkspacePath)), Home: ContainerHome}
 	return s, nil
+}
+
+// FilesMissing reports whether the project's dir is gone.
+func (m *Manager) FilesMissing(ws *models.Workspace) bool {
+	return m.Restore != nil && filesMissing(ws.WorkspacePath)
+}
+
+// EnsureFiles restores a project's missing files; concurrent callers wait
+// for the one restore.
+func (m *Manager) EnsureFiles(ctx context.Context, ws *models.Workspace) error {
+	if !m.FilesMissing(ws) {
+		return nil
+	}
+	lock := m.lockFor("files:" + ws.ID)
+	lock.Lock()
+	defer lock.Unlock()
+	if !m.FilesMissing(ws) {
+		return nil
+	}
+	if err := m.Restore(ctx, ws); err != nil {
+		return fmt.Errorf("restore the project files: %w", err)
+	}
+	m.sizes.forget(ws.UserID)
+	return nil
+}
+
+// Open is For plus EnsureFiles: use it where the project's files are about
+// to be read or written.
+func (m *Manager) Open(ctx context.Context, ws *models.Workspace) (*Sandbox, error) {
+	sb, err := m.For(ws)
+	if err != nil {
+		return nil, err
+	}
+	if err := m.EnsureFiles(ctx, ws); err != nil {
+		return nil, err
+	}
+	return sb, nil
 }
 
 // ForUser returns a handle on the user's box rooted at its home, for work

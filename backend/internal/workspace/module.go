@@ -50,7 +50,12 @@ type Module struct {
 }
 
 func New(a *app.App, terminate TerminateFunc) *Module {
-	return &Module{a: a, terminate: terminate, usage: newDiskUsage()}
+	m := &Module{a: a, terminate: terminate, usage: newDiskUsage()}
+	// A pruned project is cloned again on its next use.
+	if a.Sandboxes != nil {
+		a.Sandboxes.Restore = m.restoreFiles
+	}
+	return m
 }
 
 func (m *Module) Routes(mux *http.ServeMux) {
@@ -64,6 +69,7 @@ func (m *Module) Routes(mux *http.ServeMux) {
 	mux.HandleFunc("GET "+p+"/scratch", req(m.scratch))
 	mux.HandleFunc("GET "+p+"/box", req(m.box))
 	mux.HandleFunc("POST "+p+"/box/stop", req(m.stopBox))
+	mux.HandleFunc("POST "+p+"/box/prune", req(m.pruneBox))
 	mux.HandleFunc("GET "+p+"/{workspace_id}", req(m.get))
 	mux.HandleFunc("PATCH "+p+"/{workspace_id}", req(m.update))
 	mux.HandleFunc("DELETE "+p+"/{workspace_id}", req(m.delete))
@@ -427,21 +433,8 @@ func (m *Module) diskUsage(w http.ResponseWriter, r *http.Request) error {
 	if b := httpx.QueryBool(r, "refresh"); b != nil {
 		refresh = *b
 	}
-	rows, err := m.a.DB.QueryContext(r.Context(), `SELECT `+models.WorkspaceColumns+` FROM workspaces WHERE user_id = ? AND deleted_at IS NULL`, u.ID)
+	list, err := m.userWorkspaces(r.Context(), u.ID)
 	if err != nil {
-		return err
-	}
-	var list []*models.Workspace
-	for rows.Next() {
-		ws := &models.Workspace{}
-		if err := rows.Scan(ws.ScanFields()...); err != nil {
-			rows.Close()
-			return err
-		}
-		list = append(list, ws)
-	}
-	rows.Close()
-	if err := rows.Err(); err != nil {
 		return err
 	}
 	out := make([]usageEntry, len(list))
@@ -458,7 +451,11 @@ func (m *Module) diskUsage(w http.ResponseWriter, r *http.Request) error {
 }
 
 func (m *Module) box(w http.ResponseWriter, r *http.Request) error {
-	return httpx.OK(w, m.a.Sandboxes.Box(r.Context(), auth.UserFrom(r.Context()).ID))
+	refresh := false
+	if b := httpx.QueryBool(r, "refresh"); b != nil {
+		refresh = *b
+	}
+	return httpx.OK(w, m.a.Sandboxes.Box(r.Context(), auth.UserFrom(r.Context()).ID, refresh))
 }
 
 // stopBox stops the user's box now; ?reset=true also discards its system
@@ -472,5 +469,5 @@ func (m *Module) stopBox(w http.ResponseWriter, r *http.Request) error {
 	if err != nil {
 		return err
 	}
-	return httpx.OK(w, m.a.Sandboxes.Box(r.Context(), u.ID))
+	return httpx.OK(w, m.a.Sandboxes.Box(r.Context(), u.ID, false))
 }

@@ -1,4 +1,5 @@
-import type { BoxInfo, Workspace } from '@/types/workspace.types';
+import type { BoxInfo, PruneBoxResult, Workspace } from '@/types/workspace.types';
+import { formatBytes } from '@/utils/format';
 
 // Paths inside the user's box (see backend/internal/sandbox).
 export const BOX_HOME = '/home/user';
@@ -57,4 +58,33 @@ export function summarizeBox(box: BoxInfo, elapsedSeconds = 0): BoxSummary {
     label: 'Box running',
     detail: left > 0 ? `idles in ${formatIdleDuration(left)}` : 'stopping soon',
   };
+}
+
+// "System 32.1 MB · Home 2.0 GB · Projects 1.1 GB", leaving out unknown parts.
+export function boxSizeBreakdown(box: BoxInfo): string {
+  const parts: [string, number | null][] = [
+    ['System', box.disk_bytes],
+    ['Home', box.home_bytes],
+    ['Projects', box.projects_bytes],
+  ];
+  return parts
+    .filter((part): part is [string, number] => part[1] != null)
+    .map(([label, bytes]) => `${label} ${formatBytes(bytes)}`)
+    .join(' · ');
+}
+
+export function pruneSummary(result: PruneBoxResult): string {
+  const lines = [
+    result.freed_bytes != null ? `Freed ${formatBytes(result.freed_bytes)}.` : 'Box pruned.',
+  ];
+  if (result.removed.length > 0) {
+    const n = result.removed.length;
+    lines.push(
+      `${n} ${n === 1 ? 'project is' : 'projects are'} cloned again when you next use them.`,
+    );
+  }
+  for (const kept of result.kept) {
+    lines.push(`Kept ${kept.name}: ${kept.reason}.`);
+  }
+  return lines.join('\n');
 }

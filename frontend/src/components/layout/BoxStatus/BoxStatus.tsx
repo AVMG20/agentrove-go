@@ -6,7 +6,7 @@ import { ConfirmDialog } from '@/components/ui/ConfirmDialog/ConfirmDialog';
 import { useBoxQuery, useStopBoxMutation } from '@/hooks/queries/useWorkspaceQueries';
 import { useDropdown } from '@/hooks/useDropdown';
 import { useNow } from '@/hooks/useNow';
-import { BOX_HOME, formatIdleDuration, summarizeBox } from '@/utils/box';
+import { BOX_HOME, boxSizeBreakdown, formatIdleDuration, summarizeBox } from '@/utils/box';
 import { formatBytes } from '@/utils/format';
 import styles from './BoxStatus.module.scss';
 
@@ -86,8 +86,10 @@ export function BoxStatus() {
           {counting && (
             <p className={styles.meta}>{detail.charAt(0).toUpperCase() + detail.slice(1)}</p>
           )}
-          {box.disk_bytes != null && (
-            <p className={styles.meta}>System packages: {formatBytes(box.disk_bytes)}</p>
+          {box.total_bytes != null && (
+            <p className={styles.meta}>
+              Size: {formatBytes(box.total_bytes)} ({boxSizeBreakdown(box)})
+            </p>
           )}
           {box.busy && (
             <p className={styles.meta}>
