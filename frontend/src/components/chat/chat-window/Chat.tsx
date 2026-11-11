@@ -32,20 +32,9 @@ import { queryKeys } from '@/hooks/queries/queryKeys';
 import { retryQueuedMessage } from '@/utils/queuedMessageFailure';
 import styles from './Chat.module.scss';
 
-// Whether a tool is still running in a streaming reply, plus a key that changes
-// whenever the reply grows (new event, or more text in the tail one).
-function streamActivity(events: AssistantStreamEvent[] | undefined): {
-  toolRunning: boolean;
-  activityKey: string;
-} {
-  if (!events?.length) return { toolRunning: false, activityKey: '0' };
-  const running = new Set<string>();
-  for (const event of events) {
-    if (event.type === 'tool_started') running.add(event.tool.id);
-    else if (event.type === 'tool_completed' || event.type === 'tool_failed') {
-      running.delete(event.tool.id);
-    }
-  }
+// Key that changes whenever the reply grows (new event, or more text in the tail).
+function streamActivity(events: AssistantStreamEvent[] | undefined): { activityKey: string } {
+  if (!events?.length) return { activityKey: '0' };
   const tail = events[events.length - 1];
   const tailSize =
     tail.type === 'assistant_text'
@@ -53,7 +42,7 @@ function streamActivity(events: AssistantStreamEvent[] | undefined): {
       : tail.type === 'assistant_thinking'
         ? tail.thinking.length
         : 0;
-  return { toolRunning: running.size > 0, activityKey: `${events.length}:${tailSize}` };
+  return { activityKey: `${events.length}:${tailSize}` };
 }
 
 export const Chat = memo(function Chat() {
@@ -280,10 +269,7 @@ export const Chat = memo(function Chat() {
   // Streaming reply that has gone quiet: show "still working" unless a tool card
   // (or a prompt for the user) already says what's happening.
   const lastBotEvents = lastBotMessage?.content_render?.events;
-  const { toolRunning, activityKey } = useMemo(
-    () => streamActivity(lastBotEvents),
-    [lastBotEvents],
-  );
+  const { activityKey } = useMemo(() => streamActivity(lastBotEvents), [lastBotEvents]);
   // The reply's own creation time is the turn start; the stream store's start is
   // when this tab attached, which restarts the clock after a reload.
   const lastBotStartedAt = lastBotMessage ? Date.parse(lastBotMessage.created_at) : NaN;
@@ -386,9 +372,10 @@ export const Chat = memo(function Chat() {
     !showThinking &&
     isStreaming &&
     lastBotIsStreaming &&
-    !toolRunning &&
     !showPermissionAtEnd &&
     !showElicitationAtEnd;
+  const assistantTextIsActive =
+    lastBotEvents?.[lastBotEvents.length - 1]?.type === 'assistant_text';
 
   const listFooter = useMemo(() => {
     if (
@@ -408,7 +395,11 @@ export const Chat = memo(function Chat() {
           <StatusTypewriter streamStartTime={streamStartTime} boxStarting={boxStarting} />
         )}
         {showWorking && (
-          <StreamWorkingStatus streamStartTime={turnStartTime} activityKey={activityKey} />
+          <StreamWorkingStatus
+            streamStartTime={turnStartTime}
+            activityKey={activityKey}
+            assistantTextIsActive={assistantTextIsActive}
+          />
         )}
         {showPermissionAtEnd && <ChatInlinePermission />}
         {showElicitationAtEnd && <ChatInlineElicitation />}
@@ -425,6 +416,7 @@ export const Chat = memo(function Chat() {
     );
   }, [
     activityKey,
+    assistantTextIsActive,
     boxStarting,
     chatId,
     handleContinueTurn,
