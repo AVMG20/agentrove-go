@@ -115,15 +115,10 @@
     font-weight: 500;
   }
 
-  // Running threads rest dimmer than idle rows (the spinner and tick carry the
-  // signal), with a soft glimmer sweeping through.
+  // Running threads rest dimmer than idle rows; the spinner and tick carry the
+  // signal.
   &--working {
-    @include anim.text-shimmer(
-      $base: var(--theme-text-quaternary),
-      $highlight: var(--theme-text-secondary),
-      $duration: 1.4s,
-      $sweep: 80%
-    );
+    color: var(--theme-text-quaternary);
   }
 }
 
