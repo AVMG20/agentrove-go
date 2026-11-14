@@ -12,6 +12,7 @@ import (
 	"syscall"
 	"time"
 
+	"agentrove/internal/agycli"
 	"agentrove/internal/app"
 	"agentrove/internal/auth"
 	"agentrove/internal/claudecli"
@@ -76,6 +77,7 @@ func run() error {
 
 	a.ClaudeCLI = claudecli.New(cfg)
 	go a.ClaudeCLI.Run(ctx)
+	go agycli.New(cfg).Run(ctx)
 	handler, shutdown, err := server.Build(ctx, a)
 	if err != nil {
 		return err

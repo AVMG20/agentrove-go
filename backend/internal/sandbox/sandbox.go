@@ -35,6 +35,7 @@ const (
 	ContainerAskpass   = "/usr/local/bin/git-askpass"
 	// The server-managed Claude CLI releases (read-only mount).
 	ContainerClaudeCLIDir = "/opt/agentrove/claude-cli"
+	ContainerAgyCLIDir    = "/opt/agentrove/agy-cli"
 	ContainerUser         = "user"
 	ContainerUID          = 1000
 	TerminalType          = "xterm-256color"

@@ -109,6 +109,10 @@ RUN agentrove-browser-mcp -write-cache /usr/local/share/agentrove-browser/mcp-ca
 # ahead of the image's copy. A user's own ~/.local/bin install still wins.
 RUN printf '%s\n' '[ -x /opt/agentrove/claude-cli/current/claude ] && PATH="/opt/agentrove/claude-cli/current:$PATH"' \
         > /etc/profile.d/agentrove-claude.sh
+# Likewise the API's newest Antigravity release (backend/internal/agycli) at
+# /opt/agentrove/agy-cli, which turns, sign-ins and the terminal run as agy.
+RUN printf '%s\n' '[ -x /opt/agentrove/agy-cli/current/agy ] && PATH="/opt/agentrove/agy-cli/current:$PATH"' \
+        > /etc/profile.d/agentrove-agy.sh
 
 USER user
 WORKDIR /home/user/projects

@@ -125,11 +125,14 @@ func (d *DockerProvider) Create(ctx context.Context, opts CreateOptions) error {
 	if err != nil {
 		return fmt.Errorf("prepare box dirs: %w", err)
 	}
-	// The managed Claude CLI (internal/claudecli); empty until a release is
-	// downloaded, so the image's CLI is used meanwhile.
-	cli := d.cfg.ClaudeCLIDir()
-	if err := os.MkdirAll(cli, 0o755); err != nil {
-		return fmt.Errorf("prepare claude cli dir: %w", err)
+	// The managed Claude and Antigravity CLIs (internal/claudecli,
+	// internal/agycli); empty until a release is downloaded, so the image's
+	// CLIs are used meanwhile.
+	cli, agy := d.cfg.ClaudeCLIDir(), d.cfg.AgyCLIDir()
+	for _, dir := range []string{cli, agy} {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			return fmt.Errorf("prepare cli dir: %w", err)
+		}
 	}
 	hc := &container.HostConfig{
 		NetworkMode: container.NetworkMode(netName),
@@ -151,6 +154,7 @@ func (d *DockerProvider) Create(ctx context.Context, opts CreateOptions) error {
 			d.hostPath(home) + ":" + ContainerHome,
 			d.hostPath(projects) + ":" + ContainerProjects,
 			d.hostPath(cli) + ":" + ContainerClaudeCLIDir + ":ro",
+			d.hostPath(agy) + ":" + ContainerAgyCLIDir + ":ro",
 		},
 	}
 	if d.cfg.DockerMemLimit != "" {
@@ -259,10 +263,12 @@ func (d *DockerProvider) EnsureRunning(ctx context.Context, sandboxID string, op
 		slog.Info("recreating sandbox on the current image", "sandbox", sandboxID)
 		return d.Create(ctx, opts)
 	}
-	// Boxes created before the managed Claude CLI lack its mount.
-	if !slices.ContainsFunc(info.Mounts, func(m container.MountPoint) bool { return m.Destination == ContainerClaudeCLIDir }) {
-		slog.Info("recreating sandbox to mount the managed Claude CLI", "sandbox", sandboxID)
-		return d.Create(ctx, opts)
+	// Boxes created before a managed CLI lack its mount.
+	for _, dir := range []string{ContainerClaudeCLIDir, ContainerAgyCLIDir} {
+		if !slices.ContainsFunc(info.Mounts, func(m container.MountPoint) bool { return m.Destination == dir }) {
+			slog.Info("recreating sandbox to mount the managed CLIs", "sandbox", sandboxID)
+			return d.Create(ctx, opts)
+		}
 	}
 	if err := d.moveBox(ctx, info, target); err != nil {
 		return fmt.Errorf("move sandbox to network %s: %w", target, err)

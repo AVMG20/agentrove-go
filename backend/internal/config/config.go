@@ -94,7 +94,11 @@ type Config struct {
 	// (see internal/claudecli), checked every ClaudeUpdateInterval.
 	ClaudeAutoUpdate     bool
 	ClaudeUpdateInterval time.Duration
-	LogLevel             string
+	// AgyAutoUpdate keeps a server-managed copy of the newest Antigravity
+	// CLI (see internal/agycli), checked every AgyUpdateInterval.
+	AgyAutoUpdate     bool
+	AgyUpdateInterval time.Duration
+	LogLevel          string
 }
 
 func Load() (*Config, error) {
@@ -146,6 +150,8 @@ func Load() (*Config, error) {
 		ClaudeBinary:           env("CLAUDE_BINARY", "claude"),
 		ClaudeAutoUpdate:       envBool("CLAUDE_AUTO_UPDATE", true),
 		ClaudeUpdateInterval:   time.Duration(max(envInt("CLAUDE_UPDATE_INTERVAL_SECONDS", 3600), 60)) * time.Second,
+		AgyAutoUpdate:          envBool("AGY_AUTO_UPDATE", true),
+		AgyUpdateInterval:      time.Duration(max(envInt("AGY_UPDATE_INTERVAL_SECONDS", 3600), 60)) * time.Second,
 		LogLevel:               env("LOG_LEVEL", "INFO"),
 	}
 
@@ -194,6 +200,12 @@ func (c *Config) AgentHomeDir(userID string) string {
 // read-only into every box.
 func (c *Config) ClaudeCLIDir() string {
 	return filepath.Join(c.StoragePath, "claude-cli")
+}
+
+// AgyCLIDir holds the server-managed Antigravity CLI releases, mounted
+// read-only into every box.
+func (c *Config) AgyCLIDir() string {
+	return filepath.Join(c.StoragePath, "agy-cli")
 }
 
 // UserWorkspacesDir holds the user's storage-managed projects (cloned or
