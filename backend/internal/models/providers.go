@@ -1,6 +1,9 @@
 package models
 
-import "regexp"
+import (
+	"regexp"
+	"strings"
+)
 
 // Agent providers a profile (and so a chat) runs on.
 const (
@@ -36,8 +39,10 @@ var CodexModels = []ModelInfo{
 	codexModel("gpt-5.6-luna", "GPT 5.6 Luna", 272_000),
 }
 
-// AntigravityModels are what `agy models` lists. The reasoning level is part
-// of the id, so they expose no separate effort dial.
+// AntigravityModels are what `agy models` lists for a Google sign-in, shown
+// until the user's accounts report their own lists (profiles.AntigravityModels).
+// The reasoning level is part of the id, so they expose no separate effort
+// dial.
 var AntigravityModels = []ModelInfo{
 	{ID: "gemini-3.8-flash-high", Name: "Gemini 3.8 Flash (High)", AgentKind: ProviderAntigravity, ContextWindow: 1_000_000},
 	{ID: "gemini-3.8-flash-medium", Name: "Gemini 3.8 Flash (Medium)", AgentKind: ProviderAntigravity, ContextWindow: 1_000_000},
@@ -45,6 +50,16 @@ var AntigravityModels = []ModelInfo{
 	{ID: "claude-opus-4-6-thinking", Name: "Claude Opus 4.6 (Thinking)", AgentKind: ProviderAntigravity, ContextWindow: 200_000},
 	{ID: "claude-sonnet-4-6", Name: "Claude Sonnet 4.6 (Thinking)", AgentKind: ProviderAntigravity, ContextWindow: 200_000},
 	{ID: "gpt-oss-120b-medium", Name: "GPT-OSS 120B (Medium)", AgentKind: ProviderAntigravity, ContextWindow: 128_000},
+}
+
+// AntigravityModel is the registry entry for a model `agy models` reported;
+// agy names no context window, so unknown ids get a family's usual one.
+func AntigravityModel(id, name string) ModelInfo {
+	if m, ok := LookupProviderModel(ProviderAntigravity, id); ok {
+		m.Name = name
+		return m
+	}
+	return ModelInfo{ID: id, Name: name, AgentKind: ProviderAntigravity, ContextWindow: ModelContextWindow(ProviderAntigravity, id)}
 }
 
 // ModelsFor lists the selectable models of a provider.
@@ -126,8 +141,11 @@ func ModelContextWindow(provider, id string) int {
 	if m, ok := LookupProviderModel(provider, id); ok {
 		return m.ContextWindow
 	}
-	if provider == ProviderCodex {
+	switch {
+	case provider == ProviderCodex:
 		return 272_000
+	case provider == ProviderAntigravity && strings.HasPrefix(id, "gemini-"):
+		return 1_000_000
 	}
 	return 200_000
 }

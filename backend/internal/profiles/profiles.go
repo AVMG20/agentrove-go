@@ -59,10 +59,13 @@ type Service struct {
 	sandboxes *sandbox.Manager
 	logins    *logins
 	probes    *probes
+	// agyModelCache is each Antigravity account's `agy models` list.
+	agyModelCache *agyModelCache
 }
 
 func NewService(d *db.DB, keys *auth.Keys, cfg *config.Config, sandboxes *sandbox.Manager) *Service {
-	return &Service{db: d, keys: keys, cfg: cfg, sandboxes: sandboxes, logins: newLogins(), probes: newProbes()}
+	return &Service{db: d, keys: keys, cfg: cfg, sandboxes: sandboxes, logins: newLogins(), probes: newProbes(),
+		agyModelCache: &agyModelCache{entries: map[string]agyModelEntry{}}}
 }
 
 const profileColumns = `id, user_id, provider, name, auth_mode, base_url, usage_url, token, token_env, config_dir, created_at, updated_at`
@@ -367,6 +370,8 @@ func (s *Service) Update(ctx context.Context, userID, id string, in Input) (*Pro
 	if err := s.apply(ctx, p, in); err != nil {
 		return nil, err
 	}
+	// A new token or sign-in mode can change which models the account has.
+	s.forgetAgyModels(p)
 	return p, s.save(ctx, p)
 }
 
@@ -391,6 +396,7 @@ func (s *Service) Delete(ctx context.Context, userID, id string) error {
 		return err
 	}
 	s.logins.cancel(p)
+	s.forgetAgyModels(p)
 	return s.db.Tx(ctx, func(tx *sql.Tx) error {
 		if _, err := tx.ExecContext(ctx, `DELETE FROM agent_profiles WHERE id = ? AND user_id = ?`, p.ID, userID); err != nil {
 			return err

@@ -63,11 +63,27 @@ func (m *Module) listModels(w http.ResponseWriter, r *http.Request) error {
 	case "", models.ProviderClaude:
 		return httpx.OK(w, models.Claude())
 	case "all":
-		return httpx.OK(w, models.AllModels())
-	default:
-		if ms := models.ModelsFor(k); ms != nil {
-			return httpx.OK(w, ms)
+		out := []models.ModelInfo{}
+		for _, p := range models.Providers {
+			out = append(out, m.providerModels(r, p)...)
 		}
-		return httpx.OK(w, []models.ModelInfo{})
+		return httpx.OK(w, out)
+	default:
+		return httpx.OK(w, m.providerModels(r, k))
 	}
+}
+
+// providerModels is a provider's picker list. Antigravity's is what the
+// user's own accounts report (a Gemini API key reaches models a Google
+// sign-in doesn't), or the built-in list until one has.
+func (m *Module) providerModels(r *http.Request, provider string) []models.ModelInfo {
+	if provider == models.ProviderAntigravity {
+		if ms, ok := m.a.Profiles.AntigravityModels(r.Context(), user(r).ID); ok {
+			return ms
+		}
+	}
+	if ms := models.ModelsFor(provider); ms != nil {
+		return ms
+	}
+	return []models.ModelInfo{}
 }
